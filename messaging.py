@@ -1,7 +1,15 @@
 import network
 
 class Broker:
-    pass
+
+    def publish(self, message):
+        pass
+
+    def subscribe(self, flavor, callback):
+        pass
+
+    def unsubscribe(self, flavor, callback):
+        pass
 
 class SandboxBroker(Broker):
     pass
