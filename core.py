@@ -1,3 +1,5 @@
+from __future__ import division
+
 import pygame.time
 
 class Loop:
@@ -5,14 +7,13 @@ class Loop:
     updating the current engine and handling transitions between engines. """
 
     # Game Loop {{{1
-    def play(self):
+    def play(self, frequency=50):
         clock = pygame.time.Clock()
-        frequency = settings.game.clock_rate
 
         self.engine.setup()     # All subclasses need to define self.engine.
         self.finished = False
 
-        while not self.finished:
+        while not self.engine.exit():
             time = clock.tick(frequency) / 1000
             self.engine.update(time)
 
@@ -51,6 +52,10 @@ class Engine:
     def next(self):
         """ Create and return the engine that should be executed next. """
         return None
+
+    def exit(self):
+        """ Return true to stop the game loop and end the program. """
+        return False
 
     # Loop Methods {{{1
     def setup(self):
@@ -93,23 +98,23 @@ class SerialEngine(Engine):
             service.setup()
 
     def update(self, time):
-        for services in self.services.values():
+        for service in self.services.values():
             service.update(time)
 
     def teardown(self):
-        for services in self.services.values():
+        for service in self.services.values():
             service.teardown()
 
     # }}}1
 
 class ParallelEngine(Engine):
-    """ Provide a mechanism for executing game services in parallel.  This
+    """ Provides a mechanism for executing game services in parallel.  This
     is still an abstract base class, but it allows subclasses to easily
     dispatch tasks into separate threads. """
     pass
 
 class Service:
-    """ Control a single aspect of an engine.  Classes that implement this
+    """ Controls a single aspect of an engine.  Classes that implement this
     interface can be easily integrated into the serial or parallel engines.
     That said, a class can be manually used in any engine without inheriting
     from this. """
