@@ -334,15 +334,3 @@ class PickleClient(Client):
 class PickleHost(Host):
     """ Produces PickleClient connections. """
     ClientClass = PickleClient
-
-class OptimizedClient(Client):
-    """ Packs messages for the army prototype more efficiently than the pickle
-    client.  I might not ever implement this class if the pickle method works
-    well enough. """
-    pass
-
-class SandboxClient(Client):
-    """ Avoids actually using the network interface.  Instead, messages are
-    copied between clients running on the same machine.  This might be able to
-    improve responsiveness during single-player games. """
-    pass
