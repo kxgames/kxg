@@ -27,7 +27,7 @@ class Loop:
 
 class Engine:
     """ Control everything happening in the game.  This is just an abstract
-    base class providing methods for updating and switching engines.  """
+    base class providing methods for updating and switching engines. """
 
     # Constructor {{{1
     def __init__(self, loop):

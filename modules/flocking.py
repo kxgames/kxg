@@ -1,5 +1,5 @@
 from vector import *
-from shapes.shapes import *
+from shapes import *
 
 class Sprite:
     """ A parent class for every game object that can move.  This class stores
