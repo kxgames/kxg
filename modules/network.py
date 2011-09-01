@@ -56,14 +56,13 @@ class Host:
             # Continue looping until accept() throws an exception.
             while True:
                 connection, address = self.socket.accept()
+                identity = self.next_id; self.next_id += 1
 
                 try: client = self.ClientClass(*address)
                 except AttributeError:
                     raise NotImplementedError
 
-                client.attach(connection)
-                client.identity = self.next_id; self.next_id += 1
-
+                client.attach(connection, identity)
                 clients.append(client)
 
         except socket.error, message:
@@ -105,11 +104,10 @@ class Client:
         self.socket = socket.socket()
         self.socket.setblocking(False)
 
-        self.callbacks_in = {}
-        self.callbacks_out = {}
-
         self.stream_in = ""
         self.stream_out = ""
+
+        self.clear_callbacks()
 
     # }}}1
 
@@ -152,13 +150,24 @@ class Client:
         except KeyError:
             self.callbacks_out[flavor] = [function]
 
-    def forget_everything(self, strict=True):
-        """ Stop handling any of the existing callbacks.  If the strict flag is
-        set, an assertion will be thrown if a forgotten flavor of message
-        is ever received. """
+    def default_incoming(self, function):
+        self.default_callback_in = function
+
+    def default_outgoing(self, function):
+        self.default_callback_out = function
+
+    def clear_callbacks(self):
+        """ Stop handling any of the existing callbacks.  An assertion will be
+        thrown whenever a forgotten flavor of message is received. """
 
         self.callbacks_in = {}
         self.callbacks_out = {}
+
+        def unexpected_message(pipe, type, message):
+            raise AssertionError, "Unexpected %s message." % type
+
+        self.default_callback_in = unexpected_message
+        self.default_callback_out = unexpected_message
 
     # }}}1
 
@@ -184,12 +193,13 @@ class Client:
         to the host. """
         return self.socket_ready
 
-    def attach(self, socket):
+    def attach(self, socket, identity):
         """ Provide the client connection with a pre-initialized socket to use.
         This method is used by hosts while accepting connections. """
         self.socket = socket
-        self.socket_ready = True
+        self.identity = identity
 
+        self.socket_ready = True
         self.socket.setblocking(False)
 
     def teardown(self):
@@ -205,10 +215,14 @@ class Client:
         header = struct.pack(Header.format, len(data))
 
         # Execute the callbacks associated with this message type.
-        assert type in self.callbacks_out
-        for callback in self.callbacks_out[type]:
+        default = self.default_callback_out
+        wrapper = [ lambda pipe, message: default(pipe, type, message) ]
+
+        for callback in self.callbacks_out.get(type, wrapper):
             callback(self, message)
 
+        # Add the message to the outgoing data stream.  This is best done after
+        # the callbacks are executed, because they might complain.
         self.stream_out += header + data
 
     def deliver(self):
@@ -283,10 +297,12 @@ class Client:
             type, message = self.unpack(message)
 
             # Handle the message by executing the proper callback.
-            assert type in self.callbacks_in, type
-            for callback in self.callbacks_in[type]:
+            default = self.default_callback_in
+            wrapper = [ lambda pipe, message: default(pipe, type, message) ]
+
+            for callback in self.callbacks_in.get(type, wrapper):
                 callback(self, message)
-    
+
     def update(self):
         """ Simply a shorthand way to call deliver() and receive(). """
         self.deliver()

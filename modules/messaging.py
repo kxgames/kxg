@@ -1,20 +1,6 @@
 import network
 import Queue as queue
 
-class Subscribe(object):
-    """ Contains information about a message being subscribed to.  The network
-    connection must support objects of this type. """
-
-    def __init__(self, flavor):
-        self.flavor = flavor
-
-class Publish(object):
-    """ Contains information about a message being published.  The network
-    connection must support objects of this type. """
-
-    def __init__(self, message):
-        self.message = message
-
 class Broker(object):
     """ Manages a messaging system that allows messages to be published for any
     interested subscriber to receive.  If desired, published messages will even
@@ -22,13 +8,13 @@ class Broker(object):
     to work with concurrent applications, messages can be published at any time
     from any thread. """
 
-    def __init__(self, *clients):
+    # Constructor {{{1
+    def __init__(self, *pipes):
         """ Create and prepare a new broker object.  If any network connections
         are passed into the constructor, the broker will presume that other
-        brokers are listening on the other ends and will attempt to communicate
-        with them. """
+        brokers are listening and will attempt to communicate with them. """
 
-        self.clients = clients
+        self.pipes = []
         self.messages = queue.Queue()
 
         # The first dictionary is used to map flavors to local callbacks.  The
@@ -36,67 +22,83 @@ class Broker(object):
         self.subscriptions = {}
         self.destinations = {}
 
-        def incoming_publication(pipe, publication):
-            message = publication.message
-            self.messages.put(message)
+        self.locked = False
+        self.connect(*pipes)
 
-        def incoming_subscription(pipe, subscription):
-            flavor = subscription.flavor
-            self.destinations[flavor] = pipe
+    # Network Setup {{{1
+    def connect(self, *pipes):
+        """ Attach the broker to another broker on a remote machine.  Any
+        message published by either broker will be relayed to the other.  This
+        method must be called before the broker is locked. """
 
-        for clients in self.clients:
-            client.outgoing(Publish)
-            client.outgoing(Subscribe)
+        assert not self.locked
 
-            client.incoming(Publish, incoming_publication)
-            client.incoming(Subscribe, incoming_subscription)
+        def incoming_publication(pipe, type, msg): self.messages.put(msg)
+        def outgoing_publication(pipe, type, msg): pass
+
+        for pipe in pipes:
+            pipe.default_incoming(incoming_publication)
+            pipe.default_outgoing(outgoing_publication)
+
+            self.pipes.append(pipe)
+
+    # }}}1
+
+    # Subscriptions {{{1
+    def subscribe(self, flavor, callback):
+        """ Attach a callback to a particular flavor of message.  For
+        simplicity, the message's flavor is always the message's class.  Once
+        the broker is locker, new subscriptions can no longer be made. """
+
+        assert not self.locked
+
+        if flavor not in self.subscriptions:
+            self.subscriptions[flavor] = set()
+
+        self.subscriptions[flavor].add(callback)
+
+    def lock(self):
+        """ Prevent the broker from making any more subscriptions, but allow
+        the broker to begin publishing and delivering messages. """
+        self.locked = True
+
+    # Publications {{{1
+    def publish(self, message):
+        """ Publish the given message so subscribers to that class of message
+        can react to it.  If remote brokers have also subscribed to the
+        message, it will be relayed to them as well.  The underlying network
+        connection must be capable of serializing the given message.  This
+        method is thread-safe and cannot be called before the broker gets
+        locked. """
+
+        assert self.locked
+
+        self.messages.put(message)
+
+        for pipe in self.pipes:
+            pipe.queue(message)
 
     def deliver(self):
         """ Deliver any messages that have been published since the last call
         to this function.  For local messages, this requires executing the
         proper callback for each subscriber.  For remote messages, this
         involves both checking for incoming packets and relaying new
-        publications across the network. """
-        
-        for client in self.clients:
-            client.update()
+        publications across the network.  This method cannot be called before
+        the broker is locked. """
 
-        for message in self.messages:
+        assert self.locked
+        
+        for pipe in self.pipes:
+            pipe.update()
+
+        while True:
+            try: message = self.messages.get(False)
+            except queue.Empty: break
+
             flavor = type(message)
             callbacks = self.subscriptions[flavor]
 
             for callback in callbacks:
                 callback(message)
 
-        self.messages = []
-
-    def publish(self, message):
-        """ Publish the given message so subscribers to that class of
-        message can react to it.  If remote brokers have also subscribed to
-        the message, it will be wrapped into a packet and relayed to them as
-        well.  Make sure that the resulting packet is supported by the
-        underlying network connection.  This method is thread-safe. """
-
-        flavor = type(message)
-        publication = Publish(message)
-
-        for client in self.destinations[flavor]:
-            client.queue(publication)
-
-        self.messages.put(message)
-
-    def subscribe(self, flavor, callback):
-        """ Attach a callback to a particular flavor of message.  For
-        simplicity, the message's flavor is always the message's class.  Remote
-        brokers are informed of each subscription made so that they can relay
-        any relevant publications to this broker.  """
-
-        try:
-            self.subscriptions[flavor].append(callback)
-        except KeyError:
-            self.subscriptions[flavor] = [callback]
-
-        subscription = Subscribe(flavor)
-        for client in self.clients:
-            client.queue(subscription)
-
+    # }}}1

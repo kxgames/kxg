@@ -1,70 +1,14 @@
 #!/usr/bin/env python
 
-import sys
 import random
 
-# This module tweaks sys.path and needs to be called before any module from
-# this package is imported.
-import path
-import network, message
-
-# Message {{{1
-class Message(message.Message):
-
-    @classmethod
-    def send(cls, client, message):
-        cls.outgoing.append(message)
-
-    @classmethod
-    def receive(cls, client, message):
-        cls.incoming.append(message)
-
-# }}}1
-
-# Connect {{{1
-def connect(reverse=False):
-
-    # These test are specifically for the pickle client.
-    greeter = network.PickleHost('localhost', 11236)
-    client = network.PickleClient('localhost', 11236)
-
-    greeter.setup()
-
-    # The client's setup() method needs to be called at least twice.
-    client.setup(); assert not client.ready()
-    client.setup(); assert client.ready()
-
-    servers = greeter.accept()
-    server = servers[0]
-
-    assert len(servers) == 1
-    assert server.ready()
-
-    if reversed:    return server, client
-    else:           return client, server
-
-# Update {{{1
-def update(*pipes):
-    for pipe in pipes:
-        pipe.deliver()
-
-    for pipe in pipes:
-        pipe.receive()
-
-# Finish {{{1
-def finish(*pipes):
-    for pipe in pipes:
-        pipe.teardown()
-
-    Message.check()
-    Message.clear()
-
-# }}}1
+from helpers.pipes import *
+from helpers.interface import *
 
 # Simple Tests {{{1
-def test_one_message(bytes=8):
+def test_one_message():
     client, server = connect()
-    message = Message(bytes)
+    message = Message()
 
     client.outgoing(Message, Message.send)
     server.incoming(Message, Message.receive)
@@ -74,11 +18,11 @@ def test_one_message(bytes=8):
     update(client, server)
     finish(client, server)
 
-def test_two_messages(bytes=8):
+def test_two_messages():
     forward = connect(reverse=False)
     reverse = connect(reverse=True)
 
-    messages = Message(bytes), Message(bytes)
+    messages = Message(), Message()
 
     # Try sending from both the client and the host ends.
     for sender, receiver in forward, reverse:
@@ -95,7 +39,23 @@ def test_two_messages(bytes=8):
         update(sender, receiver)
         finish(sender, receiver)
 
-def test_error_cases():
+def test_default_callbacks():
+    client, server = connect()
+    message = Message()
+
+    client.default_outgoing(Message.send)
+    server.default_incoming(Message.receive)
+
+    try: server.queue(message)
+    except AssertionError: pass
+    else: raise AssertionError
+
+    client.queue(message)
+
+    update(client, server)
+    finish(client, server)
+
+def test_missing_callbacks():
     client, server = connect()
     message = Message(10)
 
@@ -182,26 +142,15 @@ def test_partial_messages(count=2**8, bytes=2**8):
 
 if __name__ == '__main__':
 
-    # Status Display {{{1
-    def update_status(current, total):
-        backspace = '\b'
-        status = '(%d/%d)' % (current, total)
+    with TestInterface("Performing simple tests...", 4) as status:
+        status.update();        test_one_message()
+        status.update();        test_two_messages()
+        status.update();        test_default_callbacks()
+        status.update();        test_missing_callbacks()
 
-        sys.stdout.write(backspace * len(status))
-        sys.stdout.write(status)
-        sys.stdout.flush()
-    # }}}1
+    with TestInterface("Performing rigorous tests...", 3) as status:
+        status.update();        test_many_messages()
+        status.update();        test_large_messages()
+        status.update();        test_partial_messages()
 
-    print "Performing simple tests... (x/x)",
-    update_status(1, 3);        test_one_message()
-    update_status(2, 3);        test_two_messages()
-    update_status(3, 3);        test_error_cases()
-    print
-
-    print "Performing rigorous tests... (x/x)",
-    update_status(1, 3);        test_many_messages()
-    update_status(2, 3);        test_large_messages()
-    update_status(3, 3);        test_partial_messages()
-    print
-    
-    print "All tests passed."
+    TestInterface.report_success()
