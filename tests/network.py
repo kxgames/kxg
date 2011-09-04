@@ -5,6 +5,8 @@ import random
 from helpers.pipes import *
 from helpers.interface import *
 
+# I completely forgot to test the forgetting methods.
+
 # Setup {{{1
 def setup(integrate=lambda x: x):
     tests = {}, {}

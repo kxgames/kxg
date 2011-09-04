@@ -19,7 +19,7 @@ class Loop:
 
             if self.engine.finished():
                 self.engine.teardown()
-                self.engine = self.engine.next()
+                self.engine = self.engine.successor()
                 self.engine.setup()
 
     def finish(self):
@@ -49,7 +49,7 @@ class Engine:
         """ Return true if this engine is done executing. """
         return self.complete
 
-    def next(self):
+    def successor(self):
         """ Create and return the engine that should be executed next. """
         return None
 
@@ -71,49 +71,49 @@ class Engine:
 
     def teardown(self):
         """ Tear down the engine.  This is called after the last update, but
-        before the next() method is called to get the next engine. """
+        before the successor() method is called to get the next engine. """
         raise NotImplementedError
 
     # }}}1
 
 class SerialEngine(Engine):
-    """ Provide a simple mechanism for executing a set of unrelated services.
-    Subclasses are expected to create a dictionary of services called
-    self.services.  Every service in that list will be properly handled. """
+    """ Provide a simple mechanism for executing a set of unrelated tasks.
+    Subclasses are expected to create a dictionary of tasks called
+    self.tasks.  Every task in that list will be properly handled. """
 
     # Constructor {{{1
     def __init__(self, loop):
         Engine.__init__(self, loop)
-        self.services = {}
+        self.tasks = {}
 
     # Attributes {{{1
-    def get_service(self, name):
-        return self.services[name]
+    def get_task(self, name):
+        return self.tasks[name]
 
     # }}}1
 
     # Loop Methods {{{1
     def setup(self):
-        for service in self.services.values():
-            service.setup()
+        for task in self.tasks.values():
+            task.setup()
 
     def update(self, time):
-        for service in self.services.values():
-            service.update(time)
+        for task in self.tasks.values():
+            task.update(time)
 
     def teardown(self):
-        for service in self.services.values():
-            service.teardown()
+        for task in self.tasks.values():
+            task.teardown()
 
     # }}}1
 
 class ParallelEngine(Engine):
-    """ Provides a mechanism for executing game services in parallel.  This
-    is still an abstract base class, but it allows subclasses to easily
-    dispatch tasks into separate threads. """
+    """ Provides a mechanism for executing game tasks in parallel.  This is
+    still an abstract base class, but it allows subclasses to easily dispatch
+    tasks into separate threads. """
     pass
 
-class Service:
+class Task:
     """ Controls a single aspect of an engine.  Classes that implement this
     interface can be easily integrated into the serial or parallel engines.
     That said, a class can be manually used in any engine without inheriting
@@ -128,18 +128,18 @@ class Service:
 
     # Abstract Methods {{{1
     def setup(self):
-        """ Setup the service.  This is called after the engine owning the
-        service has finished constructing all of its services. """
+        """ Setup the task.  This is called after the engine owning the
+        task has finished constructing all of its tasks. """
         raise NotImplementedError
 
     def update(self, time):
-        """ Update the service.  This is called once a frame for as long as the
-        engine owning the service is running. """
+        """ Update the task.  This is called once a frame for as long as the
+        engine owning the task is running. """
         raise NotImplementedError
 
     def teardown(self):
-        """ Tear down the service.  This is called when the engine owning the
-        service is shutting down. """
+        """ Tear down the task.  This is called when the engine owning the
+        task is shutting down. """
         raise NotImplementedError
 
     # }}}1

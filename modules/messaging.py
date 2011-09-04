@@ -1,6 +1,22 @@
 import network
 import Queue as queue
 
+# Forum Permissions
+# =================
+# I think it would be good to provide a way to limit access to the forum.  For
+# example, some objects should only have read privileges, some should only have
+# write privileges, and some should be able to do either.  One way to enforce
+# these restrictions is to add three satellite classes: Publisher, Subscriber,
+# and Member.
+#
+# These classes would be incomplete wrappers around the base Forum
+# functionality.  For example, Publisher would contain a reference to the forum
+# but would only implement publish().  Likewise, Subscriber would
+# only implement subscribe().  Member would be able to do both.
+#
+# In python, it would still be possible to use the base Forum directly.  In
+# more structured languages, though, I could make this impossible.
+
 class Forum:
     """ Manages a messaging system that allows messages to be published for any
     interested subscriber to receive.  If desired, published messages will even
@@ -44,7 +60,7 @@ class Forum:
 
                 for pipe in self.pipes:
                     if pipe is not sender:
-                        pipe.relay(tag, message)
+                        pipe.duplicate(tag, message)
 
         def outgoing_publication(pipe, tag, type, message):
             origin, ticker = tag
@@ -92,8 +108,6 @@ class Forum:
         connection must be capable of serializing the given message.  This
         method is thread-safe and cannot be called before the forum gets
         locked. """
-
-        assert self.locked
 
         self.messages.put(message)
 

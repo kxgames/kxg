@@ -160,6 +160,14 @@ class Server(Host):
             self.callback(client)
             self.clients.append(client)
 
+    def update(self):
+        for client in self.clients:
+            client.update()
+
+    def broadcast(self, message):
+        for client in self.clients:
+            client.queue(message)
+
     def empty(self):
         return len(self.clients) == 0
 
@@ -299,12 +307,12 @@ class Client(object):
                 self.callbacks_in[flavor] = { group : function }
 
     # Forgetting Callbacks {{{1
-    def forget_group(group=None):
+    def forget_group(self, group=None):
         """ Stop handling every callback registered to the given group.  This
         includes both registered and default callbacks. """
 
-        del self.defaults_in[group]
-        del self.defaults_out[group]
+        if group in self.defaults_in:   del self.defaults_in[group]
+        if group in self.defaults_out:  del self.defaults_out[group]
 
         for callbacks in self.callbacks_in.values():
             if group in callbacks: del callbacks[group]
@@ -360,11 +368,11 @@ class Client(object):
     def update(self):
         """ Simply a shorthand way to call deliver() and receive(). """
 
-        error = "Cannot update the pipe before it has been initialized."
-        assert self.socket_ready, error
-
-        self.receive()
-        self.deliver()
+        if self.ready():
+            self.receive()
+            self.deliver()
+        else:
+            self.setup()
 
     def teardown(self):
         """ Stop sending or receiving messages and close the socket.  This will
@@ -376,9 +384,6 @@ class Client(object):
     def queue(self, message):
         """ Add a message to the delivery queue.  This method does not attempt
         to actually send the message, so it will never block. """
-
-        error = "Cannot send messages before the pipe is initialized."
-        assert self.socket_ready, error
 
         # Prepare the given message to be sent over the network.
         flavor, data = self.pack(message)
@@ -404,7 +409,7 @@ class Client(object):
         self.stream_out += header + data
         self.message_ticker += 1
 
-    def relay(self, tag, message):
+    def duplicate(self, tag, message):
         """ Resend a message using exactly the same header as it originally
         had. """
 
