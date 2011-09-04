@@ -5,120 +5,153 @@ import random
 from helpers.pipes import *
 from helpers.interface import *
 
+# Setup {{{1
+def setup(integrate=lambda x: x):
+    tests = {}, {}
+    direction = True, False
+
+    for test, reverse in zip(tests, direction):
+        sender, receiver = connect(reverse=reverse, integrate=integrate)
+        inbox, outbox = Inbox(), Outbox()
+
+        test["sender"], test["receiver"] = sender, receiver
+        test["inbox"], test["outbox"] = inbox, outbox
+
+        flavor = outbox.flavor()
+
+        sender.outgoing(flavor, outbox.send)
+        receiver.incoming(flavor, inbox.receive)
+
+    return tests
+
+# Send {{{1
+def send(test, bytes=8):
+    sender, outbox = test["sender"], test["outbox"]
+
+    message = outbox.message(bytes)
+    old_ticker = sender.message_ticker
+
+    sender.queue(message)
+
+    assert sender.message_ticker == old_ticker + 1
+
+# Receive {{{1
+def receive(test):
+    sender, receiver = test["sender"], test["receiver"]
+    inbox, outbox = test["inbox"], test["outbox"]
+
+    update(sender, receiver)
+    disconnect(sender, receiver)
+
+    inbox.check(outbox)
+
+# }}}1
+
 # Simple Tests {{{1
 def test_one_message():
-    client, server = connect()
-    message = Message()
-
-    client.outgoing(Message, Message.send)
-    server.incoming(Message, Message.receive)
-
-    client.queue(message)
-
-    update(client, server)
-    finish(client, server)
+    for test in setup():
+        send(test)
+        receive(test)
 
 def test_two_messages():
-    forward = connect(reverse=False)
-    reverse = connect(reverse=True)
+    for test in setup():
+        send(test); send(test)
+        receive(test)
 
-    messages = Message(), Message()
+def test_multiple_clients():
+    clients, servers = connect(10)
+    inbox, outbox = Inbox(), Outbox()
 
-    # Try sending from both the client and the host ends.
-    for sender, receiver in forward, reverse:
-        sender.outgoing(Message, Message.send)
-        receiver.incoming(Message, Message.receive)
+    flavor = outbox.flavor()
+    message = outbox.message()
 
-        # Try adding more than one callback.
-        sender.outgoing(Message, lambda client, message: None)
-        receiver.incoming(Message, lambda client, message: None)
+    for client in clients:
+        client.outgoing(flavor, outbox.send)
 
-        for message in messages:
-            sender.queue(message)
+    for server in servers:
+        server.incoming(flavor, inbox.receive)
 
-        update(sender, receiver)
-        finish(sender, receiver)
+    inbox.check(outbox)
 
-def test_default_callbacks():
-    client, server = connect()
-    message = Message()
+def test_defaults():
+    sender, receiver = connect()
+    inbox, outbox = Inbox(), Outbox()
 
-    client.default_outgoing(Message.send)
-    server.default_incoming(Message.receive)
+    message = outbox.message()
 
-    try: server.queue(message)
+    sender.outgoing_default(outbox.send)
+    receiver.incoming_default(inbox.receive)
+
+    sender.queue(message)
+
+    update(sender, receiver)
+    disconnect(sender, receiver)
+
+    inbox.check(outbox)
+
+def test_surprises():
+    sender, receiver = connect()
+    inbox, outbox = Inbox(), Outbox()
+
+    flavor = outbox.flavor()
+    message = outbox.message()
+
+    # By default, outgoing messages must be registered.
+    try: sender.queue(message)
     except AssertionError: pass
     else: raise AssertionError
 
-    client.queue(message)
+    sender.outgoing(flavor)
+    sender.queue(message)
 
-    update(client, server)
-    finish(client, server)
-
-def test_missing_callbacks():
-    client, server = connect()
-    message = Message(10)
-
-    # Make sure messages cannot be sent before they are registered.
-    try: client.queue(message)
+    # Incoming messages also have to be registered.
+    try: update(sender, receiver)
     except AssertionError: pass
     else: raise AssertionError
 
-    try: server.queue(message)
-    except AssertionError: pass
-    else: raise AssertionError
+    receiver.incoming(flavor, lambda *ignore: None)
+    sender.queue(message)
 
-    # Now register this type of message so it can be sent.
-    client.outgoing(Message)
-    server.outgoing(Message)
+    update(sender, receiver)
+    disconnect(sender, receiver)
 
-    client.queue(message)
-    server.queue(message)
+def test_integration():
 
-    client.deliver()
-    server.deliver()
+    def integrate(message):
+        message.integrated = True
+        return message
 
-    # Make sure unregistered messages cannot be received, even if the same type
-    # of message is registered to be sent.
-    try: server.receive()
-    except AssertionError: pass
-    else: raise AssertionError
+    for test in setup(integrate):
+        send(test)
+        receive(test)
 
-    try: client.receive()
-    except AssertionError: pass
-    else: raise AssertionError
+        for message in test["inbox"]:
+            assert hasattr(message, "integrated")
 
 # Rigorous Tests {{{1
-def test_variable_conditions(count=0, bytes=0):
-    client, server = connect()
-    messages = [ Message(bytes) for index in range(count) ]
-
-    client.outgoing(Message, Message.send)
-    server.incoming(Message, Message.receive)
-
-    for message in messages:
-        client.queue(message)
-
-    # Continue updating until the client has emptied its outgoing stream.
-    while client.stream_out:
-        update(client, server)
-
-    finish(client, server)
+def test_stressful_conditions(count, bytes):
+    for test in setup():
+        for iteration in range(count):
+            send(test, bytes)
+        receive(test)
 
 def test_many_messages():
-    test_variable_conditions(count=2**12, bytes=2**8)
+    test_stressful_conditions(count=2**12, bytes=2**8)
 
 def test_large_messages():
-    test_variable_conditions(count=2**7, bytes=2**17)
+    test_stressful_conditions(count=2**7, bytes=2**17)
 
 def test_partial_messages(count=2**8, bytes=2**8):
     client, server = connect()
+    inbox, outbox = Inbox(), Outbox()
+
+    flavor = outbox.flavor()
+    messages = [ outbox.message(bytes) for index in range(count) ]
 
     buffers = range(2 * bytes)
-    messages = [ Message(bytes) for index in range(count) ]
 
-    client.outgoing(Message, Message.send)
-    server.incoming(Message, Message.receive)
+    client.outgoing(flavor, outbox.send)
+    server.incoming(flavor, inbox.receive)
 
     # Place the messages onto the delivery queue to create a stream.
     for message in messages:
@@ -135,18 +168,23 @@ def test_partial_messages(count=2**8, bytes=2**8):
         socket.send(head)
         server.receive()
     
+    disconnect(client, server)
+
     # Make sure all the messages were properly received.
-    finish(client, server)
+    inbox.check(outbox)
 
 # }}}1
 
 if __name__ == '__main__':
 
-    with TestInterface("Performing simple tests...", 4) as status:
+    with TestInterface("Performing simple tests...", 6) as status:
         status.update();        test_one_message()
         status.update();        test_two_messages()
-        status.update();        test_default_callbacks()
-        status.update();        test_missing_callbacks()
+        status.update();        test_multiple_clients()
+
+        status.update();        test_defaults()
+        status.update();        test_surprises()
+        status.update();        test_integration()
 
     with TestInterface("Performing rigorous tests...", 3) as status:
         status.update();        test_many_messages()

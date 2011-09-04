@@ -3,55 +3,176 @@
 import path
 import threading
 
-from messaging import Broker
+from messaging import Forum, Conversation
 
 from helpers.pipes import *
 from helpers.interface import *
 
-# Basic Broker {{{1
-def test_basic_broker():
-    broker = Broker()
-    message = Message()
+# Setup Helper {{{1
+def setup(count):
+    client_pipes, server_pipes = connect(count)
 
-    broker.subscribe(Message, Message.receive)
-    broker.lock()
+    servers = [ (Forum(*server_pipes), Inbox()) ]
+    clients = [ (Forum(pipe), Inbox()) for pipe in client_pipes ]
 
-    broker.publish(message); Message.send(message)
-    broker.deliver()
+    return servers, clients
 
-    Message.check()
-    Message.clear()
+# Subscribe Helper {{{1
+def subscribe(flavor, forums):
+    for forum, inbox in forums:
+        forum.subscribe(flavor, inbox.receive)
 
-# Networked Broker {{{1
-def test_networked_broker():
-    client_pipe, server_pipe = connect()
+# Lock Helper {{{1
+def lock(forums):
+    for forum, inbox in forums:
+        forum.lock()
 
-    messages = [ Message(), Message() ]
-    brokers = [ Broker(client_pipe), Broker(server_pipe) ]
+# Publish Helper {{{1
+def publish(outbox, forums, flavor="default"):
+    for forum, inbox in forums:
+        message = outbox.send_message(flavor=flavor)
+        forum.publish(message)
 
-    for broker in brokers:
-        broker.subscribe(Message, Message.receive)
-        broker.lock()
+# Deliver Helper {{{1
+def deliver(servers, clients):
+    for forum, inbox in clients + servers + clients:
+        forum.deliver()
 
-    for broker, message in zip(brokers, messages):
-        broker.publish(message)
-        
-    for iteration in range(2):
-        for message in messages:
-            Message.send(message)
+# Check Helper {{{1
+def check(outbox, forums, shuffled=False):
+    for forum, inbox in forums:
+        inbox.check(outbox, shuffled)
 
-        for broker in brokers:
-            broker.deliver()
+# }}}1
 
-    finish(client_pipe, server_pipe)
+# Simple Tests {{{1
+def test_offline_forum():
+    forum = Forum()
+    inbox, outbox = Inbox(), Outbox()
+
+    flavor = outbox.flavor()
+    message = outbox.message()
+
+    forum.subscribe(flavor, inbox.receive)
+    forum.lock()
+
+    forum.publish(message); outbox.send(message)
+    forum.deliver()
+
+    inbox.check(outbox)
+
+    # Additional Tests
+    # ================
+    # 1. Unrelated messages
+    # 2. Two or more messages
+    # 3. Sorted messages
+    # 4. Different message types
+
+def test_online_forum():
+    server, clients = setup(4)
+
+    outbox = Outbox()
+    flavor = outbox.flavor()
+
+    subscribe(flavor, clients)
+    lock(clients + server)
+
+    publish(outbox, server)
+
+    deliver(server, clients)
+    check(outbox, clients)
+
+# Rigorous Tests {{{1
+def test_two_messages():
+    server, clients = setup(64)
+
+    outbox = Outbox()
+    flavor = outbox.flavor()
+
+    subscribe(flavor, clients + server)
+    lock(clients + server)
+
+    publish(outbox, server)
+    publish(outbox, server)
+
+    deliver(server, clients)
+    check(outbox, clients + server)
+
+def test_shuffled_messages():
+    server, clients = setup(4)
+
+    outbox = Outbox()
+    flavor = outbox.flavor()
+
+    subscribe(flavor, clients + server)
+    lock(clients + server)
+
+    for iteration in range(16):
+        publish(outbox, clients)
+
+    deliver(server, clients)
+    check(outbox, clients + server, shuffled=True)
+
+def test_unrelated_messages():
+    server, clients = setup(4)
+
+    outbox = Outbox()
+    related = outbox.flavor("first")
+    unrelated = outbox.flavor("second")
+
+    subscribe(related, clients + server)    # Related.
+    lock(clients + server)
+
+    for iteration in range(4):
+        publish(outbox, clients, "second")    # Unrelated.
+
+    deliver(server, clients)
+
+    # No messages should be received.
+    outbox = Outbox()
+    check(outbox, clients + server)
+
+def test_different_messages():
+    server, clients = setup(8)
+    groups = clients[:4], clients[4:]
+
+    flavors = "first", "second"
+    outboxes = Outbox(), Outbox()
+
+    for group, outbox, flavor in zip(groups, outboxes, flavors):
+        subscribe(outbox.flavor(flavor), group)
+
+    lock(server + clients)
+
+    for outbox, flavor in zip(outboxes, flavors):
+        publish(outbox, server, flavor)
+
+    deliver(server, clients)
+
+    for outbox, group in zip(outboxes, groups):
+        check(outbox, group)
+
+# }}}1
+
+# Conversation Tests {{{1
+def test_conversation():
+    pass
 
 # }}}1
 
 if __name__ == '__main__':
 
-    with TestInterface("Testing the broker...", 2) as status:
-        status.update();        test_basic_broker()
-        status.update();        test_networked_broker()
+    with TestInterface("Testing the forums...", 6) as status:
+        status.update();        test_offline_forum()
+        status.update();        test_online_forum()
+
+        status.update();        test_two_messages()
+        status.update();        test_shuffled_messages()
+        status.update();        test_unrelated_messages()
+        status.update();        test_different_messages()
+
+    with TestInterface("Testing the conversations...", 1) as status:
+        status.update();        test_conversation()
 
     TestInterface.report_success()
 

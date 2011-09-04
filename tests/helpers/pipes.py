@@ -1,98 +1,140 @@
 # This path module tweaks sys.path and needs to be called before any module
 # from this package is imported.
 
-import os, struct
-import path, network
+import os, path
+import struct
 
-# Message Class {{{1
+from network import EasyServer, EasyClient
+
+# Messages {{{1
 class Message(object):
-
-    outgoing = []
-    incoming = []
 
     def __init__(self, bytes=8):
         self.data = os.urandom(bytes)
 
-    def __repr__(self):
-        format = "H"    # Unsigned short
-        length = struct.calcsize(format)
-
-        integer = struct.unpack(format, self.data[:length])[0]
-        return str(integer)
-
     def __eq__(self, other):
         return self.data == other.data
 
-    @classmethod
-    def send(cls, *arguments):
-        message = arguments[-1];
-        cls.outgoing.append(message)
+    def __hash__(self):
+        format = "H"    # Unsigned short
+        length = struct.calcsize(format)
 
-    @classmethod
-    def receive(cls, *arguments):
-        message = arguments[-1]
-        cls.incoming.append(message)
+        values = struct.unpack(format, self.data[:length])
+        return values[0]
 
-    @classmethod
-    def check(cls):
-        incoming_count = len(cls.incoming)
-        outgoing_count = len(cls.outgoing)
+    def __repr__(self):
+        return str(hash(self))
 
-        feedback = "%d in, %d out." % (incoming_count, outgoing_count)
-        assert incoming_count == outgoing_count, feedback
-
-        messages = zip(cls.outgoing, cls.incoming)
-
-        for sent, received in messages:
-            feedback = "'%s' sent, '%s' received." % (sent, received)
-            assert sent == received, feedback
-
-    @classmethod
-    def clear(cls):
-        cls.outgoing = []
-        cls.incoming = []
-
-# Extra Message Classes {{{1
 class FirstMessage(Message): pass
 class SecondMessage(Message): pass
+class ThirdMessage(Message): pass
+
+# Inbox {{{1
+class Inbox(list):
+
+    def receive(self, *arguments):
+        message = arguments[-1]
+        self.append(message)
+
+    def check(self, outbox, shuffled=False):
+        error = "sent %s; received %s" % (outbox, self)
+        if shuffled:        assert set(self) == set(outbox), error
+        if not shuffled:    assert self == outbox, error
+
+# Outbox {{{1
+class Outbox(list):
+
+    def __init__(self, *messages, **flavors):
+        list.__init__(self, messages)
+
+        defaults = {
+                "first"     : FirstMessage,
+                "second"    : SecondMessage,
+                "third"     : ThirdMessage,
+                "default"   : Message }
+
+        self.flavors = flavors if flavors else defaults
+
+    def flavor(self, flavor="default"):
+        return self.flavors[flavor]
+
+    def message(self, bytes=8, flavor="default"):
+        Message = self.flavors[flavor]
+        return Message(bytes)
+
+    def send_message(self, bytes=8, flavor="default"):
+        message = self.message(bytes, flavor)
+        self.send(message)
+        return message
+
+    def send(self, *arguments):
+        message = arguments[-1]
+        self.append(message)
+
+
 # }}}1
 
-# Connect Helper {{{1
-def connect(reverse=False):
+# Connect {{{1
+def connect(pipes=1, reverse=False, integrate=lambda x: x):
+    machine, port = 'localhost', 10236
 
-    # These test are specifically for the pickle client.
-    host = network.PickleHost('localhost', 10236)
-    client = network.PickleClient('localhost', 10236)
+    # The easy clients are the most generally useful.
+    host = EasyServer(machine, port, pipes, integrate=integrate)
+    clients = [ EasyClient(machine, port, integrate) for each in range(pipes) ]
 
-    host.setup()
+    host.setup();   assert host.empty()
 
-    # The client's setup() method needs to be called at least twice.
-    client.setup(); assert not client.ready()
-    client.setup(); assert client.ready()
+    # Each client's setup() method needs to be called at least twice.
+    for client in clients:
+        client.setup(); assert not client.ready()
+        client.setup(); assert client.ready()
 
-    servers = host.accept()
-    server = servers[0]
+        host.accept();  assert not host.empty()
 
-    assert len(servers) == 1
-    assert server.ready()
+    assert host.full()
+    servers = host.members()
 
-    if reversed:    return server, client
-    else:           return client, server
+    for pipe in servers + clients:
+        pipe.update()
 
-# Update Helper {{{1
+    for server in servers:
+        assert server.ready()
+        assert server.identify() == 1
+
+    for index, client in enumerate(clients):
+        assert client.identify() == 2 + index
+
+    assert len(clients) == pipes
+    assert len(servers) == pipes
+
+    # If only one connection is being created, don't return lists.
+    if pipes == 1:
+        clients = clients[0]
+        servers = servers[0]
+
+    if reverse:     return servers, clients
+    else:           return clients, servers
+
+# Update {{{1
 def update(*pipes):
+    remaining = []
+    if not pipes: return
+
     for pipe in pipes:
         pipe.deliver()
 
     for pipe in pipes:
         pipe.receive()
 
-# Finish Helper {{{1
-def finish(*pipes):
+    for pipe in pipes:
+        if pipe.stream_out or pipe.stream_in:
+            remaining.append(pipe)
+
+    update(*remaining)
+
+# Disconnect {{{1
+def disconnect(*pipes):
     for pipe in pipes:
         pipe.teardown()
-
-    Message.check()
-    Message.clear()
-
 # }}}1
+

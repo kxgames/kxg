@@ -1,27 +1,71 @@
-import errno
-import socket
-import struct
-import pickle
+import errno, socket, struct, pickle
 
-# Possible Changes
-# ================
-# 1. Add assertions to ensure that the methods are called in the correct order.
-# 2. Add a simpler socket wrapper that doesn't use callbacks.  The current
-#    wrapper could inherit from the simpler one.
-# 3. Add a more complicated socket wrapper that easily emulates a conversation.
-#    I might also implement this is the higher-level messaging module.
+# Missing Tests
+# =============
+# 1. Client.relay()
 
-class Header:
+class Header(object):
     # Specification {{{1
-    # The only information stored in this header is the length of the rest
-    # of the message.  This is expressed as a network byte-order (i.e.
-    # big-endian) unsigned integer.
 
-    format = "!I"
+    # This is mostly bullshit
+    # -----------------------
+    # The only information stored in this header is the length of the rest of
+    # the message.  This is expressed as a network byte-order (i.e. big-endian)
+    # unsigned integer.
+
+    format = "!bHII"
     length = struct.calcsize(format)
+
+    @staticmethod
+    def identity(receiver):
+        return Header.pack(1, receiver, 0, 0)
+
+    @staticmethod
+    def message(client, message):
+        length = len(message)
+        origin, ticker = client.identity, client.message_ticker
+
+        return Header.pack(2, origin, ticker, length), (origin, ticker)
+
+    @staticmethod
+    def duplicate(tag, message):
+        length = len(message)
+        origin, ticker = tag
+
+        return Header.pack(2, origin, ticker, length)
+
+    @staticmethod
+    def pack(type, client, identity, length):
+        format = Header.format
+        return struct.pack(format, type, client, identity, length)
+
+    @staticmethod
+    def unpack(stream):
+        format = Header.format
+        length = Header.length
+
+        header = stream[:length]
+        type, origin, ticker, data_length = struct.unpack(format, header)
+
+        # Type 1: Identity message.
+        if type == 1:
+            identity = origin
+            message_tag = False
+
+        # Type 2: Regular message.
+        elif type == 2:
+            identity = False
+            message_tag = origin, ticker
+
+        else:
+            error = "Unable to read incoming packet header."
+            raise AssertionError(error)
+
+        return identity, message_tag, data_length
+
     # }}}1
 
-class Host:
+class Host(object):
     """ Listens for incoming connections and creates client objects to
     handle them.  Hosts can only establish connections, so client objects have
     to be used for any real communication. """
@@ -30,8 +74,6 @@ class Host:
     def __init__(self, host, port):
         self.address = host, port
         self.socket = socket.socket()
-
-        self.next_id = 1
 
     # Network Methods {{{1
     def setup(self, queue=5):
@@ -56,13 +98,9 @@ class Host:
             # Continue looping until accept() throws an exception.
             while True:
                 connection, address = self.socket.accept()
-                identity = self.next_id; self.next_id += 1
+                client = self.client(*address)
 
-                try: client = self.ClientClass(*address)
-                except AttributeError:
-                    raise NotImplementedError
-
-                client.attach(connection, identity)
+                client.attach(connection)
                 clients.append(client)
 
         except socket.error, message:
@@ -72,8 +110,14 @@ class Host:
             if message.errno == errno.EAGAIN:
                 return clients
 
-            # Treat any other type of exception as a fatal error.
+            # Treat any other flavor of exception as a fatal error.
             else: raise
+
+    def client(self, host, port):
+        """ Create and return a new client instance.  This needs to be
+        reimplemented in concrete subclasses to return a client of the
+        appropriate flavor. """
+        raise NotImplementedError
 
     def teardown(self):
         """ Stop accepting connections and close the host socket. """
@@ -81,7 +125,53 @@ class Host:
 
     # }}}1
 
-class Client:
+class Server(Host):
+    """ Optimized host for client-server architectures. """
+
+    # Constructor {{{1
+    def __init__(self, host, port, seats, callback=lambda client: None):
+        Host.__init__(self, host, port)
+
+        self.clients = []
+
+        self.seats = seats
+        self.callback = callback
+
+        self.identity = 1
+        self.next_identity = 2
+
+        self.empty()
+        self.full()
+
+    def __iter__(self):
+        for client in self.clients:
+            yield client
+
+    # Network Methods {{{1
+    def accept(self):
+        for client in Host.accept(self):
+            if self.full(): return
+
+            client.adopt_identity(self.identity)
+            client.bestow_identity(self.next_identity)
+
+            self.next_identity += 1
+
+            self.callback(client)
+            self.clients.append(client)
+
+    def empty(self):
+        return len(self.clients) == 0
+
+    def full(self):
+        return len(self.clients) == self.seats
+
+    def members(self):
+        return self.clients
+
+    # }}}1
+
+class Client(object):
     """ Communicates with another connected client object over the network.
     Clients usually get initialized by connecting to a host on a published
     port, although they can also be given a pre-connected socket object.
@@ -98,93 +188,155 @@ class Client:
     def __init__(self, host, port):
         self.address = host, port
 
-        self.identity = 0
-        self.socket_ready = False
-
         self.socket = socket.socket()
         self.socket.setblocking(False)
+
+        self.socket_ready = False
 
         self.stream_in = ""
         self.stream_out = ""
 
-        self.clear_callbacks()
+        self.identity = 0
+        self.message_ticker = 1
+
+        self.forget_everything()
+
+    def __iter__(self):
+        yield self
 
     # }}}1
 
-# Client Identity {{{1
-    def get_identity(self):
+    # Client Identity {{{1
+    def identify(self):
         return self.identity
+
+    def adopt_identity(self, identity):
+        error = "Identity numbers must be greater than 0."
+        assert identity > 0, error
+
+        self.identity = identity
+
+    def bestow_identity(self, identity):
+        error = "Cannot assign an identity before the pipe is initialized."
+        assert self.socket_ready, error
+
+        error = "Identity numbers must be greater than 0."
+        assert identity > 0, error
+
+        self.stream_out += Header.identity(identity)
 
     # Message Packing {{{1
     def pack(self, message):
         """ Convert a message object into a string suitable for sending across
         the network.  This method must be reimplemented in subclasses and
-        should return a (type, packet) tuple. """
+        should return a (flavor, packet) tuple. """
         raise NotImplementedError
 
     def unpack(self, packet):
         """ Rebuild a message object from a packet that came over the network.
         This method must be reimplemented in subclasses and should return a
-        (type, message) tuple. """
+        (flavor, message) tuple. """
         raise NotImplementedError
 
-    # Callback Registration {{{1
-    def incoming(self, flavor, function):
-        """ Register the given function as a callback handler for the given
-        flavor of incoming message.  Any number of callbacks can be registered
-        to a single flavor of message. """
+    # }}}1
 
-        try:
-            self.callbacks_in[flavor].append(function)
-        except KeyError:
-            self.callbacks_in[flavor] = [function]
+    # Default Callbacks {{{1
+    def outgoing_default(self, callback, group=None):
+        """ Set the default callback for outgoing messages.  This callback is
+        only called if nothing else matches the outgoing message. """
+        self.defaults_out[group] = callback
 
-    def outgoing(self, flavor, function=lambda client, message: None):
-        """ Allow the specified flavor of message to be sent.  An assertion
-        will be thrown if an unknown message is queued for delivery.  The
-        optional function parameter will be executed whenever this type of
-        message is placed on the queue. """
+    def incoming_default(self, callback, group=None):
+        """ Set the default callback for incoming messages.  This callback is
+        only called if nothing else matches the incoming message. """
+        self.defaults_in[group] = callback
 
-        try:
-            self.callbacks_out[flavor].append(function)
-        except KeyError:
-            self.callbacks_out[flavor] = [function]
+    # Registered Callbacks {{{1
+    def outgoing(self, flavor, function=lambda *ignore: None, group=None):
+        """ Register a single, unnamed, outgoing callback.  This is simply a
+        convenient wrapper around outgoing_callbacks(). """
+        callbacks = { flavor : function }
+        return self.outgoing_callbacks(callbacks, group)
 
-    def default_incoming(self, function):
-        self.default_callback_in = function
+    def incoming(self, flavor, function, group=None):
+        """ Register a single, unnamed, incoming callback.  This is simply a
+        convenient wrapper around incoming_callbacks(). """
+        callbacks = { flavor : function }
+        return self.incoming_callbacks(callbacks, group)
 
-    def default_outgoing(self, function):
-        self.default_callback_out = function
+    # Make callback() an alias for incoming().
+    callback = incoming
 
-    def clear_callbacks(self):
-        """ Stop handling any of the existing callbacks.  An assertion will be
-        thrown whenever a forgotten flavor of message is received. """
+    def outgoing_flavors(self, flavors, group=None):
+        """ Allow the specified flavors of message to be sent.  Normally,
+        sending an unregistered flavor of message triggers an assertion. """
+
+        callback = lambda pipe, message: None
+        callbacks = { flavor : callback for flavor in flavors }
+
+        self.outgoing_callbacks(group, callbacks)
+
+    def outgoing_callbacks(self, callbacks, group=None):
+        """ Register handlers for any number of outgoing message flavors.  If a
+        group name is given, the callbacks will be associated with that group.
+        Otherwise they are kept in an unnamed group. """
+
+        for flavor, function in callbacks.items():
+            try:
+                self.callbacks_out[flavor][group] = function
+            except KeyError:
+                self.callbacks_out[flavor] = { group : function }
+
+    def incoming_callbacks(self, callbacks, group=None):
+        """ Register handlers for any number of incoming message flavors.  If a
+        group name is given, the callbacks will be associated with that group.
+        Otherwise they are kept in an unnamed group. """
+
+        for flavor, function in callbacks.items():
+            try:
+                self.callbacks_in[flavor][group] = function
+            except KeyError:
+                self.callbacks_in[flavor] = { group : function }
+
+    # Forgetting Callbacks {{{1
+    def forget_group(group=None):
+        """ Stop handling every callback registered to the given group.  This
+        includes both registered and default callbacks. """
+
+        del self.defaults_in[group]
+        del self.defaults_out[group]
+
+        for callbacks in self.callbacks_in.values():
+            if group in callbacks: del callbacks[group]
+
+        for callbacks in self.callbacks_out.values():
+            if group in callbacks: del callbacks[group]
+
+    def forget_everything(self):
+        """ Stop handling every callback the client knows about, registered and
+        default, incoming and outgoing. """
+
+        self.defaults_in = {}
+        self.defaults_out = {}
 
         self.callbacks_in = {}
         self.callbacks_out = {}
 
-        def unexpected_message(pipe, type, message):
-            raise AssertionError, "Unexpected %s message." % type
-
-        self.default_callback_in = unexpected_message
-        self.default_callback_out = unexpected_message
-
     # }}}1
 
-    # Network Setup {{{1
-    def setup(self, block=False):
+    # Network Maintenance {{{1
+    def setup(self):
         """ Attempt to connect to the address specified in the constructor.
         This method will not block and will need to be called at least twice.
         If the connection is made, the return value of ready() will change from
         False to True. """
 
-        assert not self.socket_ready
+        error = "Cannot reinitialize a pipe."
+        assert not self.socket_ready, error
 
-        # If the connect_ex() method returns zero, a connection was made.  If
-        # it returns a nonzero value, the socket is still waiting for the
-        # connection to be confirmed.  If an error occurs, an exception will be
-        # thrown.
-
+        # If the connect_ex() method returns zero, a connection was made.
+        # Otherwise the socket is still waiting for the connection to be
+        # confirmed.  If an error occurs, an exception will be thrown.
         if self.socket.connect_ex(self.address) == 0:
             self.socket_ready = True
 
@@ -193,42 +345,80 @@ class Client:
         to the host. """
         return self.socket_ready
 
-    def attach(self, socket, identity):
+    def attach(self, socket):
         """ Provide the client connection with a pre-initialized socket to use.
         This method is used by hosts while accepting connections. """
-        self.socket = socket
-        self.identity = identity
 
+        error = "Cannot attach a socket to an initialized pipe."
+        assert not self.socket_ready, error
+
+        self.socket = socket
         self.socket_ready = True
+
         self.socket.setblocking(False)
 
-    def teardown(self):
-        """ Stop sending or receiving messages and close the socket. """
-        self.socket.close()
+    def update(self):
+        """ Simply a shorthand way to call deliver() and receive(). """
 
-    # Network Methods {{{1
+        error = "Cannot update the pipe before it has been initialized."
+        assert self.socket_ready, error
+
+        self.receive()
+        self.deliver()
+
+    def teardown(self):
+        """ Stop sending or receiving messages and close the socket.  This will
+        silently do nothing if the socket has not been initialized yet. """
+        self.socket.close()
+        self.socket_ready = False
+
+    # Outgoing Messages {{{1
     def queue(self, message):
         """ Add a message to the delivery queue.  This method does not attempt
         to actually send the message, so it will never block. """
 
-        type, data = self.pack(message)
-        header = struct.pack(Header.format, len(data))
+        error = "Cannot send messages before the pipe is initialized."
+        assert self.socket_ready, error
 
-        # Execute the callbacks associated with this message type.
-        default = self.default_callback_out
-        wrapper = [ lambda pipe, message: default(pipe, type, message) ]
+        # Prepare the given message to be sent over the network.
+        flavor, data = self.pack(message)
+        header, tag = Header.message(self, data)
 
-        for callback in self.callbacks_out.get(type, wrapper):
-            callback(self, message)
+        # Find the correct callback to execute.
+        callbacks = self.callbacks_out.get(flavor, {}).values()
+        defaults = self.defaults_out.values()
 
-        # Add the message to the outgoing data stream.  This is best done after
-        # the callbacks are executed, because they might complain.
+        def apply(functions, *arguments, **keywords):
+            for function in functions:
+                function(*arguments, **keywords)
+
+        if callbacks:   apply(callbacks, self, tag, message)
+        elif defaults:  apply(defaults, self, tag, flavor, message)
+        else:
+            error = "Surprised by outgoing %s message." % flavor
+            raise AssertionError(error)
+
+        # Add the message to the outgoing data stream.  To keep the output
+        # stream clean even if a callback fails, this should be done after all
+        # the callbacks are executed.
+        self.stream_out += header + data
+        self.message_ticker += 1
+
+    def relay(self, tag, message):
+        """ Resend a message using exactly the same header as it originally
+        had. """
+
+        flavor, data = self.pack(message)
+        header = Header.duplicate(tag, data)
         self.stream_out += header + data
 
     def deliver(self):
         """ Send any messages that have queued up since the last call to this
         method.  If delivering a message would block, this method will just
         return and attempt to deliver it on the next call. """
+
+        error = "Cannot deliver messages before the pipe is initialized."
+        assert self.socket_ready, error
 
         try:
             # Try to deliver all of the messages that have been queued up
@@ -245,17 +435,23 @@ class Client:
             if message.errno == errno.EAGAIN:
                 return
 
-            # Any other type of exception is taken to be a fatal error.
+            # Any other flavor of exception is taken to be a fatal error.
             else:
                 raise
 
+    # Incoming Messages {{{1
     def receive(self):
         """ Receive as many messages from the network as possible without
         blocking.  For each message that is received, the appropriate callback
         is executed. """
 
-        header_format = Header.format
-        header_length = Header.length
+        error = "Cannot receive messages before the pipe is initialized."
+        assert self.socket_ready, error
+
+        # This function helps execute callbacks.
+        def apply(functions, *arguments, **keywords):
+            for function in functions:
+                function(*arguments, **keywords)
 
         # Begin by reading as much data as possible out of the network
         # interface and into a text stream.  If there was already data in the
@@ -271,18 +467,18 @@ class Client:
         # Continue by parsing as many messages as possible out of the text
         # stream.  Any incomplete data is left on the stream in the hope that
         # it will be completed later.
-
         while True:
             stream_length = len(self.stream_in)
+            header_length = Header.length
 
             # Make sure the complete header is present, then determine the size
             # of the rest of the packet.
             if stream_length < header_length:
                 break
 
-            header = self.stream_in[:header_length]
+            header_data = Header.unpack(self.stream_in)
 
-            data_length = struct.unpack(header_format, header)[0]
+            identity, message_tag, data_length = header_data
             packet_length = header_length + data_length
 
             # Make sure that the message data is complete.  This is especially
@@ -291,62 +487,98 @@ class Client:
             if stream_length < packet_length:
                 break
 
-            message = self.stream_in[header_length:packet_length]
+            data = self.stream_in[header_length:packet_length]
             self.stream_in = self.stream_in[packet_length:]
 
-            type, message = self.unpack(message)
+            if identity:
+                self.identity = identity
 
-            # Handle the message by executing the proper callback.
-            default = self.default_callback_in
-            wrapper = [ lambda pipe, message: default(pipe, type, message) ]
+            else:
+                tag = message_tag
+                flavor, message = self.unpack(data)
 
-            for callback in self.callbacks_in.get(type, wrapper):
-                callback(self, message)
+                # Find the correct callback to execute.
+                callbacks = self.callbacks_in.get(flavor, {}).values()
+                defaults = self.defaults_in.values()
 
-    def update(self):
-        """ Simply a shorthand way to call deliver() and receive(). """
-        self.deliver()
-        self.receive()
+                if callbacks:   apply(callbacks, self, tag, message)
+                elif defaults:  apply(defaults, self, tag, flavor, message)
+                else:
+                    error = "Surprised by incoming %s message." % flavor
+                    raise AssertionError(error)
 
+    # }}}1
+
+class RawHost(Host):
+    # Client Factory {{{1
+    def client(self, host, port):
+        return RawClient(host, port)
+    # }}}1
+
+class RawServer(Server):
+    # Client Factory {{{1
+    def client(self, host, port):
+        return RawClient(host, port)
     # }}}1
 
 class RawClient(Client):
     """ Expects to be given messages that can be sent over the network without
-    any modification.  The message type is taken to be everything before the
+    any modification.  The message flavor is taken to be everything before the
     first space, or the entire message if there are no spaces. """
 
     # Message Packing {{{1
     def pack(self, message):
-        type = message.split(' ')[0]
-        return type, message
+        flavor = message.split(' ')[0]
+        return flavor, message
 
     def unpack(self, packet):
-        try:                type, message = packet.split(' ', 1)
-        except ValueError:  type, message = packet, ""
-        return type, message
+        try:                flavor, message = packet.split(' ', 1)
+        except ValueError:  flavor, message = packet, ""
+        return flavor, message
     # }}}1
 
-class RawHost(Host):
-    """ Produces RawClient connections. """
-    ClientClass = RawClient
+class EasyHost(Host):
+    # Client Factory {{{1
+    def __init__(self, host, port, integrate=lambda input: input):
+        Host.__init__(self, host, port)
+        self.integrate = integrate
 
-class PickleClient(Client):
+    def client(self, host, port):
+        return EasyClient(host, port, integrate=self.integrate)
+    # }}}1
+
+class EasyServer(Server):
+    # Client Factory {{{1
+    def __init__(self, host, port, seats,
+            callback=lambda client: None, integrate=lambda input: input):
+
+        Server.__init__(self, host, port, seats, callback)
+        self.integrate = integrate
+
+    def client(self, host, port):
+        return EasyClient(host, port, integrate=self.integrate)
+    # }}}1
+
+class EasyClient(Client):
     """ Prepares message objects to be sent over the network using the pickle
     module.  This is a very general solution, but it will often use more
     bandwidth than an optimized client. """
 
+    # Constructor {{{1
+    def __init__(self, host, port, integrate=lambda input: input):
+        Client.__init__(self, host, port)
+        self.integrate = integrate
+
     # Message Packing {{{1
     def pack(self, message):
-        # The second parameter to dumps() tells pickle which protocol (or file
-        # format) to use.  I use protocol 2 since it is optimized for new-style
-        # classes and since every message class has to be new-style.
+        # The second parameter to dumps() tells pickle which protocol (i.e.
+        # file format) to use.  I use protocol 2 since it is optimized for
+        # new-style classes and since every message class has to be new-style.
         return type(message), pickle.dumps(message, 2)
 
     def unpack(self, packet):
         message = pickle.loads(packet)
+        message = self.integrate(message)
         return type(message), message
     # }}}1
 
-class PickleHost(Host):
-    """ Produces PickleClient connections. """
-    ClientClass = PickleClient

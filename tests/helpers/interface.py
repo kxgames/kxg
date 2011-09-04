@@ -6,7 +6,7 @@ class TestInterface:
         self.title = title
         self.critical = critical
 
-        self.test = 1
+        self.test = 0
         self.tests = tests
 
         self.format = '(%d/%d)'
@@ -19,25 +19,38 @@ class TestInterface:
         sys.stdout.write(self.title + self.padding)
         return self
 
-    def __exit__(self, exception, value, traceback):
-        prefix = '\033[91m' if exception else '\033[92m'
+    def __exit__(self, type, value, traceback):
+        exception = type or value or traceback
+        incomplete = self.test != self.tests
+
+        backspace = self.backspace
+        interrupt = (type == KeyboardInterrupt)
+
+        if interrupt:
+            exception = False
+            backspace += '\b\b'
+
+        if exception:       prefix = '\033[91m'     # Red.
+        elif incomplete:    prefix = '\033[93m'     # Yellow.
+        else:               prefix = '\033[92m'     # Green.
+
         suffix = '\033[0m'
+        newline = '  \n'
 
-        status = self.format % (self.test - 1, self.tests)
-        newline = '\n'
+        status = self.format % (self.test, self.tests)
 
-        sys.stdout.write(self.backspace + prefix + status + suffix + newline)
+        sys.stdout.write(backspace + prefix + status + suffix + newline)
         sys.stdout.flush()
 
-        return not self.critical 
+        return not self.critical or interrupt
 
     @staticmethod
     def report_success():
         print "All tests passed."
 
     def update(self):
-        status = self.format % (self.test, self.tests)
         self.test += 1
+        status = self.format % (self.test, self.tests)
 
         sys.stdout.write(self.backspace + status)
         sys.stdout.flush()
