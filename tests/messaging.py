@@ -8,6 +8,7 @@ from messaging import Forum, Conversation
 from helpers.pipes import *
 from helpers.interface import *
 
+# Forum Tests
 # Setup Helper {{{1
 def setup(count):
     client_pipes, server_pipes = connect(count)
@@ -61,13 +62,6 @@ def test_offline_forum():
 
     inbox.check(outbox)
 
-    # Additional Tests
-    # ================
-    # 1. Unrelated messages
-    # 2. Two or more messages
-    # 3. Sorted messages
-    # 4. Different message types
-
 def test_online_forum():
     server, clients = setup(4)
 
@@ -75,9 +69,9 @@ def test_online_forum():
     flavor = outbox.flavor()
 
     subscribe(flavor, clients)
-    lock(clients + server)
-
     publish(outbox, server)
+
+    lock(clients + server)
 
     deliver(server, clients)
     check(outbox, clients)
@@ -152,8 +146,53 @@ def test_different_messages():
     for outbox, group in zip(outboxes, groups):
         check(outbox, group)
 
+def test_interfering_pipes():
+    server_pipes, client_pipes = connect(2)
+
+    server = Forum()
+    clients = Forum(), Forum()
+
+    outbox = Outbox()
+    inbox = Inbox()
+
+    flavor = outbox.flavor()
+    message = outbox.send_message()
+
+    # First step: Connect one client to the server.
+    server.setup(server_pipes[0])
+
+    clients[0].setup(client_pipes[0])
+    clients[0].lock()
+
+    # Second step: Publish a message from the connected client.
+    clients[0].publish(message)
+    clients[0].deliver()
+
+    # Third step: Update the server's pipe without updating the forum.  If the
+    # forum code is poorly written, this will cause the message from the server
+    # to be forgotten.
+    server_pipes[0].update()
+
+    # Fourth step: Connect the second client.
+    server.setup(server_pipes[1])
+
+    clients[1].setup(client_pipes[1])
+    clients[1].subscribe(flavor, inbox.receive)
+    clients[1].lock()
+
+    # Fifth step: Genuinely update the server and both clients.  The message
+    # sent by the first client should be received by the second one.
+    server.lock()
+    server.deliver()
+
+    for client in clients:
+        client.deliver()
+
+    inbox.check(outbox)
+
 # }}}1
 
+# Conversation Tests
 # Conversation Tests {{{1
 def test_conversation():
     pass
@@ -162,7 +201,7 @@ def test_conversation():
 
 if __name__ == '__main__':
 
-    with TestInterface("Testing the forums...", 6) as status:
+    with TestInterface("Testing the forums...", 7) as status:
         status.update();        test_offline_forum()
         status.update();        test_online_forum()
 
@@ -170,6 +209,7 @@ if __name__ == '__main__':
         status.update();        test_shuffled_messages()
         status.update();        test_unrelated_messages()
         status.update();        test_different_messages()
+        status.update();        test_interfering_pipes()
 
     with TestInterface("Testing the conversations...", 1) as status:
         status.update();        test_conversation()

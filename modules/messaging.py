@@ -32,35 +32,30 @@ class Forum:
 
         self.pipes = []
         self.history = {}
-        self.messages = queue.Queue()
 
-        # The first dictionary is used to map flavors to local callbacks.  The
-        # second dictionary is used to map flavors to remote forums.
         self.subscriptions = {}
-        self.destinations = {}
+        self.publications = queue.Queue()
 
         self.locked = False
-        self.connect(*pipes)
+        self.setup(*pipes)
 
-    # Network Setup {{{1
-    def connect(self, *pipes):
-        """ Attach the forum to another forum on a remote machine.  Any
+    # Setup and Teardown {{{1
+    def setup(self, *pipes):
+        """ Connect this forum to another forum on a remote machine.  Any
         message published by either forum will be relayed to the other.  This
         method must be called before the forum is locked. """
 
         assert not self.locked
 
-        def incoming_publication(sender, tag, type, message):
+        def incoming_publication(pipe, tag, type, message):
             origin, ticker = tag
             old_ticker = self.history.get(origin, 0)
 
             if ticker > old_ticker:
-                self.messages.put(message)
-                self.history[origin] = ticker
+                publication = pipe, tag, message
+                self.publications.put(publication)
 
-                for pipe in self.pipes:
-                    if pipe is not sender:
-                        pipe.duplicate(tag, message)
+                self.history[origin] = ticker
 
         def outgoing_publication(pipe, tag, type, message):
             origin, ticker = tag
@@ -72,14 +67,23 @@ class Forum:
 
             self.pipes.append(pipe)
 
-    def disconnect(self):
+    def teardown(self):
         """ Disconnect this forum from any forum over the network.  The pipes
         that were being used to communicate with the remote forums will still
         be active, they just won't relay any incoming messages to this forum
         anymore. """
+
         for pipe in self.pipes:
             pipe.forget_group(self)
 
+        self.pipes = []
+        self.history = {}
+
+        self.subscriptions = {}
+        self.publications = queue.Queue()
+
+        self.locked = False
+        self.setup()
     # }}}1
 
     # Subscriptions {{{1
@@ -96,47 +100,59 @@ class Forum:
             self.subscriptions[flavor] = [callback]
 
     def lock(self):
-        """ Prevent the forum from making any more subscriptions, but allow
-        the forum to begin publishing and delivering messages. """
+        """ Prevent the forum from making any more subscriptions and allow it
+        to begin delivering publications. """
         self.locked = True
 
     # Publications {{{1
     def publish(self, message):
         """ Publish the given message so subscribers to that class of message
-        can react to it.  If remote forums have also subscribed to the
-        message, it will be relayed to them as well.  The underlying network
-        connection must be capable of serializing the given message.  This
-        method is thread-safe and cannot be called before the forum gets
-        locked. """
+        can react to it.  If any remote forums are connected, the underlying
+        network connection must be capable of serializing the message. """
 
-        self.messages.put(message)
+        pipe = tag = None
+        publication = pipe, tag, message
 
-        for pipe in self.pipes:
-            pipe.queue(message)
+        self.publications.put(publication)
 
     def deliver(self):
         """ Deliver any messages that have been published since the last call
         to this function.  For local messages, this requires executing the
         proper callback for each subscriber.  For remote messages, this
         involves both checking for incoming packets and relaying new
-        publications across the network.  This method cannot be called before
-        the forum is locked. """
+        publications across the network.  No publications can be delivered
+        before the forum is locked. """
 
         assert self.locked
         
-        for pipe in self.pipes: pipe.receive()
-        for pipe in self.pipes: pipe.deliver()
+        # Add any incoming messages to the network queue.
+        for pipe in self.pipes:
+            pipe.receive()
 
         while True:
-            try: message = self.messages.get(False)
-            except queue.Empty: break
+            # Pop messages off the publication queue one at a time.
+            try:
+                publication = self.publications.get(False)
+                sender, tag, message = publication
 
-            # Silently ignore messages that have no subscribers.
+            except queue.Empty:
+                break
+
+            # Deliver the message to local subscribers.
             flavor = type(message)
             callbacks = self.subscriptions.get(flavor, [])
 
             for callback in callbacks:
                 callback(message)
+
+            # Deliver the message to any remote peers.
+            for pipe in self.pipes:
+                if pipe is not sender:
+                    pipe.queue(message, tag)
+
+        # Send any queued up outgoing messages.
+        for pipe in self.pipes:
+            pipe.deliver()
 
     # }}}1
 

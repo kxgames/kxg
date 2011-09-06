@@ -381,7 +381,7 @@ class Client(object):
         self.socket_ready = False
 
     # Outgoing Messages {{{1
-    def queue(self, message):
+    def queue(self, message, tag):
         """ Add a message to the delivery queue.  This method does not attempt
         to actually send the message, so it will never block. """
 
