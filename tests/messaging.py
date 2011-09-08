@@ -190,6 +190,41 @@ def test_interfering_pipes():
 
     inbox.check(outbox)
 
+def test_looped_topology():
+    client_pipes, server_pipes = connect(3)
+
+    # Group the pipes to recreate a triangular arrangement of hosts.
+    pipes = [ (server_pipes[0], server_pipes[1]),
+              (server_pipes[2], client_pipes[0]),
+              (client_pipes[1], client_pipes[2]) ]
+
+    # Assign each host a unique, nonzero identity number.
+    for identity, peers in enumerate(pipes):
+        peers[0].adopt_identity(identity + 1)
+        peers[1].adopt_identity(identity + 1)
+
+    # Create a forum for each host, and arbitrarily make one the "sender".
+    forums = [ (Forum(*pipes[0]), Inbox()),
+               (Forum(*pipes[1]), Inbox()),
+               (Forum(*pipes[2]), Inbox()) ] 
+
+    sender = [forums[0]]
+
+    outbox = Outbox()
+    flavor = outbox.flavor()
+
+    # Have the sender publish just one message.
+    subscribe(flavor, forums)
+    publish(outbox, sender)
+    lock(forums)
+
+    # Update all the forums a number of times, and make sure the message is
+    # only received once.
+    for forum, inbox in 3 * forums:
+        forum.deliver()
+
+    check(outbox, forums)
+
 # }}}1
 
 # Conversation Tests
@@ -201,7 +236,7 @@ def test_conversation():
 
 if __name__ == '__main__':
 
-    with TestInterface("Testing the forums...", 7) as status:
+    with TestInterface("Testing the forums...", 8) as status:
         status.update();        test_offline_forum()
         status.update();        test_online_forum()
 
@@ -210,6 +245,7 @@ if __name__ == '__main__':
         status.update();        test_unrelated_messages()
         status.update();        test_different_messages()
         status.update();        test_interfering_pipes()
+        status.update();        test_looped_topology()
 
     with TestInterface("Testing the conversations...", 1) as status:
         status.update();        test_conversation()

@@ -31,11 +31,7 @@ def send(test, bytes=8):
     sender, outbox = test["sender"], test["outbox"]
 
     message = outbox.message(bytes)
-    old_ticker = sender.message_ticker
-
     sender.queue(message)
-
-    assert sender.message_ticker == old_ticker + 1
 
 # Receive {{{1
 def receive(test):
@@ -59,6 +55,31 @@ def test_two_messages():
     for test in setup():
         send(test); send(test)
         receive(test)
+
+def test_message_tags():
+
+    client, server = connect()
+    inbox, outbox = Inbox(), Outbox()
+
+    flavor = Outbox.flavor()
+    message = Outbox.message()
+
+    def expect(origin, ticker):
+
+        def function(pipe, tag, message):
+            assert tag == origin, ticker
+
+        return function
+
+    client.incoming(flavor, expect(1, 1))
+    server.incoming(flavor, expect(2, 1))
+
+    
+    
+
+    # These values should be assigned by the server within connect.
+    assert server.get_identity() == 1
+    assert client.get_identity() == 2
 
 def test_multiple_clients():
     clients, servers = connect(10)
@@ -98,8 +119,10 @@ def test_surprises():
     flavor = outbox.flavor()
     message = outbox.message()
 
+    sender.queue(message)
+
     # By default, outgoing messages must be registered.
-    try: sender.queue(message)
+    try: update(sender)
     except AssertionError: pass
     else: raise AssertionError
 
@@ -138,10 +161,10 @@ def test_stressful_conditions(count, bytes):
         receive(test)
 
 def test_many_messages():
-    test_stressful_conditions(count=2**12, bytes=2**8)
+    test_stressful_conditions(count=2**12, bytes=2**4)
 
 def test_large_messages():
-    test_stressful_conditions(count=2**7, bytes=2**17)
+    test_stressful_conditions(count=2**4, bytes=2**17)
 
 def test_partial_messages(count=2**8, bytes=2**8):
     client, server = connect()

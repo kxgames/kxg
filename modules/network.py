@@ -1,8 +1,8 @@
 import errno, socket, struct, pickle
 
-# Missing Tests
-# =============
-# 1. Client.relay()
+# Public Interface and Comments
+# =============================
+# 1. Describe arguments to callbacks.
 
 class Header(object):
     # Specification {{{1
@@ -199,13 +199,15 @@ class Client(object):
         self.socket = socket.socket()
         self.socket.setblocking(False)
 
-        self.socket_ready = False
+        self.delivery_bag = []
 
         self.stream_in = ""
         self.stream_out = ""
 
         self.identity = 0
         self.message_ticker = 1
+
+        self.socket_ready = False
 
         self.forget_everything()
 
@@ -215,7 +217,7 @@ class Client(object):
     # }}}1
 
     # Client Identity {{{1
-    def identify(self):
+    def get_identity(self):
         return self.identity
 
     def adopt_identity(self, identity):
@@ -381,41 +383,15 @@ class Client(object):
         self.socket_ready = False
 
     # Outgoing Messages {{{1
-    def queue(self, message, tag):
+    def send(self, message):
+        self.queue(message, None)
+
+    def queue(self, message, tag=None):
         """ Add a message to the delivery queue.  This method does not attempt
         to actually send the message, so it will never block. """
 
-        # Prepare the given message to be sent over the network.
-        flavor, data = self.pack(message)
-        header, tag = Header.message(self, data)
-
-        # Find the correct callback to execute.
-        callbacks = self.callbacks_out.get(flavor, {}).values()
-        defaults = self.defaults_out.values()
-
-        def apply(functions, *arguments, **keywords):
-            for function in functions:
-                function(*arguments, **keywords)
-
-        if callbacks:   apply(callbacks, self, tag, message)
-        elif defaults:  apply(defaults, self, tag, flavor, message)
-        else:
-            error = "Surprised by outgoing %s message." % flavor
-            raise AssertionError(error)
-
-        # Add the message to the outgoing data stream.  To keep the output
-        # stream clean even if a callback fails, this should be done after all
-        # the callbacks are executed.
-        self.stream_out += header + data
-        self.message_ticker += 1
-
-    def duplicate(self, tag, message):
-        """ Resend a message using exactly the same header as it originally
-        had. """
-
-        flavor, data = self.pack(message)
-        header = Header.duplicate(tag, data)
-        self.stream_out += header + data
+        delivery = tag, message
+        self.delivery_bag.append(delivery)
 
     def deliver(self):
         """ Send any messages that have queued up since the last call to this
@@ -425,13 +401,39 @@ class Client(object):
         error = "Cannot deliver messages before the pipe is initialized."
         assert self.socket_ready, error
 
+        def apply(functions, *arguments, **keywords):
+            for function in functions:
+                function(*arguments, **keywords)
+
+        # Serialize any new messages.
+        for tag, message in self.delivery_bag:
+            flavor, data = self.pack(message)
+
+            if tag is not None:
+                header = Header.duplicate(tag, data)
+
+            else:
+                header, tag = Header.message(self, data)
+                self.message_ticker += 1
+
+                # Only execute callbacks for messages that originated here.
+                callbacks = self.callbacks_out.get(flavor, {}).values()
+                defaults = self.defaults_out.values()
+
+                if callbacks:   apply(callbacks, self, tag, message)
+                elif defaults:  apply(defaults, self, tag, flavor, message)
+                else:
+                    error = "Surprised by outgoing %s message." % flavor
+                    raise AssertionError(error)
+
+            # Add the message to the output stream.
+            self.stream_out += header + data
+
         try:
-            # Try to deliver all of the messages that have been queued up
-            # since the last call to this method.  Save any bytes that can't
-            # be sent immediately.
+            # Deliver as much data as possible without blocking.
             delivered = self.socket.send(self.stream_out)
             self.stream_out = self.stream_out[delivered:]
-        
+
         except socket.error, message:
             
             # This exception is triggered when no bytes at all can be sent.
