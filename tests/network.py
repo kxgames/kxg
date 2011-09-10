@@ -200,20 +200,126 @@ def test_partial_messages(count=2**8, bytes=2**8):
 
 # }}}1
 
+# New Tests
+
+# Test Ideas
+# ==========
+# 1. Test isolated hosts/clients/servers.
+#     a. Host.open()
+#     b. Host.accept() -- Null case
+#     c. Host.close()
+#     d. Host.finished()
+#     e. Client.connect() -- Null case
+#     f. Client.finished()
+#
+# 2. Create server/client connections.
+#     a. Server.setup()
+#     b. Server.accept()
+#     c. Server.finished()
+#     d. Client.connect()
+#     e. Client.finished()
+#     f. Pipe.get_identity()
+#
+# 3. Send a single message.
+# 4. Send complex messages.
+
+# Isolated Pipes {{{1
+def test_isolated_pipes():
+    machine, port = 'localhost', 10236
+
+    # First, test an isolated host.
+    host = PickleHost(port, identity=1)
+
+    # None of these commands should fail, even though there is no client.
+    host.open()
+    host.accept(); host.accept()
+    host.close()
+
+    # Once the host is closed, accept() should raise an assertion.
+    try: host.accept()
+    except AssertionError: pass
+    else: raise AssertionError
+
+    # Now test an isolated client.
+    client = PickleClient(machine, port, identity=1)
+
+    client.connect()
+    client.connect()
+
+    assert not client.finished()
+
+# Connected Pipes {{{1
+def test_connected_pipes():
+    host, port = 'localhost', 10236
+
+    def greet_client(self, pipe):
+        assert pipe.get_identity() == 1
+
+    def greet_server(self, pipe):
+        assert pipe.get_identity() == 2
+
+    server = PickleServer(port, seats=1, callback=greet_client)
+    client = PickleClient(host, port, callback=greet_server)
+
+    server.open()
+
+    client.connect()    # Establish a connection.
+    server.accept()     # Accept the connection and assign an identity.
+    client.connect()    # Acknowledge the new connection.
+    client.connect()    # Receive the assigned identity.
+
+    assert server.finished()
+    assert client.finished()
+
+# Simple Messages {{{1
+def test_simple_messages():
+    host, port = 'localhost', 10236
+
+    server = PickleServer(port, seats=1)
+    client = PickleClient(host, port)
+
+    server.setup()
+
+    client.connect(); server.accept()
+    client.connect(); client.connect()
+
+    sender = client.get_pipe()
+    receiver = client.get_pipes()[0]
+
+    outbox = Outbox(); target = 1
+    message = outbox.send_message()
+
+    sender.register(target)      
+
+    sender.send(target, message)
+    sender.deliver()
+
+    for tag, flavor, message in receiver.receive():
+        inbox.receive(message)
+        assert tag == 2, 1
+
+    inbox.check(outbox)
+
+# }}}1
+
+# Many Messages {{{1
+
+# Large Messages {{{1
+
+# Partial Messages {{{1
+
+# }}}1
+
 if __name__ == '__main__':
 
-    with TestInterface("Performing simple tests...", 6) as status:
-        status.update();        test_one_message()
-        status.update();        test_two_messages()
-        status.update();        test_multiple_clients()
+    with TestInterface("Performing simple tests...", 3) as status:
+        status.update();        test_isolated_pipes()
+        status.update();        test_connected_pipes()
+        status.update();        test_simple_messages()
 
-        status.update();        test_defaults()
-        status.update();        test_surprises()
-        status.update();        test_integration()
-
-    with TestInterface("Performing rigorous tests...", 3) as status:
-        status.update();        test_many_messages()
-        status.update();        test_large_messages()
-        status.update();        test_partial_messages()
+    #with TestInterface("Performing rigorous tests...", 3) as status:
+        #status.update();        test_many_messages()
+        #status.update();        test_large_messages()
+        #status.update();        test_partial_messages()
 
     TestInterface.report_success()

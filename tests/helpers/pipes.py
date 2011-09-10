@@ -4,7 +4,7 @@
 import os, path
 import struct
 
-from network import EasyServer, EasyClient
+from network import PickleHost, PickleServer, PickleClient
 
 # Messages {{{1
 class Message(object):
