@@ -76,38 +76,51 @@ class Outbox(list):
 
 # Connect {{{1
 def connect(pipes=1, reverse=False, integrate=lambda x: x):
-    machine, port = 'localhost', 10236
+    host, port = 'localhost', 10236
 
-    # The easy clients are the most generally useful.
-    host = EasyServer(machine, port, pipes, integrate=integrate)
-    clients = [ EasyClient(machine, port, integrate) for each in range(pipes) ]
+    # Create a web of client server connections.  The pickle family of socket
+    # wrappers are used for convenience.
+    server = PickleServer(port, pipes)
+    clients = [ PickleClient(host, port) for each in range(pipes) ]
 
-    host.setup();   assert host.empty()
+    # Have the server start listening to the given port.  No clients should be
+    # connected at this point.
+    server.open()
+    
+    assert server.empty();
+    assert not server.finished()
 
-    # Each client's setup() method needs to be called at least twice.
+    # Connect each of the clients to the server.  The connect() method for the
+    # clients has to be called a number of times.
     for client in clients:
-        client.setup(); assert not client.ready()
-        client.setup(); assert client.ready()
+        client.connect();   assert not client.finished()
+        client.connect();   assert not client.finished()
 
-        host.accept();  assert not host.empty()
+        server.accept();    assert server.finished()
+        client.connect();   assert client.finished()
 
-    assert host.full()
-    servers = host.members()
+    # Make sure that the server has stopped accepting new connections.
+    assert server.full()
+    assert server.finished()
 
-    for pipe in servers + clients:
-        pipe.update()
+    # Get the pipe objects out of the setup objects.  This is a little bit
+    # confusing, because I reuse a variable name.
+    servers = server.get_pipes()
+    clients = [ client.get_pipe() for client in clients ]
 
-    for server in servers:
-        assert server.ready()
-        assert server.identify() == 1
-
-    for index, client in enumerate(clients):
-        assert client.identify() == 2 + index
-
+    # Make sure that the right number of connections were made, and that the
+    # server assigned valid identity numbers.
     assert len(clients) == pipes
     assert len(servers) == pipes
 
-    # If only one connection is being created, don't return lists.
+    for server in servers:
+        assert server.get_identity() == 1
+
+    for index, client in enumerate(clients):
+        assert client.get_identity() == 2 + index
+
+    # Return the newly created connections. If only one connection is being
+    # created, return the pipes as simple objects rather than lists.
     if pipes == 1:
         clients = clients[0]
         servers = servers[0]
@@ -115,26 +128,9 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
     if reverse:     return servers, clients
     else:           return clients, servers
 
-# Update {{{1
-def update(*pipes):
-    remaining = []
-    if not pipes: return
-
-    for pipe in pipes:
-        pipe.deliver()
-
-    for pipe in pipes:
-        pipe.receive()
-
-    for pipe in pipes:
-        if pipe.stream_out or pipe.stream_in:
-            remaining.append(pipe)
-
-    update(*remaining)
-
 # Disconnect {{{1
 def disconnect(*pipes):
     for pipe in pipes:
-        pipe.teardown()
+        pipe.close()
 # }}}1
 

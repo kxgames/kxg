@@ -35,7 +35,7 @@ class Host:
 
         try:
             # Continue looping until accept() throws an exception.
-            while True:
+            while not self.finished():
                 connection, address = self.socket.accept()
                 pipe = self.instantiate(connection, self.identity)
 
@@ -79,7 +79,7 @@ class Server(Host):
 
             self.pipes.append(pipe)
 
-            if len(self.pipes) == self.seats:
+            if self.full():
                 callback(self.pipes)
                 self.close()
 
@@ -92,6 +92,12 @@ class Server(Host):
     # Attributes {{{1
     def get_pipes(self):
         return self.pipes
+
+    def empty(self):
+        return len(self.pipes) == 0
+
+    def full(self):
+        return len(self.pipes) == self.seats
 
     # }}}1
 
@@ -134,6 +140,31 @@ class Client:
 
     # }}}1
 
+class Header:
+
+    # Header Format {{{1
+    format = "!HHII"
+    length = struct.calcsize(format)
+
+    # Header Packing {{{1
+    @classmethod
+    def pack(cls, tag, data):
+        target, origin, ticker = tag; length = len(data)
+        return struct.pack(cls.format, target, origin, ticker, length)
+
+    # Header Unpacking {{{1
+    @classmethod
+    def unpack(cls, stream):
+        format = cls.format; length = cls.length
+        header = stream[:length]
+
+        target, origin, ticker, data_length = struct.unpack(format, header)
+        message_tag = target, origin, ticker
+
+        return message_tag, data_length
+
+    # }}}1
+
 class Pipe:
 
     # Constructor {{{1
@@ -149,11 +180,19 @@ class Pipe:
 
         self.message_ticker = 1
 
-    # }}}1
-    
-    # Pipe Identity {{{1
+        self.socket.setblocking(False)
+
+    # Attributes {{{1
     def get_identity(self):
         return self.identity
+
+    # }}}1
+
+    # Target Registration {{{1
+    def register(self, target):
+        assert target is not 0
+        assert target not in self.targets
+        self.targets.add(target)
 
     # Message Packing {{{1
     def pack(self, message):
@@ -168,30 +207,24 @@ class Pipe:
         (flavor, message) tuple. """
         raise NotImplementedError
 
-    # Target Registration {{{1
-    def register(self, target):
-        assert target is not 0
-        assert target not in self.targets
-        self.targets.add(target)
-
+    # Disconnecting {{{1
+    def close(self):
+        self.socket.close()
     # }}}1
 
     # Outgoing Messages {{{1
     def greet(self, identity):
-        target = 0; padding = 0
+        target = 0; padding = 0; data = ''
         tag = target, identity, padding
 
-        self.stream_out += Header.pack(tag, padding)
+        self.stream_out += Header.pack(tag, data)
 
     def send(self, target, message):
         assert target in self.targets
 
-        origin = self.identity
-        ticker = self.message_ticker
-
-        tag = target, origin, ticker
-
+        tag = target, self.identity, self.message_ticker
         flavor, data = self.pack(message)
+
         header = Header.pack(tag, data)
 
         self.stream_out += header + data
@@ -273,7 +306,7 @@ class Pipe:
 
             else:
                 flavor, message = self.unpack(data)
-                package = tag, flavor, message
+                package = message_tag, flavor, message
 
                 try:
                     self.messages[target].append(package)
