@@ -24,6 +24,26 @@ class Forum:
     to work with concurrent applications, messages can be safely published at
     any time from any thread. """
 
+    # Publisher {{{1
+    class Publisher:
+
+        def __init__(self, forum):
+            self.forum = forum
+
+        def publish(self, message):
+            self.forum.publish(message)
+
+    # Subscriber {{{1
+    class Subscriber:
+
+        def __init__(self, forum):
+            self.forum = forum
+
+        def subscribe(self, flavor, callback):
+            self.forum.subscribe(flavor, callback)
+
+    # }}}1
+
     # Constructor {{{1
     def __init__(self, *pipes):
         """ Create and prepare a new forum object.  If any network connections
@@ -36,8 +56,21 @@ class Forum:
         self.subscriptions = {}
         self.publications = queue.Queue()
 
+        self.target = 1
         self.locked = False
+
+        class Publisher:
+            publish = self.publish
+
+        class Subscriber:
+            subscribe = self.subscribe
+
+        self.publisher = Publisher()
+        self.subscriber = Subscriber()
+
         self.setup(*pipes)
+
+    # }}}1
 
     # Setup and Teardown {{{1
     def setup(self, *pipes):
@@ -47,24 +80,8 @@ class Forum:
 
         assert not self.locked
 
-        def incoming_publication(pipe, tag, type, message):
-            origin, ticker = tag
-            old_ticker = self.history.get(origin, 0)
-
-            if ticker > old_ticker:
-                publication = pipe, tag, message
-                self.publications.put(publication)
-
-                self.history[origin] = ticker
-
-        def outgoing_publication(pipe, tag, type, message):
-            origin, ticker = tag
-            self.history[origin] = ticker
-
         for pipe in pipes:
-            pipe.incoming_default(incoming_publication, group=self)
-            pipe.outgoing_default(outgoing_publication, group=self)
-
+            pipe.register(self.target)
             self.pipes.append(pipe)
 
     def teardown(self):
@@ -73,9 +90,6 @@ class Forum:
         be active, they just won't relay any incoming messages to this forum
         anymore. """
 
-        for pipe in self.pipes:
-            pipe.forget_group(self)
-
         self.pipes = []
         self.history = {}
 
@@ -83,7 +97,14 @@ class Forum:
         self.publications = queue.Queue()
 
         self.locked = False
-        self.setup()
+
+    # Access Control {{{1
+    def get_publisher(self):
+        return self.publisher
+
+    def get_subscriber(self):
+        return self.subscriber
+
     # }}}1
 
     # Subscriptions {{{1
@@ -124,10 +145,20 @@ class Forum:
         before the forum is locked. """
 
         assert self.locked
-        
+
+        target = self.target
+
         # Add any incoming messages to the network queue.
         for pipe in self.pipes:
-            pipe.receive()
+            for tag, flavor, message in pipe.receive(target):
+                target, origin, ticker = tag
+                old_ticker = self.history.get(origin, 0)
+
+                if ticker > old_ticker:
+                    publication = pipe, tag, message
+                    self.publications.put(publication)
+
+                    self.history[origin] = ticker
 
         while True:
             # Pop messages off the publication queue one at a time.
@@ -148,13 +179,28 @@ class Forum:
             # Deliver the message to any remote peers.
             for pipe in self.pipes:
                 if pipe is not sender:
-                    pipe.queue(message, tag)
+                    if tag: pipe.resend(tag, message)
+                    else:   pipe.send(target, message)
 
         # Send any queued up outgoing messages.
         for pipe in self.pipes:
-            pipe.deliver()
+            for tag, flavor, message in pipe.deliver():
+                target, origin, ticker = tag
+                self.history[origin] = ticker
 
     # }}}1
+
+class Member:
+
+    def __init__(self, forum):
+        self.forum = forum
+
+    def publish(self, message):
+        self.forum.publish(message)
+
+    def subscribe(self, flavor, callback):
+        self.forum.subscribe(flavor, callback)
+
 
 class Exchange:
 

@@ -72,26 +72,35 @@ def test_simple_messages():
     receiver = server.get_pipes()[0]
 
     inbox, outbox = Inbox(), Outbox()
-    message = outbox.send_message()
-
-    # Send a new message through the pipe.
     sender.register(target)      
 
-    sender.send(target, message)
-    sender.deliver()
+    # Send a handful of messages through the pipe.
+    for index in range(5):
+        message = outbox.message()
+        sender.send(target, message)
 
-    for tag, flavor, message in receiver.receive(target):
-        inbox.receive(message)
-        assert tag == (1, 2, 1)
+    sent = sender.deliver()
 
-    # Resend the last message received.
+    irrelevant = receiver.receive(target + 1)
+    received = receiver.receive(target)
+
+    assert not irrelevant
+    assert sent == received
+
+    for index, feedback in enumerate(receiver.receive(target)):
+        tag, flavor, message = feedback
+        assert tag == (1, 2, 1 + index)
+
+    # Resend the first message received.
+    tag, flavor, message = received[0]
     sender.resend(tag, message)
-    sender.deliver()
 
-    outbox.send(message)
-    
+    sent = sender.deliver()
+    received = receiver.receive(target)
+
+    assert sent == received
+
     for tag, flavor, message in receiver.receive(target):
-        inbox.receive(message)
         assert tag == (1, 2, 1)
 
     # Close the connection.

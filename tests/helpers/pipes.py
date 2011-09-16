@@ -96,8 +96,11 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
         client.connect();   assert not client.finished()
         client.connect();   assert not client.finished()
 
-        server.accept();    assert server.finished()
+        server.accept();    assert not server.empty()
         client.connect();   assert client.finished()
+
+    assert server.full()
+    assert server.finished()
 
     # Make sure that the server has stopped accepting new connections.
     assert server.full()

@@ -13,8 +13,8 @@ from helpers.interface import *
 def setup(count):
     client_pipes, server_pipes = connect(count)
 
-    servers = [ (Forum(*server_pipes), Inbox()) ]
-    clients = [ (Forum(pipe), Inbox()) for pipe in client_pipes ]
+    servers = [ ( Forum(*server_pipes), Inbox() ) ]
+    clients = [ ( Forum(pipe), Inbox() ) for pipe in client_pipes ]
 
     return servers, clients
 
@@ -46,22 +46,26 @@ def check(outbox, forums, shuffled=False):
 
 # }}}1
 
-# Simple Tests {{{1
+# Offline Forum {{{1
 def test_offline_forum():
     forum = Forum()
     inbox, outbox = Inbox(), Outbox()
 
-    flavor = outbox.flavor()
-    message = outbox.message()
+    publisher = forum.get_publisher()
+    subscriber = forum.get_subscriber()
 
-    forum.subscribe(flavor, inbox.receive)
+    flavor = outbox.flavor()
+    message = outbox.send_message()
+
+    subscriber.subscribe(flavor, inbox.receive)
     forum.lock()
 
-    forum.publish(message); outbox.send(message)
+    publisher.publish(message)
     forum.deliver()
 
     inbox.check(outbox)
 
+# Online Forum {{{1
 def test_online_forum():
     server, clients = setup(4)
 
@@ -76,7 +80,9 @@ def test_online_forum():
     deliver(server, clients)
     check(outbox, clients)
 
-# Rigorous Tests {{{1
+# }}}1
+
+# Two Messages {{{1
 def test_two_messages():
     server, clients = setup(64)
 
@@ -92,6 +98,7 @@ def test_two_messages():
     deliver(server, clients)
     check(outbox, clients + server)
 
+# Shuffled Messages {{{1
 def test_shuffled_messages():
     server, clients = setup(4)
 
@@ -107,6 +114,7 @@ def test_shuffled_messages():
     deliver(server, clients)
     check(outbox, clients + server, shuffled=True)
 
+# Unrelated Messages {{{1
 def test_unrelated_messages():
     server, clients = setup(4)
 
@@ -126,6 +134,7 @@ def test_unrelated_messages():
     outbox = Outbox()
     check(outbox, clients + server)
 
+# Different Messages {{{1
 def test_different_messages():
     server, clients = setup(8)
     groups = clients[:4], clients[4:]
@@ -146,50 +155,9 @@ def test_different_messages():
     for outbox, group in zip(outboxes, groups):
         check(outbox, group)
 
-def test_interfering_pipes():
-    server_pipes, client_pipes = connect(2)
+# }}}1
 
-    server = Forum()
-    clients = Forum(), Forum()
-
-    outbox = Outbox()
-    inbox = Inbox()
-
-    flavor = outbox.flavor()
-    message = outbox.send_message()
-
-    # First step: Connect one client to the server.
-    server.setup(server_pipes[0])
-
-    clients[0].setup(client_pipes[0])
-    clients[0].lock()
-
-    # Second step: Publish a message from the connected client.
-    clients[0].publish(message)
-    clients[0].deliver()
-
-    # Third step: Update the server's pipe without updating the forum.  If the
-    # forum code is poorly written, this will cause the message from the server
-    # to be forgotten.
-    server_pipes[0].update()
-
-    # Fourth step: Connect the second client.
-    server.setup(server_pipes[1])
-
-    clients[1].setup(client_pipes[1])
-    clients[1].subscribe(flavor, inbox.receive)
-    clients[1].lock()
-
-    # Fifth step: Genuinely update the server and both clients.  The message
-    # sent by the first client should be received by the second one.
-    server.lock()
-    server.deliver()
-
-    for client in clients:
-        client.deliver()
-
-    inbox.check(outbox)
-
+# Looped Topology {{{1
 def test_looped_topology():
     client_pipes, server_pipes = connect(3)
 
@@ -200,8 +168,8 @@ def test_looped_topology():
 
     # Assign each host a unique, nonzero identity number.
     for identity, peers in enumerate(pipes):
-        peers[0].adopt_identity(identity + 1)
-        peers[1].adopt_identity(identity + 1)
+        peers[0].identity = identity + 1
+        peers[1].identity = identity + 1
 
     # Create a forum for each host, and arbitrarily make one the "sender".
     forums = [ (Forum(*pipes[0]), Inbox()),
@@ -228,7 +196,7 @@ def test_looped_topology():
 # }}}1
 
 # Conversation Tests
-# Conversation Tests {{{1
+# Coming soon... {{{1
 def test_conversation():
     pass
 
@@ -236,7 +204,7 @@ def test_conversation():
 
 if __name__ == '__main__':
 
-    with TestInterface("Testing the forums...", 8) as status:
+    with TestInterface("Testing the forums...", 7) as status:
         status.update();        test_offline_forum()
         status.update();        test_online_forum()
 
@@ -244,7 +212,7 @@ if __name__ == '__main__':
         status.update();        test_shuffled_messages()
         status.update();        test_unrelated_messages()
         status.update();        test_different_messages()
-        status.update();        test_interfering_pipes()
+
         status.update();        test_looped_topology()
 
     with TestInterface("Testing the conversations...", 1) as status:

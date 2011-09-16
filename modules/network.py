@@ -1,5 +1,16 @@
 import errno, socket, struct, pickle
 
+# Message Class
+# =============
+# I'm considering making a Message class that I can return in functions like
+# deliver() and receive().  Right now, I'm just returning a large tuple
+# containing six values.  This is already a little out of hand, and now I'm
+# starting to have variable name collisions as well.  Both of these issues
+# would be addressed by a devoted Message class.
+#
+# It's possible that this new class could be merged with the Header class, but
+# I haven't thought about it enough yet.
+
 class Host:
 
     # Constructor {{{1
@@ -86,11 +97,13 @@ class Server(Host):
         Host.__init__(self, port, identity, queue=seats, callback=greet)
 
     def __iter__(self):
+        assert self.full()
         for pipe in self.pipes:
             yield pipe
 
     # Attributes {{{1
     def get_pipes(self):
+        assert self.full()
         return self.pipes
 
     def empty(self):
@@ -165,6 +178,19 @@ class Header:
 
     # }}}1
 
+class Message:
+
+    def __init__(self, tag, flavor, message):
+        pass
+
+    def __init__(self, target, origin, ticker, flavor, message):
+        self.target = target
+        self.origin = origin
+        self.ticker = ticker
+
+        self.flavor = flavor
+        self.message = message
+
 class Pipe:
 
     # Constructor {{{1
@@ -178,6 +204,7 @@ class Pipe:
         self.stream_in = ""
         self.stream_out = ""
 
+        self.feedback_out = []
         self.message_ticker = 1
 
         self.socket.setblocking(False)
@@ -226,18 +253,21 @@ class Pipe:
         flavor, data = self.pack(message)
 
         header = Header.pack(tag, data)
+        feedback = tag, flavor, message
 
-        self.stream_out += header + data
         self.message_ticker += 1
 
-        return tag, flavor
+        self.stream_out += header + data
+        self.feedback_out.append(feedback)
 
     def resend(self, tag, message):
         flavor, data = self.pack(message)
         header = Header.pack(tag, data)
 
+        feedback = tag, flavor, message
+
         self.stream_out += header + data
-        return tag, flavor
+        self.feedback_out.append(feedback)
 
     def deliver(self):
 
@@ -252,11 +282,16 @@ class Pipe:
             # Even though this usually indicates a serious problem, it is
             # silently ignored.
             if message.errno == errno.EAGAIN:
-                return
+                pass
 
             # Any other flavor of exception is taken to be a fatal error.
             else:
                 raise
+
+        feedback = self.feedback_out
+        self.feedback_out = []
+
+        return feedback
 
     # Incoming Messages {{{1
     def receive(self, target):
@@ -298,7 +333,7 @@ class Pipe:
             data = self.stream_in[header_length:packet_length]
             self.stream_in = self.stream_in[packet_length:]
 
-            target, origin, ticker = message_tag
+            message_target, origin, ticker = message_tag
 
             if target == 0:
                 assert self.identity == 0
@@ -309,9 +344,9 @@ class Pipe:
                 package = message_tag, flavor, message
 
                 try:
-                    self.messages[target].append(package)
+                    self.messages[message_target].append(package)
                 except KeyError:
-                    self.messages[target] = [package]
+                    self.messages[message_target] = [package]
 
         return self.messages.pop(target, [])
 
