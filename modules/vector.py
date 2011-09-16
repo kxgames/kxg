@@ -87,6 +87,7 @@ class Vector(object):
     # Create shorter aliases for the dot and perp products.
     dot = dot_product
     perp = perp_product
+
     # }}}1
 
     # Operators {{{1
@@ -124,13 +125,13 @@ class Vector(object):
         return Vector(c * self.x, c * self.y)
 
     def __div__(self, c):
+        """ Return the scalar quotient of this vector and the argument. """
+        return Vector(self.x / c, self.y / c)
+
+    def __truediv__(self, c):
         """ Return the scalar quotient of this vector and the argument.  The
         argument is taken as a float to ensure true division. """
         return Vector(self.x / float(c), self.y / float(c))
-
-    def __truediv__(self, c):
-        """ Return the scalar quotient of this vector and the argument. """
-        return Vector(self.x / c, self.y / c)
 
     def __floordiv__(self, c):
         """ Return the integer quotient of this vector and the argument. """
@@ -163,102 +164,52 @@ class Vector(object):
         return self.__repr__()
 
     # Attributes {{{1
-    @property
-    def x(self):
+    def get_x(self):
         """ Get the first coordinate in this vector. """
         return self.__x
 
-    @property
-    def y(self):
+    def get_y(self):
         """ Get the second coordinate in this vector. """
         return self.__y
 
-    @property
-    def r(self):
-        """ Get the first coordinate in this vector. """
-        return self.__x
-    
-    @property
-    def th(self):
-        """ Get the second coordinate in this vector. """
-        return self.__y
+    # Make (r, th) and alias for (x, y).
+    get_r = get_x
+    get_th = get_y
 
-    @property
-    def tuple(self):
+    def get_tuple(self):
         """ Return the vector as a tuple. """
         return self.x, self.y
 
-    @property
-    def pygame(self):
+    def get_pygame(self):
         """ Return the vector as a tuple of integers.  This is the format
         Pygame expects to receive coordinates in. """
         return int(self.x), int(self.y)
 
-    @property
-    def magnitude(self):
+    def get_magnitude(self):
         """ Calculate the length of this vector. """
         return math.sqrt(self.magnitude_squared)
 
-    @property
-    def magnitude_squared(self):
+    def get_magnitude_squared(self):
         """ Calculate the square of the length of this vector.  This is
         slightly more efficient that finding the real length. """
         return self.x**2 + self.y**2
 
-    @property
-    def normal(self):
-        """ Return a unit vector pointing in the same direction as this
-        one. """
-
+    def get_normal(self):
+        """ Return a unit vector parallel to this one. """
         try:
             return self / self.magnitude
         except ZeroDivisionError:
             raise NullVectorError()
 
-    @property
-    def orthogonal(self):
+    def get_orthogonal(self):
         """ Return a vector that is orthogonal to this one.  The resulting
         vector is not normalized. """
         return Vector(-self.y, self.x)
 
-    @property
-    def orthonormal(self):
+    def get_orthonormal(self):
         """ Return a vector that is both normalized and orthogonal to this
         one. """
         return self.orthogonal.normal
-
-    def get_x(self):
-        return self.x
-
-    def get_y(self):
-        return self.y
-
-    def get_r(self):
-        return self.r
-
-    def get_th(self):
-        return self.th
-
-    def get_tuple(self):
-        return self.tuple
-
-    def get_pygame(self):
-        return self.pygame
-
-    def get_magnitude(self):
-        return self.magnitude
-
-    def get_magnitude_squared(self):
-        return self.magnitude_squared
-
-    def get_normal(self, magnitude=1):
-        return magnitude * self.normal
-
-    def get_orthogonal(self):
-        return self.orthogonal
-
-    def get_orthonormal(self, magnitude=1):
-        return magnitude * self.orthonormal
 
     def get_components(self, v):
         """ Break this vector into one vector that is parallel to the given
@@ -267,6 +218,19 @@ class Vector(object):
         tangent = v * Vector.dot(self, v)
         normal = self - tangent
         return normal, tangent
+
+    x = property(get_x); y = property(get_y)
+    r = property(get_r); th = property(get_th)
+
+    tuple = property(get_tuple)
+    pygame = property(get_tuple)
+
+    magnitude = property(get_magnitude)
+    magnitude_squared = property(get_magnitude_squared)
+
+    normal = property(get_normal)
+    orthogonal = property(get_orthogonal)
+    orthonormal = property(get_orthonormal)
 
     # }}}1
 
