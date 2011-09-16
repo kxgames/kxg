@@ -162,7 +162,7 @@ class Line(Shape):
         position = (head + tail) / 2
         direction = head - position
 
-        Shape.__init__(self, position, direction)
+        Shape.__init__(self, position)
         self.__direction = direction
 
     def __eq__(self, other):
@@ -177,7 +177,9 @@ class Line(Shape):
     # Attributes {{{1
     def get_head(self): return self.position + self.__direction
     def get_tail(self): return self.position - self.__direction
+
     def get_points(self): return self.head, self.tail
+    def get_pygame(self): return self.head.pygame, self.tail.pygame
 
     def set_head(self, head):
         displacement = head - self.head
@@ -191,14 +193,16 @@ class Line(Shape):
         self.head = head
         self.tail = tail
 
-    def get_left(self): return self.position - abs(self.__direction.x)
-    def get_right(self):  return self.position + abs(self.__direction.x)
-    def get_top(self):  return self.position - abs(self.__direction.y)
-    def get_bottom(self): return self.position + abs(self.__direction.y)
+    def get_left(self): return self.position.x - abs(self.__direction.x)
+    def get_right(self): return self.position.x + abs(self.__direction.x)
+    def get_top(self): return self.position.y - abs(self.__direction.y)
+    def get_bottom(self): return self.position.y + abs(self.__direction.y)
 
     head = property(get_head, set_head)
     tail = property(get_tail, set_tail)
+
     points = property(get_points, set_points)
+    pygame = property(get_pygame)
 
     left = property(get_left, Shape.set_left)
     right = property(get_right,  Shape.set_right)
@@ -238,6 +242,8 @@ class Circle(Shape):
     def set_radius(self, radius): self.__radius = radius
     def set_diameter(self, diameter): self.__radius = diameter / 2
 
+    def get_pygame(self): return self.position.pygame, int(self.radius)
+
     def get_left(self): return self.horizontal - self.radius
     def get_right(self): return self.horizontal + self.radius
     def get_top(self): return self.vertical - self.radius
@@ -246,10 +252,23 @@ class Circle(Shape):
     radius = property(get_radius, set_radius)
     diameter = property(get_diameter, set_diameter)
 
+    pygame = property(get_pygame)
+
     left = property(get_left, Shape.set_left)
     right = property(get_right,  Shape.set_right)
     top = property(get_top,  Shape.set_top)
     bottom = property(get_bottom,  Shape.set_bottom)
+
+    # Factory Methods {{{1
+    @staticmethod
+    def from_radius(radius):
+        position = Vector.null()
+        return Circle(position, radius)
+
+    @staticmethod
+    def from_diameter(diameter):
+        position = Vector.null()
+        return Circle(position, diameter / 2)
 
     # }}}1
 

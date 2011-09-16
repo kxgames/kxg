@@ -223,7 +223,7 @@ class Vector(object):
     r = property(get_r); th = property(get_th)
 
     tuple = property(get_tuple)
-    pygame = property(get_tuple)
+    pygame = property(get_pygame)
 
     magnitude = property(get_magnitude)
     magnitude_squared = property(get_magnitude_squared)
