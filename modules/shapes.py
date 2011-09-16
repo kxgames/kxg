@@ -1,708 +1,426 @@
-""" The shapes module provides ways to represent a number of two-dimensional
-geometric shapes.  Any line, polygon, or circle can be represented.  Simple
-points can be represented using vectors, so they are not considered in this
-module.
-
-The classes in this module are designed to be used with Pygame.  For this
-reason, most of the classes have a Pygame attribute that can be directly used
-to draw shapes.  In addition, the vertical axis is assumed to increase going
-down the screen.  This only matters for functions that explicitly refer to the
-"top" or the "bottom" of particular shapes.
-
-All of the shape classes are immutable and are not meant to be subclassed. """
-
 from __future__ import division
 
-from vector import *
+from math import *
+from vector import Vector
 
-class Line(object):
-    """ Represents a line in two-dimensions.  These lines don't have to be
-    symmetrical, so other shapes can be either "in front of" or "behind" them.
-    Degenerate lines can also be created, but they may trigger assertions if
-    used improperly. """
+class Shape(object):
 
-    # Factory Methods {{{1
-    @staticmethod
-    def from_points(head, tail, normal=Vector.null()):
-        """ Create a line segment between the two given points. """
-        return Line(head, tail, normal)
+    # Constructor {{{1
+    def __init__(self, position):
+        self.__position = position
+        self.__restrictions = {}
 
-    @staticmethod
-    def from_direction(tail, direction, normal=Vector.null()):
-        """ Create a line segment from the given point and direction.  The
-        point is taken to be the tail of the line, although a distinction is
-        hardly ever made. """
-        return Line(tail, tail + direction, normal)
+    # Attributes {{{1
+    def get_position(self): return self.__position
+    def get_horizontal(self): return self.__position.x
+    def get_vertical(self): return self.__position.y
+
+    def get_left(self): raise NotImplementedError
+    def get_right(self): raise NotImplementedError
+    def get_top(self): raise NotImplementedError
+    def get_bottom(self): raise NotImplementedError
+
+    def set_position(self, position):
+        allow_move = True 
+
+        for shape in self.__restrictions:
+            too_high = self.top() < shape.top()
+            too_low = self.bottom() > shape.bottom()
+
+            too_left = self.left() < shape.left()
+            too_right = self.right() > shape.right()
+
+            violations = too_high, too_low, too_left, too_right
+
+            if any(violations):
+                callback = self.limits[limit]
+                allow_move = callback(*violations) or allow_move
+
+        if allow_move:
+            self.__position = position
+
+    def set_horizontal(self, horizontal):
+        position = Vector(horizontal, self.vertical)
+        self.set_position(position)
+
+    def set_vertical(self, vertical):
+        position = Vector(self.horizontal, vertical)
+        self.set_position(position)
+
+    def set_left(self, left):
+        difference = left - self.get_left()
+        displacement = Vector(difference, 0)
+
+        self.displace(displacement)
+
+    def set_right(self, right):
+        difference = right - self.get_right()
+        displacement = Vector(difference, 0)
+
+        self.displace(displacement)
+
+    def set_top(self, top):
+        difference = top - self.get_top()
+        displacement = Vector(0, difference)
+
+        self.displace(displacement)
+
+    def set_bottom(self, bottom):
+        difference = bottom - self.get_bottom()
+        displacement = Vector(0, difference)
+
+        self.displace(displacement)
+
+    position = property(get_position, set_position)
+    horizontal = property(get_horizontal, set_horizontal)
+    vertical = property(get_vertical, set_vertical)
+
+    # Methods {{{1
+    def copy(self):
+        from copy import deepcopy
+        return deepcopy(self)
+
+    def restrict(shape, callback=lambda top, left, bottom, right: False):
+        self.__restrictions[shape] = callback
+
+    def displace(self, displacement):
+        position = self.get_position() + displacement
+        self.set_position(position)
+
+    def reposition(self, position):
+        self.set_position(position)
+
+    def align_left(self, other):
+        target = other.get_left()
+        self.set_left(target)
+
+    def align_right(self, other):
+        target = other.get_right()
+        self.set_right(target)
+
+    def align_top(self, other):
+        target = other.get_top()
+        self.set_top(target)
+
+    def align_bottom(self, other):
+        target = other.get_bottom()
+        self.set_bottom(target)
+
+    def align_horizontal(self, other):
+        target = other.get_horizontal()
+        self.set_horizontal(target)
+
+    def align_vertical(self, other):
+        target = other.get_vertical()
+        self.set_vertical(target)
+
     # }}}1
 
-    # Operators {{{1
-    def __init__(self, head, tail, facing=None):
-        self.__head = head
-        self.__tail = tail
-        self.__facing = facing
+class Point(Shape):
 
-        try:
-            self.__normal = (head - tail).get_orthonormal()
-            self.__degenerate = False
-        except NullVectorError:
-            self.__normal = None
-            self.__degenerate = True
+    # Constructor {{{1
+    def __init__(self, *arguments):
+        if len(arguments) == 1:
+            position = arguments[0]
+        elif len(arguments) == 2:
+            position = Vector(*arguments)
+        else:
+            message = "Point() takes either one or two arguments. %d given."
+            raise ValueError(message % len(messages))
+
+        Shape.__init__(self, position)
 
     def __eq__(self, other):
-        if self.facing != other.facing:
-            return False
+        return self.position == other.position
 
+    def __repr__(self):
+        return "Point: %s" % self.position
+
+    # Attributes {{{1
+    get_x = Shape.get_horizontal; get_y = Shape.get_vertical
+    set_x = Shape.set_horizontal; set_y = Shape.set_vertical
+
+    x = property(get_x, set_x)
+    y = property(get_y, set_y)
+
+    def get_left(self): return self.x
+    def get_right(self): return self.x
+    def get_top(self): return self.y
+    def get_bottom(self): return self.y
+
+    left = property(get_left, Shape.set_left)
+    right = property(get_right,  Shape.set_right)
+    top = property(get_top,  Shape.set_top)
+    bottom = property(get_bottom,  Shape.set_bottom)
+
+    # }}}1
+
+class Line(Shape):
+
+    # Constructor {{{1
+    def __init__(self, head, tail):
+        position = (head + tail) / 2
+        direction = head - position
+
+        Shape.__init__(self, position)
+        self.__direction = direction
+
+    def __eq__(self, other):
         first, second = self.points
         if (first, second) == other.points: return True
         if (second, first) == other.points: return True
         return False
 
     def __repr__(self):
-        line = "Line: %s to %s" % self.points
-        facing = ", facing %s" % self.__facing
-
-        return line + facing if self.__facing else line
+        return "Line: %s to %s" % (self.tail, self.head)
 
     # Attributes {{{1
-    @property
-    def head(self):
-        return self.__head
+    def get_head(self): return self.position + self.__direction
+    def get_tail(self): return self.position - self.__direction
 
-    @property
-    def tail(self):
-        return self.__tail
+    def get_points(self): return self.head, self.tail
+    def get_pygame(self): return self.head.pygame, self.tail.pygame
 
-    @property
-    def degenerate(self):
-        return self.__degenerate
+    def set_head(self, head):
+        displacement = head - self.head
+        self.displace(displacement)
 
-    @property
-    def facing(self):
-        assert self.__facing
-        return self.__facing
+    def set_tail(self, tail):
+        displacement = tail - self.tail
+        self.displace(displacement)
 
-    @property
-    def normal(self):
-        assert self.__normal
-        return self.__normal
+    def set_points(self, head, tail):
+        self.head = head
+        self.tail = tail
 
-    @property
-    def center(self):
-        return (self.head + self.tail) / 2.0
+    def get_left(self): return self.position.x - abs(self.__direction.x)
+    def get_right(self): return self.position.x + abs(self.__direction.x)
+    def get_top(self): return self.position.y - abs(self.__direction.y)
+    def get_bottom(self): return self.position.y + abs(self.__direction.y)
 
-    @property
-    def points(self):
-        return (self.head, self.tail)
+    head = property(get_head, set_head)
+    tail = property(get_tail, set_tail)
 
-    @property
-    def direction(self):
-        return self.head - self.tail
+    points = property(get_points, set_points)
+    pygame = property(get_pygame)
 
-    @property
-    def pygame(self):
-        return (self.tail, self.head)
-
-    def get_head(self): return self.head
-    def get_tail(self): return self.tail
-    def get_degenerate(self): return self.degenerate
-
-    def get_facing(self): return self.facing
-    def get_normal(self): return self.normal
-    
-    def get_center(self): return self.center
-    def get_points(self): return self.points
-    def get_direction(self): return self.direction
-
-    def get_pygame(self): return self.pygame
-    # }}}1
-
-class Circle(object):
-    """ Represents a circle with just a center and a radius. """
+    left = property(get_left, Shape.set_left)
+    right = property(get_right,  Shape.set_right)
+    top = property(get_top,  Shape.set_top)
+    bottom = property(get_bottom,  Shape.set_bottom)
 
     # Factory Methods {{{1
-    def shrink(self, padding):
-        """ Return a circle with a smaller radius than this one. """
-        return self.grow(-padding)
+    @staticmethod
+    def from_width(width):
+        head = Vector(0, 0); tail = Vector(width, 0)
+        return Line(head, tail)
 
-    def grow(self, padding):
-        """ Return a circle with a larger radius than this one. """
-        return Circle(self.center, self.radius + padding)
-
-    def move(self, displacement):
-        """ Return a circle that is offset from this one. """
-        return Circle(self.center + displacement, self.radius)
-
-    def position(self, position):
-        """ Return a circle centered at a different position from this one. """
-        return Circle(position, self.radius)
+    @staticmethod
+    def from_height(height):
+        head = Vector(0, 0); tail = Vector(0, height)
+        return Line(head, tail)
 
     # }}}1
 
-    # Operators {{{1
-    def __init__(self, center, radius):
-        self.__center = center
+class Circle(Shape):
+
+    # Constructor {{{1
+    def __init__(self, position, radius):
+        Shape.__init__(self, position)
         self.__radius = radius
-        self.__box = Rectangle.from_circle(self)
 
     def __eq__(self, other):
-        return (self.center == other.center and
-                self.radius == other.radius)
+        return self.center == other.center and self.radius == other.radius
 
     def __repr__(self):
         return "Circle: %s, r=%d" % (self.center, self.radius)
 
     # Attributes {{{1
-    @property
-    def center(self):
-        return self.__center
+    def get_radius(self): return self.__radius
+    def get_diameter(self): return 2 * self.__radius
 
-    @property
-    def radius(self):
-        return self.__radius
+    def set_radius(self, radius): self.__radius = radius
+    def set_diameter(self, diameter): self.__radius = diameter / 2
 
-    @property
-    def box(self):
-        return self.__box
+    def get_pygame(self): return self.position.pygame, int(self.radius)
 
-    @property
-    def dimensions(self):
-        return self.center, self.radius
+    def get_left(self): return self.horizontal - self.radius
+    def get_right(self): return self.horizontal + self.radius
+    def get_top(self): return self.vertical - self.radius
+    def get_bottom(self): return self.vertical + self.radius
 
-    @property
-    def pygame(self):
-        return self.center, self.radius
+    radius = property(get_radius, set_radius)
+    diameter = property(get_diameter, set_diameter)
 
-    def get_center(self):
-        return self.center
+    pygame = property(get_pygame)
 
-    def get_radius(self):
-        return self.radius
-
-    def get_box(self):
-        return self.box
-
-    def get_dimensions(self):
-        return self.dimensions
-
-    def get_pygame(self):
-        return self.pygame
-    # }}}1
-
-class Shape(object):
-    """ Provides useful methods for shapes with 3 or more vertices.  This is
-    supposed to be an abstract base class; it is meant to be inherited rather
-    than instantiated. """
-
-    # Attributes {{{1
-    @property
-    def edges(self): raise NotImplementedError
-    @property
-    def vertices(self): raise NotImplementedError
-
-    @property
-    def center(self): raise NotImplementedError
-    @property
-    def box(self): raise NotImplementedError
-
-    @property
-    def pygame(self): raise NotImplementedError
-
-    def get_edges(self): return self.edges
-    def get_vertices(self): return self.vertices
-
-    def get_center(self): return self.center
-    def get_box(self): return self.box
-
-    def get_pygame(self): return self.pygame
-
-    # Setup Methods {{{1
-    @staticmethod
-    def check_vertices(vertices):
-        current = 0
-        previous = 0
-
-        # Make sure that these vertices don't describe a concave shape.
-        for A, B, C in Polygon.yield_vertices(vertices, 3):
-            first = A - B
-            second = C - B
-
-            # If the shape in concave, then the perp product of each pair of
-            # edges should point in the same direction.
-            current = Vector.perp(first, second)
-            if current * previous < 0:
-                assert False
-
-            previous = current
-
-        return vertices
-
-    @staticmethod
-    def find_center(vertices):
-        return sum(vertices, Vector.null()) / len(vertices)
-
-    @staticmethod
-    def find_edges(vertices, center):
-        edges = []
-        for head, tail in Polygon.yield_vertices(vertices, 2):
-
-            direction = (head - tail).get_orthogonal()
-            normal = direction.get_normal()
-            reference = center - (head + tail) / 2.0
-
-            if Vector.dot(normal, reference) > 0:
-                normal = -normal
-
-            edge = Line(head, tail, normal)
-            edges.append(edge)
-
-        return edges
-
-    @staticmethod
-    def yield_vertices(vertices, count):
-        size = len(vertices)
-
-        for index in range(size):
-            start, end = index, index + count
-
-            if end > size:
-                end = end - size
-                yield vertices[start:] + vertices[:end]
-            else:
-                yield vertices[start : end]
-    # }}}1
-
-class Polygon(Shape):
-    """ Represents convex shapes with arbitrary numbers of vertices.  Shapes
-    with concavities are illegal because they can break the collision
-    detection algorithms. """
+    left = property(get_left, Shape.set_left)
+    right = property(get_right,  Shape.set_right)
+    top = property(get_top,  Shape.set_top)
+    bottom = property(get_bottom,  Shape.set_bottom)
 
     # Factory Methods {{{1
     @staticmethod
-    def from_vertices(vertices):
-        """ Create a polygon from a list of vertices.  This resulting shape
-        must must convex; an assertion will fail if it isn't. """
-        return Polygon(vertices)
+    def from_radius(radius):
+        position = Vector.null()
+        return Circle(position, radius)
 
     @staticmethod
-    def from_regular(center, radius, sides, angle=0):
-        """ Create a regular polygon with the given number of sides. """
-        vertices = []
+    def from_diameter(diameter):
+        position = Vector.null()
+        return Circle(position, diameter / 2)
 
-        for index in range(sides):
-            normal = Vector.from_radians(2 * pi * index / sides + angle)
-            vertex = center + radius * normal
-            vertices.append(vertex)
-
-        return Polygon(vertices)
     # }}}1
-
-    # Operators {{{1
-    def __init__(self, vertices):
-        self.__vertices = Polygon.check_vertices(vertices)
-        self.__center = Polygon.find_center(vertices)
-        self.__edges = Polygon.find_edges(vertices, self.__center)
-        self.__box = Rectangle.from_shape(self)
-
-    # Attributes {{{1
-    @property
-    def edges(self):
-        return self.__edges
-
-    @property
-    def vertices(self):
-        return self.__vertices
-
-    @property
-    def box(self):
-        return self.__box
-
-    @property
-    def center(self):
-        return self.__center
-
-    @property
-    def pygame(self):
-        return [vertex.pygame for vertex in self.vertices]
-    # }}}1
-
-class Hexagon(Shape):
-    """ This class is not yet implemented.  However, it will eventually
-    provide methods to facilitate the creation of regular hexagons. """
-
-    pass
 
 class Rectangle(Shape):
-    """ Represents rectangular shapes.  These shapes can be constructed using
-    the Polygon class, but this class provides many useful attributes that
-    only apply to rectangular shapes.  In addition, detecting collisions
-    between rectangles is much faster that detecting collision between
-    arbitrary polygons. """
+
+    # Constructor {{{1
+    def __init__(self, position, width, height):
+        Shape.__init__(self, position)
+        self.__width = width; self.__height = height
+
+    def __eq__(self, other):
+        return ( self.top == other.top and self.bottom == other.bottom and
+                 self.left == other.left and self.right == other.right )
+
+    def __repr__(self):
+        dimensions = self.position, self.width, self.height
+        return "Rectangle: %s, %dx%d" % dimensions
+
+    # Attributes {{{1
+    def get_width(self): return self.__width
+    def get_height(self): return self.__height
+    def get_size(self): return self.__width, self.__height
+
+    def get_dimensions(self):
+        return self.left, self.top, self.width, self.height
+
+    def get_pygame(self):
+        from pygame.rect import Rect
+        return Rect(self.left, self.top, self.width, self.height)
+
+    def set_width(self, width): self.__width = width
+    def set_height(self, height): self.__height = height
+    def set_size(self, width, height):
+        self.__width, self.__height = width, height
+
+    def get_left(self): return self.horizontal - self.width / 2
+    def get_right(self): return self.horizontal + self.width / 2
+    def get_top(self): return self.vertical - self.height / 2
+    def get_bottom(self): return self.vertical + self.height / 2
+
+    golden_ratio = 1/2 + sqrt(5) / 2
+
+    width = property(get_width, set_width)
+    height = property(get_height, set_height)
+    size = property(get_size, set_size)
+
+    dimensions = property(get_dimensions)
+    pygame = property(get_pygame)
+
+    left = property(get_left, Shape.set_left)
+    right = property(get_right, Shape.set_right)
+    top = property(get_top, Shape.set_top)
+    bottom = property(get_bottom, Shape.set_bottom)
 
     # Factory Methods {{{1
     @staticmethod
-    def from_dimensions(left, top, right, bottom):
-        return Rectangle(left, top, right, bottom)
-
-    @staticmethod
-    def from_corners(first, second):
-        return Rectangle(first.x, first.y, second.x, second.y)
-
-    @staticmethod
-    def from_center(center, width, height):
-        half_width = width / 2.0
-        half_height = height / 2.0
-
-        left = center.x - half_width; right = center.x + half_width
-        top = center.y - half_height; bottom = center.y + half_height
-
-        return Rectangle(left, top, right, bottom)
-
-    @staticmethod
     def from_size(width, height):
-        return Rectangle(0, 0, width, height)
+        position = Vector(width, height) / 2
+        return Rectangle(position, width, height)
 
     @staticmethod
-    def from_top_left(corner, width, height):
-        left = corner.x; right = corner.x + width
-        top = corner.y; bottom = corner.y + height
-
-        return Rectangle(left, top, right, bottom)
+    def from_width(width, ratio=1/golden_ratio):
+        height = ratio * width
+        return Rectangle.from_size(width, height)
 
     @staticmethod
-    def from_point(point):
-        return Rectangle.from_corners(point, point)
+    def from_height(height, ratio=golden_ratio):
+        width = ratio * height
+        return Rectangle.from_size(width, height)
+
+    @staticmethod
+    def from_dimensions(left, top, width, height):
+        horizontal = left + (width / 2)
+        vertical = top + (height / 2)
+
+        position = Vector(horizontal, vertical)
+        return Rectangle(position, width, height)
+
+    @staticmethod
+    def from_sides(left, top, right, bottom):
+        width = right - left
+        height = bottom - right
+
+        return Rectangle.from_dimensions(left, right, width, height)
+
+    @staticmethod
+    def from_center(position, width, height):
+        return Rectangle(position, width, height)
 
     @staticmethod
     def from_circle(circle):
-        center = circle.center
-        radius = circle.radius
+        position = circle.position
+        diameter = circle.diameter
 
-        left = center.x - radius; right = center.x + radius
-        top = center.y - radius; bottom = center.y + radius
-
-        return Rectangle(left, top, right, bottom)
+        return Rectangle(position, diameter, diameter)
 
     @staticmethod
-    def from_shape(shape):
-        top, left = shape.center
-        bottom, right = shape.center
+    def from_union(self, first, second):
+        right = max(first.right, second.right)
+        bottom = min(first.bottom, second.bottom)
 
-        for vertex in shape.vertices:
-            top = min(top, vertex.y)
-            left = min(left, vertex.x)
+        left = max(first.left, second.left)
+        right = min(first.right, second.right)
 
-            bottom = max(bottom, vertex.y)
-            right = max(right, vertex.y)
-
-        return Rectangle(left, top, right, bottom)
-
-    def copy(self):
-        top, left, width, height = self.dimensions
-        return Rectangle(left, top, right, bottom)
-
-    def shrink(self, padding):
-        return self.grow(-padding)
-
-    def grow(self, padding):
-        left = self.left - padding; right = self.right + padding
-        top = self.top - padding; bottom = self.bottom + padding
-
-        if left > right:
-            left = right = (left + right) / 2.0
-        if top > bottom:
-            top = bottom = (top + bottom) / 2.0
-
-        return Rectangle(left, top, right, bottom)
-
-    def move(self, displacement):
-        dx, dy = displacement.get_tuple()
-
-        left = self.left + dx; right = self.right + dx
-        top = self.top + dy; bottom = self.bottom + dy
-
-        return Rectangle(left, top, right, bottom)
-
-    def position(self, position):
-        return self.from_center(position, self.width, self.height)
-
-    # }}}1
-
-    # Operators {{{1
-    def __init__(self, left, top, right, bottom):
-        self.__left = min(left, right)
-        self.__top = min(top, bottom)
-
-        self.__right = max(right, left)
-        self.__bottom = max(bottom, top)
-
-    def __eq__(self, other):
-        return (type(self) == type(other) and
-                self.top == other.top and
-                self.bottom == other.bottom and
-                self.left == other.left and
-                self.right == other.right)
-
-    def __repr__(self):
-        return "<T:%d L:%d, W:%d H:%d>" % self.dimensions
-
-    # Attributes {{{1
-    def get_top(self):      return self.__top
-    def get_bottom(self):   return self.__bottom
-    def get_left(self):     return self.__left
-    def get_right(self):    return self.__right
-
-    def set_top(self, top):         self.__top = top
-    def set_bottom(self, bottom):   self.__bottom = bottom
-    def set_left(self, left):       self.__left = left
-    def set_right(self, right):     self.__right = right
-
-    def get_width(self):    return abs(self.left - self.right)
-    def get_height(self):   return abs(self.top - self.bottom)
-    def get_size(self):     return (self.width, self.height)
-
-    def get_dimensions(self):
-        return (self.top, self.left, self.width, self.height)
-
-    def get_top_left(self):
-        return Vector(self.left, self.top)
-    def get_top_right(self):
-        return Vector(self.right, self.top)
-    def get_bottom_left(self):
-        return Vector(self.left, self.bottom)
-    def get_bottom_right(self):
-        return Vector(self.right, self.bottom)
-
-    def set_top_left(self, corner):
-        self.__top, self.__left = corner.tuple
-    def set_top_right(self, corner):
-        self.__top, self.__right = corner.tuple
-    def set_bottom_left(self, corner):
-        self.__bottom, self.__left = corner.tuple
-    def set_bottom_right(self, corner):
-        self.__bottom, self.__right = corner.tuple
-
-    def get_corners(self):
-        return (self.top_left, self.bottom_right)
-
-    def set_corners(self, first, second):
-        self.set_top_left(first)
-        self.set_bottom_right(second)
-
-    def get_top_edge(self):
-        return Line(self.top_left, self.top_right, Vector(0, -1))
-    def get_bottom_edge(self):
-        return Line(self.bottom_left, self.bottom_right, Vector(0, 1))
-    def get_left_edge(self):
-        return Line(self.top_left, self.bottom_left, Vector(-1, 0))
-    def get_right_edge(self):
-        return Line(self.top_right, self.bottom_right, Vector(1, 0))
-
-    def get_edges(self):
-        return (self.top_edge, self.bottom_edge,
-                self.left_edge, self.right_edge)
-
-    def get_vertices(self):
-        return (self.top_left, self.top_right,
-                self.bottom_right, self.bottom_left)
-
-    def get_center(self):
-        x = (self.left + self.right) / 2
-        y = (self.top + self.bottom) / 2
-        return Vector(x, y)
-
-    def set_center(self, center):
-        self.__top = center.y - self.height / 2
-        self.__bottom = center.y + self.height / 2
-
-        self.__left = center.x - self.width / 2
-        self.__right = center.x + self.width / 2
-
-    def get_box(self):
-        return self
-
-    def get_pygame(self):
-        import pygame
-        return pygame.Rect(self.left, self.top, self.width, self.height)
-
-    top = property(get_top, set_top)
-    bottom = property(get_bottom, set_bottom)
-    left = property(get_left, set_left)
-    right = property(get_right, set_right)
-
-    width = property(get_width)
-    height = property(get_height)
-    size = property(get_size)
-
-    dimensions = property(get_dimensions)
-
-    top_left = property(get_top_left, set_top_left)
-    top_right = property(get_top_right, set_top_right)
-    bottom_left = property(get_bottom_left, set_bottom_left)
-    bottom_right = property(get_bottom_right, set_bottom_right)
-
-    corners = property(get_corners, set_corners)
-
-    top_edge = property(get_top_edge)
-    bottom_edge = property(get_bottom_edge)
-    left_edge = property(get_left_edge)
-    right_edge = property(get_right_edge)
-
-    center = property(get_center, set_center)
+        return Rectangle.from_sides(left, right, right, bottom)
 
     # }}}1
 
 if __name__ == "__main__":
+
     import pygame
-    from pygame.locals import *
+    from pygame import *
 
-    from pprint import *
+    pygame.init()
 
-    # Line Tests {{{1
-    def line_tests():
-        head = Vector(10, 0); tail = Vector(0, 0)
-        normal = Vector(0, 1); opposite = Vector(0, -1)
+    window = Rectangle.from_width(500)
+    field = Rectangle.from_width(400)
 
-        direction = Vector(10, 0)
-        different = Vector(5, 5)
+    player = Rectangle.from_size(5, 50)
+    opponent = Rectangle.from_size(5, 50)
 
-        line = Line.from_points(head, tail, normal)
+    size = int(window.width), int(window.height)
+    screen = pygame.display.set_mode(size)
 
-        assert line.get_head() == head
-        assert line.get_tail() == tail
-        assert line.get_degenerate() == False
+    black = 0, 0, 0
+    white = 255, 255, 255
 
-        assert line.get_facing() == normal
-        assert line.get_normal() in (normal, -normal)
+    red = 255, 0, 0
+    green = 0, 255, 0
+    blue = 0, 0, 255
 
-        assert line.get_center() == Vector(5, 0)
-        assert line.get_points() == (head, tail)
-        assert line.get_direction() == Vector(10, 0)
+    colors = black, red, green, blue
+    rectangles = field, player, opponent
 
-        assert line.get_pygame() == (tail, head)
+    field.align_horizontal(window)
+    field.align_vertical(window)
 
-        same_line = Line.from_direction(tail, direction, normal)
-        opposite_line = Line.from_points(head, tail, opposite)
+    player.align_left(field)
+    player.align_vertical(field)
 
-        assert line == same_line
-        assert not line == opposite_line
+    opponent.align_right(field)
+    opponent.align_vertical(field)
 
-    # Circle Tests {{{1
-    def circle_tests():
-        center = Vector(15, 15); radius = 5
-        displacement = Vector(5, 5)
+    screen.fill(white)
 
-        circle = Circle(center, radius)
-        box = Rectangle.from_center(center, 10, 10)
+    while True:
 
-        assert circle == circle
-        assert circle.get_box() == box
+        for index, rectangle in enumerate(rectangles):
+            color = colors[index % len(colors)]
+            dimensions = rectangle.pygame
 
-        assert circle.get_center() == center
-        assert circle.get_radius() == radius
+            pygame.draw.rect(screen, color, dimensions, 1)
 
-        assert circle.get_dimensions() == (center, radius)
-        assert circle.get_pygame() == (center, radius)
-
-        grown_circle = Circle(center, radius - 1).grow(1)
-        shrunk_circle = Circle(center, radius + 1).shrink(1)
-        moved_circle = Circle(
-                center - displacement, radius).move(displacement) 
-
-        assert grown_circle == circle
-        assert shrunk_circle == circle
-        assert moved_circle == circle
-
-    # Shape Tests {{{1
-    def polygon_tests():
-        top_left = Vector(10, 10); top_right = Vector(20, 10)
-        bottom_left = Vector(10, 20); bottom_right = Vector(20, 20)
-
-        vertices = [top_left, top_right, bottom_right, bottom_left]
-        bad_vertices = [top_left, top_right, bottom_left, bottom_right]
-
-        try: Polygon(bad_vertices)
-        except AssertionError:
-            pass            # Concave polygon rejected.
-        else:
-            assert False    # Concave polygon created.
-
-        polygon = Polygon(vertices)
-
-        top = Vector(0, -1); bottom = Vector(0, 1)
-        left = Vector(-1, 0); right = Vector(1, 0)
-
-        center = Vector(15, 15)
-        box = Rectangle.from_corners(top_left, bottom_right)
-
-        edges = [
-                Line(top_left, top_right, top),
-                Line(top_right, bottom_right, right),
-                Line(bottom_right, bottom_left, bottom),
-                Line(bottom_left, top_left, left) ]
-
-        assert polygon.get_box() == box
-        assert polygon.get_center() == center
-
-        for edge in edges:
-            assert edge in polygon.edges
-        for vertex in vertices:
-            assert vertex in polygon.vertices
-            assert vertex.pygame in polygon.pygame
-
-    # Rectangle Tests {{{1
-    def rectangle_tests():
-
-        top = 0; bottom = 4; left = 0; right = 2
-        width = right - left; height = bottom - top
-        center = Vector(left + right, top + bottom) / 2
-
-        edges = [
-                Line(Vector(left, top), Vector(right, top), Vector(0, -1)),
-                Line(Vector(right, top), Vector(right, bottom), Vector(1, 0)),
-                Line(Vector(right, bottom), Vector(left, bottom), Vector(0, 1)),
-                Line(Vector(left, bottom), Vector(left, top), Vector(-1, 0)) ]
-
-        vertices = [
-                Vector(left, top), Vector(right, top),
-                Vector(left, bottom), Vector(right, bottom) ]
-
-        golden = Rectangle.from_dimensions(left, top, right, bottom)
-
-        assert golden.size == (width, height)
-        assert golden.dimensions == (top, left, width, height)
-        assert golden.pygame == Rect(left, top, width, height)
-
-        assert golden.center == center
-        assert golden.box == golden
-
-        for edge in edges:
-            assert edge in golden.edges
-        for vertex in vertices:
-            assert vertex in golden.vertices
-
-        assert golden == Rectangle.from_size(width, height)
-        assert golden == Rectangle.from_center(center, width, height)
-
-        assert golden == Rectangle.from_corners(
-                Vector(left, top), Vector(right, bottom))
-        assert golden == Rectangle.from_top_left(
-                Vector(left, top), width, height)
-
-        assert golden == Rectangle(
-                left + 1, top + 1, right - 1, bottom - 1).grow(1)
-        assert golden == Rectangle(
-                left - 1, top - 1, right + 1, bottom + 1).shrink(1)
-        assert golden == Rectangle(
-                left - 1, top - 1, right - 1, bottom - 1).move(Vector(1, 1))
-
-    # }}}1
-
-    print "Testing shapes.py..."
-
-    line_tests()
-    circle_tests()
-    polygon_tests()
-    rectangle_tests()
-
-    print "All tests passed."
-
+        pygame.display.flip()
+        pygame.time.wait(50)
