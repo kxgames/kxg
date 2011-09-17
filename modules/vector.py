@@ -116,9 +116,12 @@ class Vector(object):
         """ Return the absolute value of this vector. """
         return Vector(abs(self.x), abs(self.y))
     
-    def __mul__(self, c):
+    def __mul__(self, other):
         """ Return the scalar product of this vector and the argument. """
-        return Vector(c * self.x, c * self.y)
+        if isinstance(other, Vector):
+            return Vector(other.x * self.x, other.y * self.y)
+        else:
+            return Vector(other * self.x, other * self.y)
 
     def __rmul__(self, c):
         """ Return the scalar product of this vector and the argument. """
