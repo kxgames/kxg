@@ -22,6 +22,8 @@ class Loop:
                 self.engine = self.engine.successor()
                 self.engine.setup()
 
+        self.engine.teardown()
+
     def finish(self):
         self.finished = True
     # }}}1
