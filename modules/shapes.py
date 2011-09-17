@@ -8,7 +8,9 @@ class Shape(object):
     # Constructor {{{1
     def __init__(self, position):
         self.__position = position
-        self.__restrictions = {}
+
+        self.__inside = {}
+        self.__outside = {}
 
     # Attributes {{{1
     def get_position(self): return self.__position
@@ -26,18 +28,13 @@ class Shape(object):
         old_position = self.__position
         self.__position = new_position
 
-        for shape in self.__restrictions:
-            too_high = self.get_top() < shape.get_top()
-            too_low = self.get_bottom() > shape.get_bottom()
+        for shape, callback in self.__inside.items():
+            inside = violations = self.inside(shape)
+            if not inside: allow_move = callback(*violations) and allow_move
 
-            too_left = self.get_left() < shape.get_left()
-            too_right = self.get_right() > shape.get_right()
-
-            violations = too_high, too_low, too_left, too_right
-
-            if any(violations):
-                callback = self.__restrictions[shape]
-                allow_move = callback(*violations) and allow_move
+        for shape, callback in self.__outside.items():
+            outside = violations = self.outside(shape)
+            if not outside: allow_move = callback(*violations) and allow_move
 
         self.__position = new_position if allow_move else old_position
 
@@ -77,14 +74,14 @@ class Shape(object):
     horizontal = property(get_horizontal, set_horizontal)
     vertical = property(get_vertical, set_vertical)
 
-    # Methods {{{1
+    # }}}1
+
+    # Copy Method {{{1
     def copy(self):
         from copy import deepcopy
         return deepcopy(self)
 
-    def restrict(self, shape, callback=lambda t,l,b,r: False):
-        self.__restrictions[shape] = callback
-
+    # Movement Methods {{{1
     def displace(self, displacement):
         position = self.get_position() + displacement
         self.set_position(position)
@@ -115,6 +112,42 @@ class Shape(object):
     def align_vertical(self, other):
         target = other.get_vertical()
         self.set_vertical(target)
+
+    # Collision Methods {{{1
+    def inside(self, shape):
+        top_out = self.get_top() < shape.get_top()
+        bottom_out = self.get_bottom() > shape.get_bottom()
+
+        left_out = self.get_left() < shape.get_left()
+        right_out = self.get_right() > shape.get_right()
+
+        return Violations(top_out, left_out, bottom_out, right_out)
+
+    def outside(self, shape):
+        top_in = self.get_top() < shape.get_bottom()
+        bottom_in = self.get_bottom() > shape.get_top()
+
+        left_in = self.get_left() < shape.get_right()
+        right_in = self.get_right() > shape.get_left()
+
+        inside = top_in and left_in and bottom_in and right_in
+
+        if not inside:
+            return Violations(False, False, False, False)
+
+        top_out = self.get_top() < shape.get_top()
+        bottom_out = self.get_bottom() > shape.get_bottom()
+
+        left_out = self.get_left() < shape.get_left()
+        right_out = self.get_right() > shape.get_right()
+
+        return Violations(bottom_out, right_out, top_out, left_out)
+
+    def keep_inside(self, shape, callback=lambda t,l,b,r: False):
+        self.__inside[shape] = callback
+
+    def keep_outside(self, shape, callback=lambda t,l,b,r: False):
+        self.__outside[shape] = callback
 
     # }}}1
 
@@ -232,10 +265,10 @@ class Circle(Shape):
         self.__radius = radius
 
     def __eq__(self, other):
-        return self.center == other.center and self.radius == other.radius
+        return self.position == other.position and self.radius == other.radius
 
     def __repr__(self):
-        return "Circle: %s, r=%d" % (self.center, self.radius)
+        return "Circle: %s, r=%d" % (self.position, self.radius)
 
     # Attributes {{{1
     def get_radius(self): return self.__radius
@@ -271,6 +304,10 @@ class Circle(Shape):
     def from_diameter(diameter):
         position = Vector.null()
         return Circle(position, diameter / 2)
+
+    @staticmethod
+    def from_dimensions(position, radius):
+        return Circle(position, radius)
 
     # }}}1
 
@@ -377,6 +414,23 @@ class Rectangle(Shape):
 
         return Rectangle.from_sides(left, right, right, bottom)
 
+    # }}}1
+
+class Violations:
+
+    # Constructor {{{1
+    def __init__(self, top, left, bottom, right):
+        self.violations = top, left, bottom, right
+
+    # Operators {{{1 
+    def __iter__(self):
+        return iter(self.violations)
+
+    def __nonzero__(self):
+        return not any(self.violations)
+
+    def __repr__(self):
+        return str(bool(self))
     # }}}1
 
 if __name__ == "__main__":
