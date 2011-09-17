@@ -20,24 +20,26 @@ class Shape(object):
     def get_top(self): raise NotImplementedError
     def get_bottom(self): raise NotImplementedError
 
-    def set_position(self, position):
+    def set_position(self, new_position):
         allow_move = True 
 
-        for shape in self.__restrictions:
-            too_high = self.top() < shape.top()
-            too_low = self.bottom() > shape.bottom()
+        old_position = self.__position
+        self.__position = new_position
 
-            too_left = self.left() < shape.left()
-            too_right = self.right() > shape.right()
+        for shape in self.__restrictions:
+            too_high = self.get_top() < shape.get_top()
+            too_low = self.get_bottom() > shape.get_bottom()
+
+            too_left = self.get_left() < shape.get_left()
+            too_right = self.get_right() > shape.get_right()
 
             violations = too_high, too_low, too_left, too_right
 
             if any(violations):
-                callback = self.limits[limit]
-                allow_move = callback(*violations) or allow_move
+                callback = self.__restrictions[shape]
+                allow_move = callback(*violations) and allow_move
 
-        if allow_move:
-            self.__position = position
+        self.__position = new_position if allow_move else old_position
 
     def set_horizontal(self, horizontal):
         position = Vector(horizontal, self.vertical)
@@ -80,7 +82,7 @@ class Shape(object):
         from copy import deepcopy
         return deepcopy(self)
 
-    def restrict(shape, callback=lambda top, left, bottom, right: False):
+    def restrict(self, shape, callback=lambda t,l,b,r: False):
         self.__restrictions[shape] = callback
 
     def displace(self, displacement):
