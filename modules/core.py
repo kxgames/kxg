@@ -9,11 +9,12 @@ class Loop:
     # Game Loop {{{1
     def play(self, frequency=50):
         clock = pygame.time.Clock()
+        self.stop_flag = False
 
-        self.engine.setup()     # All subclasses need to define self.engine.
-        self.finished = False
+        # All subclasses need to define self.engine.
+        self.engine.setup()
 
-        while not self.engine.exit():
+        while not self.finished():
             time = clock.tick(frequency) / 1000
             self.engine.update(time)
 
@@ -24,8 +25,12 @@ class Loop:
 
         self.engine.teardown()
 
-    def finish(self):
-        self.finished = True
+    def exit(self):
+        self.stop_flag = True
+
+    def finished(self):
+        return self.stop_flag
+
     # }}}1
 
 class Engine:
@@ -35,7 +40,7 @@ class Engine:
     # Constructor {{{1
     def __init__(self, loop):
         self.loop = loop
-        self.complete = False
+        self.stop_flag = False
 
     # Attributes {{{1
     def get_loop(self):
@@ -43,21 +48,21 @@ class Engine:
     # }}}1
 
     # Loop Completion {{{1
-    def finish(self):
+    def exit_engine(self):
         """ Stop this engine from executing once the current update ends. """
-        self.complete = True
+        self.stop_flag = True
+
+    def exit_loop(self):
+        """ Exit the game once the current update ends. """
+        self.loop.exit()
 
     def finished(self):
         """ Return true if this engine is done executing. """
-        return self.complete
+        return self.stop_flag
 
     def successor(self):
         """ Create and return the engine that should be executed next. """
         return None
-
-    def exit(self):
-        """ Return true to stop the game loop and end the program. """
-        return False
 
     # Loop Methods {{{1
     def setup(self):
