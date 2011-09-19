@@ -24,26 +24,6 @@ class Forum:
     to work with concurrent applications, messages can be safely published at
     any time from any thread. """
 
-    # Publisher {{{1
-    class Publisher:
-
-        def __init__(self, forum):
-            self.forum = forum
-
-        def publish(self, message):
-            self.forum.publish(message)
-
-    # Subscriber {{{1
-    class Subscriber:
-
-        def __init__(self, forum):
-            self.forum = forum
-
-        def subscribe(self, flavor, callback):
-            self.forum.subscribe(flavor, callback)
-
-    # }}}1
-
     # Constructor {{{1
     def __init__(self, *pipes):
         """ Create and prepare a new forum object.  If any network connections
@@ -65,10 +45,25 @@ class Forum:
         class Subscriber:
             subscribe = self.subscribe
 
+        class Member:
+            publish = self.publish
+            subscribe = self.subscribe
+
         self.publisher = Publisher()
         self.subscriber = Subscriber()
+        self.member = Member()
 
         self.setup(*pipes)
+
+    # Attributes {{{1
+    def get_publisher(self):
+        return self.publisher
+
+    def get_subscriber(self):
+        return self.subscriber
+
+    def get_member(self):
+        return self.member
 
     # }}}1
 
@@ -97,13 +92,6 @@ class Forum:
         self.publications = queue.Queue()
 
         self.locked = False
-
-    # Access Control {{{1
-    def get_publisher(self):
-        return self.publisher
-
-    def get_subscriber(self):
-        return self.subscriber
 
     # }}}1
 
@@ -190,17 +178,27 @@ class Forum:
 
     # }}}1
 
-class Member:
+class Timer(Forum):
 
-    def __init__(self, forum):
-        self.forum = forum
+    def __init__(self, *pipes):
+        Forum.__init__(self, *pipes)
+        self.pending = []
 
-    def publish(self, message):
-        self.forum.publish(message)
+    def publish(self, message, delay):
+        package = delay, message
+        self.pending.append(package)
 
-    def subscribe(self, flavor, callback):
-        self.forum.subscribe(flavor, callback)
+    def deliver(self, time):
+        pending = self.pending[:]
+        self.pending = []
 
+        for delay, message in pending:
+            delay = delay - time
+
+            if delay < 0: Forum.publish(self, message)
+            else: self.publish(message, delay)
+
+        Forum.deliver(self)
 
 class Exchange:
 
