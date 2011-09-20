@@ -1,6 +1,7 @@
 from __future__ import division
 
 import pygame.time
+from messaging import Forum
 
 class Loop:
     """ Manage whichever game engine is currently active.  This involves both
@@ -83,17 +84,39 @@ class Engine:
 
     # }}}1
 
-class SerialEngine(Engine):
-    """ Provide a simple mechanism for executing a set of unrelated tasks.
-    Subclasses are expected to create a dictionary of tasks called
-    self.tasks.  Every task in that list will be properly handled. """
+class GameEngine(Engine):
+    """ Play the game using the standard game loop.  This class assumes that
+    the world, game, and tasks attributes are all defined in a subclass.  The
+    tasks generate messages, which are passed through the forum to the game.
+    The game is responsible for changing the game world. """
 
     # Constructor {{{1
     def __init__(self, loop):
         Engine.__init__(self, loop)
+
+        self.forum = Forum()
+
+        self.world = None
+        self.game = None
+
         self.tasks = {}
 
     # Attributes {{{1
+    def get_world(self):
+        return self.world
+
+    def get_game(self):
+        return self.game
+
+    def get_publisher(self):
+        return self.forum.get_publisher()
+
+    def get_subscriber(self):
+        return self.forum.get_subscriber()
+
+    def get_member(self):
+        return self.forum.get_member()
+
     def get_task(self, name):
         return self.tasks[name]
 
@@ -104,21 +127,23 @@ class SerialEngine(Engine):
         for task in self.tasks.values():
             task.setup()
 
+        self.game.setup()
+        self.forum.lock()
+
     def update(self, time):
         for task in self.tasks.values():
             task.update(time)
+
+        self.forum.deliver()
+        self.game.update(time)
 
     def teardown(self):
         for task in self.tasks.values():
             task.teardown()
 
-    # }}}1
+        self.game.teardown()
 
-class ParallelEngine(Engine):
-    """ Provides a mechanism for executing game tasks in parallel.  This is
-    still an abstract base class, but it allows subclasses to easily dispatch
-    tasks into separate threads. """
-    pass
+    # }}}1
 
 class Task:
     """ Controls a single aspect of an engine.  Classes that implement this
