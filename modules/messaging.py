@@ -1,22 +1,6 @@
 import network
 import Queue as queue
 
-# Forum Permissions
-# =================
-# I think it would be good to provide a way to limit access to the forum.  For
-# example, some objects should only have read privileges, some should only have
-# write privileges, and some should be able to do either.  One way to enforce
-# these restrictions is to add three satellite classes: Publisher, Subscriber,
-# and Member.
-#
-# These classes would be incomplete wrappers around the base Forum
-# functionality.  For example, Publisher would contain a reference to the forum
-# but would only implement publish().  Likewise, Subscriber would
-# only implement subscribe().  Member would be able to do both.
-#
-# In python, it would still be possible to use the base Forum directly.  In
-# more structured languages, though, I could make this impossible.
-
 class Forum:
     """ Manages a messaging system that allows messages to be published for any
     interested subscriber to receive.  If desired, published messages will even
@@ -67,34 +51,6 @@ class Forum:
 
     # }}}1
 
-    # Setup and Teardown {{{1
-    def setup(self, *pipes):
-        """ Connect this forum to another forum on a remote machine.  Any
-        message published by either forum will be relayed to the other.  This
-        method must be called before the forum is locked. """
-
-        assert not self.locked
-
-        for pipe in pipes:
-            pipe.register(self.target)
-            self.pipes.append(pipe)
-
-    def teardown(self):
-        """ Disconnect this forum from any forum over the network.  The pipes
-        that were being used to communicate with the remote forums will still
-        be active, they just won't relay any incoming messages to this forum
-        anymore. """
-
-        self.pipes = []
-        self.history = {}
-
-        self.subscriptions = {}
-        self.publications = queue.Queue()
-
-        self.locked = False
-
-    # }}}1
-
     # Subscriptions {{{1
     def subscribe(self, flavor, callback):
         """ Attach a callback to a particular flavor of message.  For
@@ -108,11 +64,6 @@ class Forum:
         except KeyError:
             self.subscriptions[flavor] = [callback]
 
-    def lock(self):
-        """ Prevent the forum from making any more subscriptions and allow it
-        to begin delivering publications. """
-        self.locked = True
-
     # Publications {{{1
     def publish(self, message):
         """ Publish the given message so subscribers to that class of message
@@ -124,7 +75,36 @@ class Forum:
 
         self.publications.put(publication)
 
-    def deliver(self):
+    # }}}1
+
+    # Lock and Unlock {{{1
+    def lock(self):
+        """ Prevent the forum from making any more subscriptions and allow it
+        to begin delivering publications. """
+        self.locked = True
+
+    def unlock(self):
+        """ Prevent the forum from delivering messages and allow it to make new
+        subscriptions.  All existing subscriptions are cleared. """
+        self.locked = False
+
+        self.subscriptions = {}
+        self.publications = queue.Queue()
+
+    # }}}1
+    # Setup, Update, and Teardown {{{1
+    def setup(self, *pipes):
+        """ Connect this forum to another forum on a remote machine.  Any
+        message published by either forum will be relayed to the other.  This
+        method must be called before the forum is locked. """
+
+        assert not self.locked
+
+        for pipe in pipes:
+            pipe.register(self.target)
+            self.pipes.append(pipe)
+
+    def update(self):
         """ Deliver any messages that have been published since the last call
         to this function.  For local messages, this requires executing the
         proper callback for each subscriber.  For remote messages, this
@@ -175,6 +155,20 @@ class Forum:
             for tag, flavor, message in pipe.deliver():
                 target, origin, ticker = tag
                 self.history[origin] = ticker
+
+    def teardown(self):
+        """ Disconnect this forum from any forum over the network.  The pipes
+        that were being used to communicate with the remote forums will still
+        be active, they just won't relay any incoming messages to this forum
+        anymore. """
+
+        self.pipes = []
+        self.history = {}
+
+        self.subscriptions = {}
+        self.publications = queue.Queue()
+
+        self.locked = False
 
     # }}}1
 
@@ -290,7 +284,7 @@ class Reply(Exchange):
     # }}}1
 
 class Conversation:
-    """ Manages any number of concurrent shits. """ 
+    """ Manages any number of concurrent exchanges. """ 
 
     # Constructor {{{1
     def __init__(self, client, *exchanges):

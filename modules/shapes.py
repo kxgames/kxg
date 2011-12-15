@@ -156,7 +156,7 @@ class Point(Shape):
     # Constructor {{{1
     def __init__(self, *arguments):
         if len(arguments) == 1:
-            position = arguments[0]
+            position = Vector(*arguments[0])
         elif len(arguments) == 2:
             position = Vector(*arguments)
         else:
@@ -332,7 +332,7 @@ class Rectangle(Shape):
     def get_size(self): return self.__width, self.__height
 
     def get_dimensions(self):
-        return self.left, self.top, self.width, self.height
+        return (self.left, self.top), (self.width, self.height)
 
     def get_pygame(self):
         from pygame.rect import Rect
@@ -379,6 +379,10 @@ class Rectangle(Shape):
         return Rectangle.from_size(width, height)
 
     @staticmethod
+    def from_square(size):
+        return Rectangle.from_size(size, size)
+
+    @staticmethod
     def from_dimensions(left, top, width, height):
         horizontal = left + (width / 2)
         vertical = top + (height / 2)
@@ -397,6 +401,11 @@ class Rectangle(Shape):
     def from_center(position, width, height):
         return Rectangle(position, width, height)
 
+    @staticmethod
+    def from_surface(surface):
+        width, height = surface.get_size()
+        return Rectangle.from_size(width, height)
+    
     @staticmethod
     def from_circle(circle):
         position = circle.position
