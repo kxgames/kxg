@@ -68,17 +68,11 @@ class Forum:
     def get_member(self):
         return self.member
 
-=======
-    # Attributes {{{1
->>>>>>> 7de6c6b589d5d753c4efd29823e6403a350d4470
     def get_publisher(self):
         return self.publisher
 
     def get_subscriber(self):
         return self.subscriber
-
-    def get_member(self):
-        return self.member
 
     # }}}1
 
