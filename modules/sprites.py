@@ -5,8 +5,8 @@ class Sprite:
     """ A parent class for every game object that can move.  This class stores
     position data and handles basic physics, but it is not meant to be
     directly instantiated. """
-    # Constructor {{{1
 
+    # Constructor {{{1
     def __init__(self):
         self.position = Vector.null()
         self.velocity = Vector.null()
@@ -15,22 +15,23 @@ class Sprite:
         self.max_acceleration = infinity
         self.max_velocity = infinity
 
-    def setup(self, pos=Vector.null(), max_a=infinity, max_v=infinity):
-        self.position = pos
+    def setup(self, r=Vector.null(), max_a=infinity, max_v=infinity):
+        self.position = r
         self.max_acceleration = max_a
         self.max_velocity = max_v
 
     # Updates {{{1
     def update(self, time):
-        """ This is the "Velocity Verlet Algorithm".  I learned it in my
-        computational chemistry class, and it's a better way to integrate
-        Newton's equations of motions than what we were doing before. """
         self.check_acceleration()
-        self.velocity += self.acceleration * (time / 2)
         self.check_velocity()
+
+        # This is the "Velocity Verlet" algorithm.  I learned it in my
+        # computational chemistry class, and it's a better way to integrate
+        # Newton's equations of motion than what we were doing before.
+
+        self.velocity += self.acceleration * (time / 2); self.check_velocity()
         self.position += self.velocity * time
-        self.velocity += self.acceleration * (time / 2)
-        self.check_velocity()
+        self.velocity += self.acceleration * (time / 2); self.check_velocity()
 
     def check_acceleration(self):
         a = self.acceleration
@@ -68,11 +69,18 @@ class Sprite:
         self.acceleration = acceleration
         self.check_acceleration()
 
+    def get_max_velocity(self):
+        return self.max_acceleration
+
+    def get_max_acceleration(self):
+        return self.max_acceleration
+
     # }}}1
 
 class Vehicle (Sprite):
     """ An application of the Sprite class with flocking capabilities. 
     Note: Non-behavior (ie: external) accelerations are ignored."""
+
     # Constructor {{{1
 
     def __init__(self):
@@ -133,7 +141,7 @@ class Vehicle (Sprite):
     # }}}1
 
 class Base:
-    # The Base class for all behavior classes.
+    """ The base class for all behavior classes. """
     # Base {{{1
     def __init__ (self, sprite, weight):
         self.sprite = sprite

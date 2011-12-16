@@ -12,7 +12,7 @@ import pygame
 from pygame.locals import *
 
 from shapes import *
-from flocking import *
+from sprites import *
 
 # Setup pygame {{{1
 pygame.init()
@@ -42,7 +42,7 @@ for i in range(population):
     sprite_x = boundary.width * random.random()
     sprite_y = boundary.height * random.random()
     sprite_position = Vector(sprite_x,sprite_y)
-    sprites.append(Sprite())
+    sprites.append(Vehicle())
     sprites[i].setup(sprite_position, sprite_radius, sprite_force, sprite_speed)
 
 # Add behaviors to sprites
@@ -53,7 +53,7 @@ for i in range(population):
     wander_distance = sprite_speed / 5.0
     wander_jitter = sprite_speed / 2.0
     if 0 == i:
-        leader_target = Sprite()
+        leader_target = Vehicle()
         leader_target.setup(boundary.center, 1)
         vehicle.add_behavior (Seek (vehicle, 0.4, leader_target))
         vehicle.add_behavior (Wander (vehicle, 1.0, wander_radius, wander_distance, wander_jitter))
