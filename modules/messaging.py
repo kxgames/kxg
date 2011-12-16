@@ -1,21 +1,7 @@
 import network
 import Queue as queue
 
-# Forum Permissions
-# =================
-# I think it would be good to provide a way to limit access to the forum.  For
-# example, some objects should only have read privileges, some should only have
-# write privileges, and some should be able to do either.  One way to enforce
-# these restrictions is to add three satellite classes: Publisher, Subscriber,
-# and Member.
-#
-# These classes would be incomplete wrappers around the base Forum
-# functionality.  For example, Publisher would contain a reference to the forum
-# but would only implement publish().  Likewise, Subscriber would
-# only implement subscribe().  Member would be able to do both.
-#
-# In python, it would still be possible to use the base Forum directly.  In
-# more structured languages, though, I could make this impossible.
+# I should rename forum.deliver() to forum.update().  It's more intuitive.
 
 class Forum:
     """ Manages a messaging system that allows messages to be published for any
@@ -23,6 +9,18 @@ class Forum:
     be delivered across a network.  Furthermore, since the system was designed
     to work with concurrent applications, messages can be safely published at
     any time from any thread. """
+
+    # Member {{{1
+    class Member:
+
+        def __init__(self, forum):
+            self.forum = forum
+
+        def publish(self, message):
+            self.forum.publish(message)
+
+        def subscribe(self, flavor, callback):
+            self.forum.subscribe(flavor, callback)
 
     # Publisher {{{1
     class Publisher:
@@ -99,6 +97,9 @@ class Forum:
         self.locked = False
 
     # Access Control {{{1
+    def get_member(self):
+        return self.member
+
     def get_publisher(self):
         return self.publisher
 
@@ -189,17 +190,6 @@ class Forum:
                 self.history[origin] = ticker
 
     # }}}1
-
-class Member:
-
-    def __init__(self, forum):
-        self.forum = forum
-
-    def publish(self, message):
-        self.forum.publish(message)
-
-    def subscribe(self, flavor, callback):
-        self.forum.subscribe(flavor, callback)
 
 
 class Exchange:
@@ -292,7 +282,7 @@ class Reply(Exchange):
     # }}}1
 
 class Conversation:
-    """ Manages any number of concurrent shits. """ 
+    """ Manages any number of concurrent exchanges. """ 
 
     # Constructor {{{1
     def __init__(self, client, *exchanges):

@@ -10,6 +10,17 @@ import errno, socket, struct, pickle
 #
 # It's possible that this new class could be merged with the Header class, but
 # I haven't thought about it enough yet.
+#
+# class Message:
+# 
+#     def __init__(self, target, origin, ticker, flavor, message):
+#         self.target = target
+#         self.origin = origin
+#         self.ticker = ticker
+# 
+#         self.flavor = flavor
+#         self.message = message
+
 
 class Host:
 
@@ -177,19 +188,6 @@ class Header:
         return message_tag, data_length
 
     # }}}1
-
-class Message:
-
-    def __init__(self, tag, flavor, message):
-        pass
-
-    def __init__(self, target, origin, ticker, flavor, message):
-        self.target = target
-        self.origin = origin
-        self.ticker = ticker
-
-        self.flavor = flavor
-        self.message = message
 
 class Pipe:
 

@@ -46,13 +46,11 @@ class Sprite:
         # This is the "Velocity Verlet Algorithm".  I learned it in my
         # computational chemistry class, and it's a better way to integrate
         # Newton's equations of motions than what we were doing before.
-        self.velocity += acceleration * (time / 2)
-        self.check_velocity()
+        self.velocity += acceleration * (time / 2); self.check_velocity()
         self.circle = Circle.move(self.circle, self.velocity * time)
-        self.velocity += acceleration * (time / 2)
-        self.check_velocity()
+        self.velocity += acceleration * (time / 2); self.check_velocity()
 
-        if self.velocity.magnitude > 0.00001:
+        if self.velocity.magnitude > 1e-5:
             self.facing = self.velocity.normal
 
         self.behavior_acceleration = acceleration
