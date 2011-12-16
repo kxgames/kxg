@@ -15,10 +15,10 @@ class Sprite:
         self.max_acceleration = infinity
         self.max_velocity = infinity
 
-    def setup(self, position, max_acceleration=infinity, max_velocity=infinity):
-        self.position = position
-        self.max_acceleration = max_acceleration
-        self.max_velocity = max_velocity
+    def setup(self, pos=Vector.null(), max_a=infinity, max_v=infinity):
+        self.position = pos
+        self.max_acceleration = max_a
+        self.max_velocity = max_v
 
     # Updates {{{1
     def update(self, time):
