@@ -15,13 +15,10 @@ class Forum:
         forums are listening and will attempt to communicate with them. """
 
         self.pipes = []
-        self.history = {}
+        self.locked = False
 
         self.subscriptions = {}
         self.publications = queue.Queue()
-
-        self.target = 1
-        self.locked = False
 
         class Publisher:
             publish = self.publish
@@ -65,33 +62,16 @@ class Forum:
             self.subscriptions[flavor] = [callback]
 
     # Publications {{{1
-    def publish(self, message):
+    def publish(self, message, callback=lambda: None):
         """ Publish the given message so subscribers to that class of message
         can react to it.  If any remote forums are connected, the underlying
         network connection must be capable of serializing the message. """
 
-        pipe = tag = None
-        publication = pipe, tag, message
-
+        publication = Publication(message, receipt=callback)
         self.publications.put(publication)
 
     # }}}1
 
-    # Lock and Unlock {{{1
-    def lock(self):
-        """ Prevent the forum from making any more subscriptions and allow it
-        to begin delivering publications. """
-        self.locked = True
-
-    def unlock(self):
-        """ Prevent the forum from delivering messages and allow it to make new
-        subscriptions.  All existing subscriptions are cleared. """
-        self.locked = False
-
-        self.subscriptions = {}
-        self.publications = queue.Queue()
-
-    # }}}1
     # Setup, Update, and Teardown {{{1
     def setup(self, *pipes):
         """ Connect this forum to another forum on a remote machine.  Any
@@ -99,10 +79,7 @@ class Forum:
         method must be called before the forum is locked. """
 
         assert not self.locked
-
-        for pipe in pipes:
-            pipe.register(self.target)
-            self.pipes.append(pipe)
+        self.pipes = pipes
 
     def update(self):
         """ Deliver any messages that have been published since the last call
@@ -114,85 +91,94 @@ class Forum:
 
         assert self.locked
 
-        target = self.target
-
         # Add any incoming messages to the network queue.
         for pipe in self.pipes:
-            for tag, flavor, message in pipe.receive(target):
-                target, origin, ticker = tag
-                old_ticker = self.history.get(origin, 0)
-
-                if ticker > old_ticker:
-                    publication = pipe, tag, message
-                    self.publications.put(publication)
-
-                    self.history[origin] = ticker
+            for message in pipe.receive():
+                publication = Publication(message, origin=pipe)
+                self.publications.put(publication)
 
         while True:
             # Pop messages off the publication queue one at a time.
-            try:
-                publication = self.publications.get(False)
-                sender, tag, message = publication
-
+            try: publication = self.publications.get(False)
             except queue.Empty:
                 break
 
             # Deliver the message to local subscribers.
+            message = publication.message
             flavor = type(message)
-            callbacks = self.subscriptions.get(flavor, [])
 
-            for callback in callbacks:
+            for callback in self.subscriptions.get(flavor, []):
                 callback(message)
 
             # Deliver the message to any remote peers.
             for pipe in self.pipes:
-                if pipe is not sender:
-                    if tag: pipe.resend(tag, message)
-                    else:   pipe.send(target, message)
+                if pipe is not publication.origin:
+                    pipe.send(message, publication.receipt)
 
         # Send any queued up outgoing messages.
         for pipe in self.pipes:
-            for tag, flavor, message in pipe.deliver():
-                target, origin, ticker = tag
-                self.history[origin] = ticker
+            for receipt in pipe.deliver():
+                
+                # Deliver returns a list of receipt objects for each message
+                # that is successfully sent.  The forum makes sure that all of
+                # these receipts are callbacks.
+
+                receipt()
 
     def teardown(self):
-        """ Disconnect this forum from any forum over the network.  The pipes
-        that were being used to communicate with the remote forums will still
-        be active, they just won't relay any incoming messages to this forum
-        anymore. """
+        """ Prevent the forum from being used anymore.  This is exactly
+        equivalent to calling unlock. """
+        self.unlock()
 
-        self.pipes = []
-        self.history = {}
+    # Lock and Unlock {{{1
+    def lock(self):
+        """ Prevent the forum from making any more subscriptions and allow it
+        to begin delivering publications. """
+        self.locked = True
+
+        for pipe in self.pipes:
+            pipe.lock()
+
+    def unlock(self):
+        """ Prevent the forum from delivering messages and allow it to make new
+        subscriptions.  All existing subscriptions are cleared. """
+        self.locked = False
 
         self.subscriptions = {}
         self.publications = queue.Queue()
 
-        self.locked = False
+        for pipe in self.pipes:
+            pipe.unlock()
 
     # }}}1
 
-class Timer(Forum):
+class Publication:
+    """ Represents messages that are waiting to be delivered within a forum.
+    Outside of the forum, this class should never be used. """
 
-    def __init__(self, *pipes):
-        Forum.__init__(self, *pipes)
-        self.pending = []
+    # Constructor {{{1
+    
+    # The origin argument specifies the pipe that delivered this publication.
+    # It is used to avoid returning a incoming message to the forum that
+    # originally sent it.  For new publications, this field isn't important and
+    # should not be specified.
+    #
+    # The receipt argument specifies a callback which will be executed
+    # once the message in question is delivered.  This is only meaningful for
+    # messages that originated in this forum.
 
-    def publish(self, message, delay):
-        package = delay, message
-        self.pending.append(package)
+    def __init__(self, message, origin=None, receipt=lambda: None):
+        self.message = message
+        self.origin = origin
+        self.receipt = receipt
 
-    def deliver(self, time):
-        pending = self.pending[:]
-        self.pending = []
+    # }}}1
 
-        for delay, message in pending:
-            delay = delay - time
 
-            if delay < 0: Forum.publish(self, message)
-            else: self.publish(message, delay)
-
-        Forum.deliver(self)
+# The classes below are part of an experimental messaging framework which works
+# much like a conversation.  You can send requests, wait for replies, and
+# things like that.  Unlike in the forum, in a conversation you are
+# communicating with exactly one other client and you know who that client is.  This
 
 class Exchange:
 
