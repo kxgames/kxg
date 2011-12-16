@@ -99,9 +99,6 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
         server.accept();    assert not server.empty()
         client.connect();   assert client.finished()
 
-    assert server.full()
-    assert server.finished()
-
     # Make sure that the server has stopped accepting new connections.
     assert server.full()
     assert server.finished()
@@ -111,16 +108,21 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
     servers = server.get_pipes()
     clients = [ client.get_pipe() for client in clients ]
 
+    identity = lambda pipe: pipe.get_identity()
+
+    servers.sort(key=identity)
+    clients.sort(key=identity)
+
     # Make sure that the right number of connections were made, and that the
     # server assigned valid identity numbers.
     assert len(clients) == pipes
     assert len(servers) == pipes
 
-    for server in servers:
-        assert server.get_identity() == 1
+    for index, server in enumerate(servers):
+        assert server.get_identity() == 1 + index
 
     for index, client in enumerate(clients):
-        assert client.get_identity() == 2 + index
+        assert client.get_identity() == 1 + index
 
     # Return the newly created connections. If only one connection is being
     # created, return the pipes as simple objects rather than lists.
@@ -136,4 +138,3 @@ def disconnect(*pipes):
     for pipe in pipes:
         pipe.close()
 # }}}1
-

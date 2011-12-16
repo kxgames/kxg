@@ -1,6 +1,7 @@
 from __future__ import division
 
 import pygame.time
+from messaging import Forum
 
 class Loop:
     """ Manage whichever game engine is currently active.  This involves both
@@ -9,11 +10,12 @@ class Loop:
     # Game Loop {{{1
     def play(self, frequency=50):
         clock = pygame.time.Clock()
+        self.stop_flag = False
 
-        self.engine.setup()     # All subclasses need to define self.engine.
-        self.finished = False
+        # All subclasses need to define self.engine.
+        self.engine.setup()
 
-        while not self.engine.exit():
+        while not self.finished():
             time = clock.tick(frequency) / 1000
             self.engine.update(time)
 
@@ -22,8 +24,14 @@ class Loop:
                 self.engine = self.engine.successor()
                 self.engine.setup()
 
-    def finish(self):
-        self.finished = True
+        self.engine.teardown()
+
+    def exit(self):
+        self.stop_flag = True
+
+    def finished(self):
+        return self.stop_flag
+
     # }}}1
 
 class Engine:
@@ -33,7 +41,7 @@ class Engine:
     # Constructor {{{1
     def __init__(self, loop):
         self.loop = loop
-        self.complete = False
+        self.stop_flag = False
 
     # Attributes {{{1
     def get_loop(self):
@@ -41,21 +49,21 @@ class Engine:
     # }}}1
 
     # Loop Completion {{{1
-    def finish(self):
+    def exit_engine(self):
         """ Stop this engine from executing once the current update ends. """
-        self.complete = True
+        self.stop_flag = True
+
+    def exit_loop(self):
+        """ Exit the game once the current update ends. """
+        self.loop.exit()
 
     def finished(self):
         """ Return true if this engine is done executing. """
-        return self.complete
+        return self.stop_flag
 
     def successor(self):
         """ Create and return the engine that should be executed next. """
         return None
-
-    def exit(self):
-        """ Return true to stop the game loop and end the program. """
-        return False
 
     # Loop Methods {{{1
     def setup(self):
@@ -76,42 +84,80 @@ class Engine:
 
     # }}}1
 
-class SerialEngine(Engine):
-    """ Provide a simple mechanism for executing a set of unrelated tasks.
-    Subclasses are expected to create a dictionary of tasks called
-    self.tasks.  Every task in that list will be properly handled. """
+class ExitEngine(Engine):
+    """ Exit the game loop and terminate the program.  This class is only meant
+    to provide a clean and easy way to close the game. """
 
     # Constructor {{{1
     def __init__(self, loop):
         Engine.__init__(self, loop)
-        self.tasks = {}
+
+    # Loop Methods {{{1
+    def setup(self):
+        self.exit_loop()
+
+    # }}}1
+
+class GameEngine(Engine):
+    """ Play the game using the standard game loop.  This class assumes that
+    the world, game, and tasks attributes are all defined in a subclass.  The
+    tasks generate messages, which are passed through the forum to the game.
+    The game is responsible for changing the game world. """
+
+    # Constructor {{{1
+    def __init__(self, loop):
+        Engine.__init__(self, loop)
+
+        self.forum = Forum()
+        self.world = None
+        self.game = None
+        self.tasks = []
 
     # Attributes {{{1
-    def get_task(self, name):
-        return self.tasks[name]
+    def get_world(self):
+        return self.world
+
+    def get_game(self):
+        return self.game
+
+    def get_member(self):
+        return self.forum.get_member()
+
+    def get_publisher(self):
+        return self.forum.get_publisher()
+
+    def get_subscriber(self):
+        return self.forum.get_subscriber()
 
     # }}}1
 
     # Loop Methods {{{1
     def setup(self):
-        for task in self.tasks.values():
+
+        # It is important that the game be set up before any of the other
+        # tasks.  Since the world is created in this method, this ensures that
+        # the world gets fully built before any other task sets up.
+        self.game.setup()
+
+        for task in self.tasks:
             task.setup()
 
+        self.forum.lock()
+
     def update(self, time):
-        for task in self.tasks.values():
+        for task in self.tasks:
             task.update(time)
 
+        self.forum.deliver()
+        self.game.update(time)
+
     def teardown(self):
-        for task in self.tasks.values():
+        for task in self.tasks:
             task.teardown()
 
-    # }}}1
+        self.game.teardown()
 
-class ParallelEngine(Engine):
-    """ Provides a mechanism for executing game tasks in parallel.  This is
-    still an abstract base class, but it allows subclasses to easily dispatch
-    tasks into separate threads. """
-    pass
+    # }}}1
 
 class Task:
     """ Controls a single aspect of an engine.  Classes that implement this

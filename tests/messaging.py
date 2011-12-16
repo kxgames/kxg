@@ -35,9 +35,9 @@ def publish(outbox, forums, flavor="default"):
         forum.publish(message)
 
 # Deliver Helper {{{1
-def deliver(servers, clients):
+def update(servers, clients):
     for forum, inbox in clients + servers + clients:
-        forum.deliver()
+        forum.update()
 
 # Check Helper {{{1
 def check(outbox, forums, shuffled=False):
@@ -61,7 +61,7 @@ def test_offline_forum():
     forum.lock()
 
     publisher.publish(message)
-    forum.deliver()
+    forum.update()
 
     inbox.check(outbox)
 
@@ -77,7 +77,7 @@ def test_online_forum():
 
     lock(clients + server)
 
-    deliver(server, clients)
+    update(server, clients)
     check(outbox, clients)
 
 # }}}1
@@ -95,7 +95,7 @@ def test_two_messages():
     publish(outbox, server)
     publish(outbox, server)
 
-    deliver(server, clients)
+    update(server, clients)
     check(outbox, clients + server)
 
 # Shuffled Messages {{{1
@@ -111,7 +111,7 @@ def test_shuffled_messages():
     for iteration in range(16):
         publish(outbox, clients)
 
-    deliver(server, clients)
+    update(server, clients)
     check(outbox, clients + server, shuffled=True)
 
 # Unrelated Messages {{{1
@@ -128,7 +128,7 @@ def test_unrelated_messages():
     for iteration in range(4):
         publish(outbox, clients, "second")    # Unrelated.
 
-    deliver(server, clients)
+    update(server, clients)
 
     # No messages should be received.
     outbox = Outbox()
@@ -150,7 +150,7 @@ def test_different_messages():
     for outbox, flavor in zip(outboxes, flavors):
         publish(outbox, server, flavor)
 
-    deliver(server, clients)
+    update(server, clients)
 
     for outbox, group in zip(outboxes, groups):
         check(outbox, group)
@@ -189,7 +189,7 @@ def test_looped_topology():
     # Update all the forums a number of times, and make sure the message is
     # only received once.
     for forum, inbox in 3 * forums:
-        forum.deliver()
+        forum.update()
 
     check(outbox, forums)
 
@@ -204,7 +204,7 @@ def test_conversation():
 
 if __name__ == '__main__':
 
-    with TestInterface("Testing the forums...", 7) as status:
+    with TestInterface("Testing the forums...", 6) as status:
         status.update();        test_offline_forum()
         status.update();        test_online_forum()
 
@@ -212,8 +212,8 @@ if __name__ == '__main__':
         status.update();        test_shuffled_messages()
         status.update();        test_unrelated_messages()
         status.update();        test_different_messages()
-
-        status.update();        test_looped_topology()
+        
+        # Looped topologies are no longer supported.
 
     with TestInterface("Testing the conversations...", 1) as status:
         status.update();        test_conversation()
