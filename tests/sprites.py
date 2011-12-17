@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
-import path
-
+import path, testing
 from sprites import *
-from helpers.interface import *
 
 # Slow Movement {{{1
-def test_slow_movement():
+@testing.test
+def test_slow_movement(helper):
     sprite = Sprite()
 
     a, v, r = Vector(1, 0), Vector(2, 0), Vector(0, 0)
@@ -24,7 +23,8 @@ def test_slow_movement():
     assert sprite.get_position() == r
 
 # Fast Movement {{{1
-def test_fast_movement():
+@testing.test
+def test_fast_movement(helper):
     sprite = Sprite()
 
     max_a, max_v = 1, 2
@@ -45,10 +45,5 @@ def test_fast_movement():
 
 # }}}1
 
-if __name__ == '__main__':
-
-    with TestInterface("Testing the sprite module...", 2) as status:
-        status.update();        test_slow_movement()
-        status.update();        test_fast_movement()
-
-    TestInterface.report_success()
+testing.title("Testing the sprites...")
+testing.run()

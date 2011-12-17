@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 
 import random
+import testing
 
 from helpers.pipes import *
-from helpers.interface import *
+
+simple = testing.Suite("Performing simple tests...")
+rigorous = testing.Suite("Performing rigorous tests...")
 
 # Isolated Pipes {{{1
-def test_isolated_pipes():
+@simple.test
+def isolated_pipes(helper):
     machine, port = 'localhost', 10236
 
     # First, test an isolated host.
@@ -31,7 +35,8 @@ def test_isolated_pipes():
     assert not client.finished()
 
 # Connected Pipes {{{1
-def test_connected_pipes():
+@simple.test
+def connected_pipes(helper):
     host, port = 'localhost', 10236
 
     def check_client(pipe):
@@ -55,7 +60,8 @@ def test_connected_pipes():
     assert client.finished()
 
 # Simple Messages {{{1
-def test_simple_messages():
+@simple.test
+def simple_messages(helper):
     host, port = 'localhost', 10236
 
     server = PickleServer(port, seats=1)
@@ -90,6 +96,14 @@ def test_simple_messages():
 # }}}1
 
 # Large Messages {{{1
+@rigorous.test
+def test_many_messages(helper):
+    test_stressful_conditions(count=2**12, bytes=2**4)
+
+@rigorous.test
+def test_large_messages(helper):
+    test_stressful_conditions(count=2**4, bytes=2**17)
+
 def test_stressful_conditions(count, bytes):
     sender, receiver = connect()
     outbox, delivered, received = Outbox(), Inbox(), Inbox()
@@ -113,14 +127,9 @@ def test_stressful_conditions(count, bytes):
     delivered.check(outbox)
     received.check(outbox)
 
-def test_many_messages():
-    test_stressful_conditions(count=2**12, bytes=2**4)
-
-def test_large_messages():
-    test_stressful_conditions(count=2**4, bytes=2**17)
-
 # Partial Messages {{{1
-def test_partial_messages():
+@rigorous.test
+def test_partial_messages(helper):
     sender, receiver = connect()
     inbox, outbox = Inbox(), Outbox()
 
@@ -154,16 +163,6 @@ def test_partial_messages():
 
 # }}}1
 
-if __name__ == '__main__':
+testing.run(simple)
+testing.run(rigorous)
 
-    with TestInterface("Performing simple tests...", 3) as status:
-        status.update();        test_isolated_pipes()
-        status.update();        test_connected_pipes()
-        status.update();        test_simple_messages()
-
-    with TestInterface("Performing rigorous tests...", 3) as status:
-        status.update();        test_many_messages()
-        status.update();        test_large_messages()
-        status.update();        test_partial_messages()
-
-    TestInterface.report_success()

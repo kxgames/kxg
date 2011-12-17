@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-import path
-import threading
-
-from messaging import Forum, Conversation
+import path, threading, testing
 
 from helpers.pipes import *
-from helpers.interface import *
+from messaging import Forum, Conversation
+
+forum = testing.Suite("Testing the forums...")
+conversation = testing.Suite("Testing the conversations...")
 
 # Forum Tests
 # Setup Helper {{{1
@@ -47,7 +47,8 @@ def check(outbox, forums, shuffled=False):
 # }}}1
 
 # Offline Forum {{{1
-def test_offline_forum():
+@forum.test
+def test_offline_forum(helper):
     forum = Forum()
     inbox, outbox = Inbox(), Outbox()
 
@@ -66,7 +67,8 @@ def test_offline_forum():
     inbox.check(outbox)
 
 # Online Forum {{{1
-def test_online_forum():
+@forum.test
+def test_online_forum(helper):
     server, clients = setup(4)
 
     outbox = Outbox()
@@ -83,7 +85,8 @@ def test_online_forum():
 # }}}1
 
 # Two Messages {{{1
-def test_two_messages():
+@forum.test
+def test_two_messages(helper):
     server, clients = setup(64)
 
     outbox = Outbox()
@@ -99,7 +102,8 @@ def test_two_messages():
     check(outbox, clients + server)
 
 # Shuffled Messages {{{1
-def test_shuffled_messages():
+@forum.test
+def test_shuffled_messages(helper):
     server, clients = setup(4)
 
     outbox = Outbox()
@@ -115,7 +119,8 @@ def test_shuffled_messages():
     check(outbox, clients + server, shuffled=True)
 
 # Unrelated Messages {{{1
-def test_unrelated_messages():
+@forum.test
+def test_unrelated_messages(helper):
     server, clients = setup(4)
 
     outbox = Outbox()
@@ -135,7 +140,8 @@ def test_unrelated_messages():
     check(outbox, clients + server)
 
 # Different Messages {{{1
-def test_different_messages():
+@forum.test
+def test_different_messages(helper):
     server, clients = setup(8)
     groups = clients[:4], clients[4:]
 
@@ -157,8 +163,9 @@ def test_different_messages():
 
 # }}}1
 
+# Looped topologies are no longer supported.
 # Looped Topology {{{1
-def test_looped_topology():
+def test_looped_topology(helper):
     client_pipes, server_pipes = connect(3)
 
     # Group the pipes to recreate a triangular arrangement of hosts.
@@ -197,26 +204,10 @@ def test_looped_topology():
 
 # Conversation Tests
 # Coming soon... {{{1
-def test_conversation():
+@conversation.test
+def test_conversation(helper):
     pass
 
 # }}}1
 
-if __name__ == '__main__':
-
-    with TestInterface("Testing the forums...", 6) as status:
-        status.update();        test_offline_forum()
-        status.update();        test_online_forum()
-
-        status.update();        test_two_messages()
-        status.update();        test_shuffled_messages()
-        status.update();        test_unrelated_messages()
-        status.update();        test_different_messages()
-        
-        # Looped topologies are no longer supported.
-
-    with TestInterface("Testing the conversations...", 1) as status:
-        status.update();        test_conversation()
-
-    TestInterface.report_success()
-
+testing.run(forum)
