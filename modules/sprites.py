@@ -1,5 +1,5 @@
 from vector import *
-from infinity import *
+from utilities.infinity import *
 
 class Sprite:
     """ A parent class for every game object that can move.  This class stores
