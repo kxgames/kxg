@@ -192,6 +192,7 @@ class Conversation:
     def __init__(self, pipe, *exchanges):
         self.pipe = pipe
         self.exchanges = exchanges
+        self.closed = False
 
     # }}}1
 
@@ -234,16 +235,18 @@ class Conversation:
                 if not exchange.finish() ]
 
     def update_finished(self):
-        if self.finished():
+        if not self.exchanges and self.pipe.idle():
             self.finish()
 
     # Teardown Methods {{{1
     def finish(self):
         self.pipe.unlock()
+
         self.exchanges = []
+        self.closed = True
 
     def finished(self):
-        return not self.exchanges and self.pipe.idle()
+        return self.closed
 
     # }}}1
 
