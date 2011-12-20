@@ -36,7 +36,10 @@ class Inbox(list):
         message = arguments[-1]
         self.append(message)
 
-    def check(self, outbox, shuffled=False):
+    def check(self, outbox, shuffled=False, empty=False):
+        if empty:           assert not self, "expecting no messages."
+        if not empty:       assert self, "no messages received."
+
         error = "sent %s; received %s" % (outbox, self)
         if shuffled:        assert set(self) == set(outbox), error
         if not shuffled:    assert self == outbox, error

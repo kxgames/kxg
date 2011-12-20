@@ -163,6 +163,5 @@ def test_partial_messages(helper):
 
 # }}}1
 
-testing.run(simple)
-testing.run(rigorous)
+testing.run(simple, rigorous)
 

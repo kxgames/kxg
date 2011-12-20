@@ -180,6 +180,320 @@ class Forum:
 
     # }}}1
 
+class Conversation:
+
+    """ Manages a messaging system that allows two participants to carry out
+    brief conversations.  During the conversation, each participant can easily
+    transition back and forth between sending requests and waiting for
+    responses.  These transitions are setup in advance, and played out after
+    the conversation starts. """
+    
+    # Constructor {{{1
+    def __init__(self, pipe, *exchanges):
+        self.pipe = pipe
+        self.exchanges = exchanges
+
+    # }}}1
+
+    # Setup Methods {{{1
+    def setup(self, *exchanges):
+        self.exchanges += exchanges
+
+    def start(self, *exchanges):
+        self.pipe.lock()
+        self.setup(*exchanges)
+
+    # Update Methods {{{1
+    def update(self):
+        self.update_outgoing()
+        self.update_incoming()
+        self.update_finished()
+
+        return self.finished()
+
+    def update_outgoing(self):
+        for exchange in self.exchanges:
+            message = exchange.send()
+            if message is not None:
+                print "Sending message:", message
+                self.pipe.send(message)
+
+        self.pipe.deliver()
+        self.update_exchanges()
+
+    def update_incoming(self):
+        for message in self.pipe.receive():
+            print "Receiving message:", message
+            for exchange in self.exchanges:
+                exchange.receive(message)
+            self.update_exchanges()
+
+    def update_exchanges(self):
+        self.exchanges = [ exchange.next()
+                for exchange in self.exchanges
+                if not exchange.finish() ]
+
+    def update_finished(self):
+        if self.finished():
+            self.finish()
+
+    # Teardown Methods {{{1
+    def finish(self):
+        self.pipe.unlock()
+        self.exchanges = []
+
+    def finished(self):
+        return not self.exchanges and self.pipe.idle()
+
+    # }}}1
+
+class Request:
+
+    """ Sends a request and waits for it to either be accepted or rejected.
+    This class is a thin wrapper around a conversation and a number of
+    different exchanges, meant to be useful in the most common situations.  If
+    you want to make a custom conversation, this may be useful to look at. """
+
+    # Setup {{{1
+    def __init__(self, pipe, message, accept_flavor, reject_flavor):
+
+        # Begin by setting up all the exchanges that can happen on this side
+        # of the conversation.  Once the request is sent, the conversation
+        # will begin listening for a confirmation from its partner.  Once that
+        # confirmation is received, the conversation ends and reports either
+        # accept or reject, as appropriate.
+        
+        request = Send(message); reply = Receive()
+
+        def accept_callback(): self.result = True
+        def reject_callback(): self.result = False
+
+        accept = Finish(accept_callback)
+        reject = Finish(reject_callback)
+
+        request.transition(reply)
+
+        def save_response(message): self.response = message
+
+        reply.transition(accept, accept_flavor, save_response)
+        reply.transition(reject, reject_flavor, save_response)
+
+        # Once the exchanges have been set up properly, create and store a
+        # conversation object.  The second argument to the constructor
+        # indicates that the conversation will begin by sending the request.
+
+        self.conversation = Conversation(pipe, request)
+
+        self.result = False
+        self.response = None
+
+    # Convenience Methods {{{1
+    def start(self):
+        self.conversation.start()
+
+    def update(self):
+        return self.conversation.update()
+
+    def finished(self):
+        return self.conversation.finished()
+
+    def get_accepted(self):
+        assert self.finished()
+        return self.finished() and self.result
+
+    def get_rejected(self):
+        assert self.finished()
+        return self.finished() and not self.result
+
+    def get_response(self):
+        assert self.finished()
+        return self.response
+
+    # }}}1
+
+class Response:
+
+    """ Waits for a request to arrive and, once it does, decides whether or not
+    to accept it.  This class is meant to work with the request class above.
+    Normally the request will come from the client side and the response from
+    the server side. """
+
+    # Setup {{{1
+    def __init__(self, pipe, flavor_callback, accept_message, reject_message):
+
+        # Begin by setting up all the exchanges that can happen on this side of
+        # the conversation.  Once a request is received, it is evaluated using
+        # the given callback.  If the callback returns True, the request is
+        # accepted and the conversation is finished.  Otherwise, it is rejected
+        # and another request is awaited.
+
+        request = Receive(flavor_callback)
+
+        accept = Send(accept_message)
+        reject = Send(reject_message)
+
+        def save_request(message): self.request = message
+
+        request.transition(accept, True, save_request)
+        request.transition(reject, False, save_request)
+
+        finish = Finish()
+
+        accept.transition(finish)
+        reject.transition(request)
+
+        self.conversation = Conversation(pipe, request)
+        self.request = None
+
+    # Convenience Methods {{{1
+    def start(self):
+        self.conversation.start()
+
+    def update(self):
+        return self.conversation.update()
+
+    def finished(self):
+        return self.conversation.finished()
+
+    def get_request(self):
+        assert self.finished()
+        return self.request
+
+    # }}}1
+
+###############################################################################
+# The classes beyond this point are primarily intended for use within the      
+# four classes above this point.  Some of these classes can still be used on   
+# their own, but are only necessary in unusual situations, while others        
+# should never be directly used.  Just be sure you know what you are doing.    
+
+class Exchange:
+
+    """ Represents a single exchange in a conversation.  The basic examples,
+    which are all implemented by subclasses below, include sending messages,
+    receiving messages, and ending the conversation.  Complex conversations can
+    be created by linking a number of these exchanges together. """
+    
+    # Interface Definition {{{1
+    def send(self):
+        """ Returns a message that should be sent to the other end of the
+        conversation.  Be careful, because this method will be called every
+        update cycle for as long as the exchange lasts. """
+        return None
+
+    def receive(self, message):
+        """ Accepts a message that was received from the other end of the
+        conversation.  The message is not necessarily relevant to this
+        exchange, but in many cases it will cause a transition to occur. """
+        pass
+
+    def next(self):
+        """ Returns the exchange that should be executed on the next update
+        cycle.  To remain in the same exchange, return self. """
+        raise NotImplementedError
+
+    def finish(self):
+        """ Returns true if this side of the conversation is over.  The
+        conversation itself will keep updating until all outgoing and incoming
+        messages have been completely sent and received, respectively. """
+        return False
+
+    # }}}1
+
+class Send(Exchange):
+
+    """ Sends a message and immediately transitions to a different exchange.
+    That exchange must be specified before the conversation starts. """
+
+    # Constructor {{{1
+    def __init__(self, message):
+        self.message = message
+        self.exchange = None
+
+    # Interface Methods {{{1
+    def send(self):
+        return self.message
+
+    def transition(self, exchange):
+        self.exchange = exchange
+
+    def next(self):
+        return self.exchange
+
+    # }}}1
+
+class Receive(Exchange):
+
+    """ Waits for a message to be received, then transitions the conversation
+    to another exchanges based on the content of the message.  Different types
+    of messages can cause different transitions.  The message type is the
+    message class by default, but this can be controlled by a callback. """
+
+    # Constructor and Attributes {{{1
+    def __init__(self, flavor=lambda message: type(message)):
+        self.flavor = flavor
+
+        # The received attribute contains the last message received, no matter
+        # what its type is.  This allows receive() to communicate with next().
+
+        self.received = None
+        
+        # The messages list contains all of the messages that were received and
+        # recognized.  New messages are pushed onto the front of this list, so
+        # the last message can be found at the 0th index.
+
+        self.messages = []
+
+        self.exchanges = {}
+        self.callbacks = {}
+
+    def get_message(self, index=0):
+        return self.messages[index]
+
+    def get_messages(self):
+        return self.messages
+
+    # Interface Methods {{{1
+    def receive(self, message):
+        self.received = message
+
+    def transition(self, exchange, flavor, callback=lambda message: None):
+        self.exchanges[flavor] = exchange
+        self.callbacks[flavor] = callback
+
+    def next(self):
+        message, self.received = self.received, None
+        transition = self
+
+        if message is not None:
+            flavor = self.flavor(message)
+            transition = self.exchanges.get(flavor, self)
+
+        if transition is not self:
+            self.callbacks[flavor](message)
+            self.messages.insert(0, message)
+        
+        return transition
+
+    # }}}1
+
+class Finish(Exchange):
+
+    """ Ends the conversation without sending or receiving anything.  Note that
+    this does not end the conversation running on the far side of the
+    connection. """
+
+    # Constructor {{{1
+    def __init__(self, callback=lambda: None):
+        self.callback = callback
+
+    # Interface Methods {{{1
+    def finish(self):
+        self.callback()
+        return True
+
+    # }}}1
+
 class Publication:
     """ Represents messages that are waiting to be delivered within a forum.
     Outside of the forum, this class should never be used. """
@@ -199,150 +513,6 @@ class Publication:
         self.message = message
         self.origin = origin
         self.receipt = receipt
-
-    # }}}1
-
-
-# The classes below are part of an experimental messaging framework which works
-# much like a conversation.  You can send requests, wait for replies, and
-# things like that.  Unlike in the forum, in a conversation you are
-# communicating with exactly one other client and you know who that client is.  This
-
-class Exchange:
-
-    # Constructor {{{1
-    def __init__(self, outgoing={}, incoming={}):
-        self.__outgoing = outgoing
-        self.__incoming = incoming
-
-        self.complete = False
-        self.successors = ()
-
-    # Event Handling {{{1
-    def enter(self, client):
-        client.outgoing_callbacks(self.__outgoing, group=self)
-        client.incoming_callbacks(self.__incoming, group=self)
-
-    def update(self, client):
-        pass
-
-    def exit(self, client):
-        client.forget_group(self)
-
-        if self.successors is None:
-            self.successors = ()
-
-    # }}}1
-
-class Inform(Exchange):
-    """ Deliver a message without expecting a response. """
-
-    # Constructor {{{1
-    def __init__(self, flavor, message, function=lambda *ignore: None):
-        self.message = message
-        self.complete = True
-
-        callback = { flavor : function }
-        Exchange.__init__(self, outgoing=callback)
-
-    # Event Handling {{{1
-    def enter(self, client):
-        Exchange.setup(client)
-        client.queue(self.message)
-
-    # }}}1
-
-class Request(Exchange):
-    """ Send a message and wait for a response. """
-
-    # Constructor {{{1
-    def __init__(self, flavor_out, flavor_in, request, callback):
-        self.request = self.request
-        self.callback = self.callback
-
-        outgoing = { flavor_out : lambda client, message: None }
-        incoming = { flavor_in : self.cleanup }
-
-        Exchange.__init__(outgoing, incoming)
-
-    # Event Handling {{{1
-    def enter(self, client):
-        Exchange.setup(client)
-        client.queue(self.request)
-
-    def cleanup(self, client, message):
-        self.complete = True
-        self.successors = self.callback()
-
-    # }}}1
-
-class Reply(Exchange):
-    """ Wait for a message to arrive then respond to it. """
-
-    # Constructor {{{1
-    def __init__(self, flavor_in, flavor_out, callback, successor=False):
-        self.callback = callback
-        self.successor = successor
-
-        outgoing = { flavor_out : lambda client, message: None }
-        incoming = { flavor_in : self.respond }
-
-        Exchange.__init__(outgoing, incoming)
-
-    # Event Handling {{{1
-    def respond(self, client, request):
-        if self.successor:  response, self.successor = self.callback(request)
-        else:               response = self.callback(request)
-        client.queue(response)
-
-    # }}}1
-
-class Conversation:
-    """ Manages any number of concurrent exchanges. """ 
-
-    # Constructor {{{1
-    def __init__(self, client, *exchanges):
-        self.client = client
-        self.exchanges = self.execute(*exchanges)
-
-    # }}}1
-
-    # Update Cycle {{{1
-    def setup(self):
-        pass
-
-    def update(self):
-        self.client.update()
-
-        for exchange in self.exchanges:
-            exchange.update(self.client)
-
-            if exchange.complete:
-                exchange.exit(self.client)
-                self.execute(*exchange.successors)
-
-    def teardown(self):
-        for exchange in self.exchanges:
-            exchange.exit()
-
-    # Exchange Management {{{1
-    def execute(*exchanges):
-        for exchange in exchanges:
-            exchange.enter(self.client)
-
-        self.exchanges.extend(exchanges)
-
-    def inform(self, flavor, message):
-        exchange = Inform(flavor, message)
-        self.execute(exchange)
-
-    def request(self, flavor_out, flavor_in, request, callback):
-        exchange = Request(flavor_out, flavor_in, request, callback)
-        self.execute(exchange)
-
-    def reply(self, flavor_in, flavor_out, callback, successor=False):
-        exchange = Reply(flavor_in, flavor_out, callback, successor)
-        self.execute(exchange)
 
     # }}}1
 

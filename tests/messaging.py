@@ -2,11 +2,12 @@
 
 import path, threading, testing
 
+from messaging import *
 from helpers.pipes import *
-from messaging import Forum, Conversation
 
 forum = testing.Suite("Testing the forums...")
 conversation = testing.Suite("Testing the conversations...")
+facade = testing.Suite("Testing requests and responses...")
 
 # Forum Tests
 # Setup Helper {{{1
@@ -40,9 +41,9 @@ def update(servers, clients):
         forum.update()
 
 # Check Helper {{{1
-def check(outbox, forums, shuffled=False):
+def check(outbox, forums, shuffled=False, empty=False):
     for forum, inbox in forums:
-        inbox.check(outbox, shuffled)
+        inbox.check(outbox, shuffled, empty)
 
 # }}}1
 
@@ -137,7 +138,7 @@ def test_unrelated_messages(helper):
 
     # No messages should be received.
     outbox = Outbox()
-    check(outbox, clients + server)
+    check(outbox, clients + server, empty=True)
 
 # Different Messages {{{1
 @forum.test
@@ -163,51 +164,271 @@ def test_different_messages(helper):
 
 # }}}1
 
-# Looped topologies are no longer supported.
-# Looped Topology {{{1
-def test_looped_topology(helper):
-    client_pipes, server_pipes = connect(3)
-
-    # Group the pipes to recreate a triangular arrangement of hosts.
-    pipes = [ (server_pipes[0], server_pipes[1]),
-              (server_pipes[2], client_pipes[0]),
-              (client_pipes[1], client_pipes[2]) ]
-
-    # Assign each host a unique, nonzero identity number.
-    for identity, peers in enumerate(pipes):
-        peers[0].identity = identity + 1
-        peers[1].identity = identity + 1
-
-    # Create a forum for each host, and arbitrarily make one the "sender".
-    forums = [ (Forum(*pipes[0]), Inbox()),
-               (Forum(*pipes[1]), Inbox()),
-               (Forum(*pipes[2]), Inbox()) ] 
-
-    sender = [forums[0]]
-
-    outbox = Outbox()
-    flavor = outbox.flavor()
-
-    # Have the sender publish just one message.
-    subscribe(flavor, forums)
-    publish(outbox, sender)
-    lock(forums)
-
-    # Update all the forums a number of times, and make sure the message is
-    # only received once.
-    for forum, inbox in 3 * forums:
-        forum.update()
-
-    check(outbox, forums)
-
-# }}}1
-
 # Conversation Tests
-# Coming soon... {{{1
-@conversation.test
-def test_conversation(helper):
-    pass
+# Setup Function {{{1
+@conversation.setup
+def conversation_setup(helper):
+    helper.pipes = client, server = connect()
+
+    helper.client = Conversation(client)
+    helper.server = Conversation(server)
+    helper.conversations = helper.client, helper.server
+
+    helper.inbox = Inbox()
+    helper.outbox = Outbox()
+    helper.boxes = helper.inbox, helper.outbox
+
+    helper.message = helper.outbox.message()
+    helper.flavor = helper.outbox.flavor()
+    helper.outgoing = helper.message, helper.flavor
+
+    helper.finish = Finish()
+
+    def setup(*exchanges):
+        iterator = zip(helper.conversations, exchanges)
+        for conversation, exchange in iterator:
+            conversation.setup(exchange)
+
+    def run(*exchanges):
+        helper.setup(*exchanges)
+        list = helper.conversations
+
+        for conversation in list:
+            conversation.start()
+
+        while list:
+            list = [ conversation for conversation in list
+                    if not conversation.finished() ]
+
+            for conversation in list:
+                conversation.update()
+
+    def check(inbox=helper.inbox, outbox=helper.outbox,
+            shuffled=False, empty=False):
+        inbox.check(outbox, shuffled, empty)
+
+    helper.setup = setup
+    helper.run = run
+    helper.check = check
+
+# Teardown Function {{{1
+@conversation.teardown
+def conversation_teardown(helper):
+    disconnect(*helper.pipes)
 
 # }}}1
 
-testing.run(forum)
+# One Message {{{1
+@conversation.test
+def one_message(helper):
+    inbox, outbox = helper.boxes
+    message, flavor = helper.outgoing
+
+    request = Send(message)
+    request.transition(helper.finish)
+
+    reply = Receive()
+    reply.transition(helper.finish, flavor, inbox.receive)
+
+    outbox.send(message)
+
+    helper.run(request, reply)
+    helper.check()
+
+# Two Messages {{{1
+@conversation.test
+def two_messages(helper):
+    inbox, outbox = helper.boxes
+    message, flavor = helper.outgoing
+
+    request_1 = Send(message)
+    request_2 = Send(message)
+
+    request_1.transition(request_2)
+    request_2.transition(helper.finish)
+
+    reply_1 = Receive()
+    reply_2 = Receive()
+
+    reply_1.transition(reply_2, flavor, inbox.receive)
+    reply_2.transition(helper.finish, flavor, inbox.receive)
+
+    outbox.send(message)
+    outbox.send(message)
+
+    helper.run(request_1, reply_1)
+    helper.check()
+
+# Ignore Extra Messages {{{1
+@conversation.test
+def ignore_extra_messages(helper):
+    inbox, outbox = helper.boxes
+    message, flavor = helper.outgoing
+
+    # This setup will cause the same request to be sent twice, because the
+    # first request transitions into the second one.  However, only one message
+    # should be received because only one message is being listened for.
+
+    request_1 = Send(message)
+    request_2 = Send(message)
+
+    request_1.transition(request_2)
+    request_2.transition(helper.finish)
+
+    only_reply = Receive()
+    only_reply.transition(helper.finish, flavor, inbox.receive)
+
+    outbox.send(message)
+
+    helper.run(request_1, only_reply)
+    helper.check()
+
+# Simultaneous Exchanges {{{1
+@conversation.test
+def simultaneous_exchanges(helper):
+    inbox, outbox = helper.boxes
+    message, flavor = helper.outgoing
+
+    # In this test, both the client and the server are simultaneously sending
+    # and receiving messages of the same type.  Each side sends only one
+    # message, but I expect to end up with two messages because I am sharing
+    # the inbox.
+
+    client_request, server_request = Send(message), Send(message)
+    client_reply, server_reply = Receive(), Receive()
+
+    client_request.transition(helper.finish)
+    server_request.transition(helper.finish)
+
+    client_reply.transition(helper.finish, flavor, inbox.receive)
+    server_reply.transition(helper.finish, flavor, inbox.receive)
+
+    outbox.send(message)
+    outbox.send(message)
+
+    helper.setup(client_request, server_request)
+    helper.setup(client_reply, server_reply)
+
+    helper.run()
+    helper.check()
+
+# }}}1
+
+# Request/Response Tests
+# Setup Function {{{1
+@facade.setup
+def facade_setup(helper):
+    client, server = helper.pipes = connect()
+    outbox = Outbox()
+
+    request_message = outbox.message(flavor="first")
+    request_flavor = outbox.flavor(flavor="first")
+
+    accept_message = outbox.message(flavor="second")
+    accept_flavor = outbox.flavor(flavor="second")
+
+    reject_message = outbox.message(flavor="third")
+    reject_flavor = outbox.flavor(flavor="third")
+
+    print "Request Message:", request_message
+    print "Accept Message:", accept_message
+    print "Reject Message:", reject_message
+    print
+
+    class decision_callback(object):
+
+        def __init__(self, pattern):
+            self.pattern = list(pattern)
+
+        def __str__(self):
+            decision = "accept" if self.pattern[0] else "reject"
+            return "Deciding to %s message.\n" % decision
+
+        def __call__(self, message):
+            print self
+            return self.pattern.pop(0)
+
+    def request():
+        request = Request(client,
+                request_message, accept_flavor, reject_flavor)
+
+        request.start()
+        return request
+
+    def response(*pattern):
+        assert pattern
+        helper.expected = pattern
+
+        response = Response(server,
+                decision_callback(pattern), accept_message, reject_message)
+
+        response.start()
+        return response
+
+    def update(request, response):
+        while not request.finished():
+            for conversation in (request, response):
+                if not conversation.finished():
+                    conversation.update()
+
+    def finished(request, response):
+        for conversation in (request, response):
+            if not conversation.finished():
+                return False
+            return True
+
+    def check(request, response, accepted=True):
+        if accepted:
+            assert request.get_accepted() == True
+            assert request.get_rejected() == False
+
+            assert request.get_response() == accept_message
+            assert response.get_request() == request_message
+
+        else:
+            assert request.get_rejected() == True
+            assert request.get_accepted() == False
+            assert request.get_response() == reject_message
+
+    helper.request = request
+    helper.response = response
+
+    helper.update = update
+    helper.finished = finished
+    helper.check = check
+
+# Teardown Function {{{1
+@facade.teardown
+def facade_teardown(helper):
+    disconnect(*helper.pipes)
+
+# }}}1
+
+# Accept Request {{{1
+@facade.test
+def accept_request(helper):
+    request = helper.request()
+    response = helper.response(True)
+
+    helper.update(request, response)
+    helper.check(request, response)
+
+# Reject Request {{{1
+@facade.test
+def reject_request(helper):
+    request = helper.request()
+    response = helper.response(False, False, True)
+
+    # The response() factory function copies the pattern of expected results
+    # into the 'expected' variable, so that loops like this are possible.
+
+    for expected in helper.expected:
+        helper.update(request, response)
+        helper.check(request, response, expected)
+
+        if not expected:
+            request = helper.request()
+
+# }}}1
+
+testing.run(forum, conversation, facade)

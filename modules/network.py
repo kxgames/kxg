@@ -182,6 +182,9 @@ class Pipe:
         self.socket.setblocking(False)
 
     # Socket Destruction {{{1
+    def idle(self):
+        return self.stream_in == self.stream_out == ""
+
     def close(self):
         self.socket.close()
         self.unlock()
@@ -217,7 +220,6 @@ class Pipe:
         self.locked = True
 
     def unlock(self, *ignore):
-        assert self.locked
         self.locked = False
 
     __enter__ = lock
