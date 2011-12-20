@@ -91,11 +91,11 @@ def simple_messages(helper):
 # Large Messages {{{1
 @testing.test
 def test_many_messages(helper):
-    test_stressful_conditions(count=2**13, bytes=2**4)
+    test_stressful_conditions(count=2**12, bytes=2**5)
 
 @testing.test
 def test_large_messages(helper):
-    test_stressful_conditions(count=2**6, bytes=2**18)
+    test_stressful_conditions(count=2**5, bytes=2**18)
 
 def test_stressful_conditions(count, bytes):
     sender, receiver = connect()
@@ -107,8 +107,7 @@ def test_stressful_conditions(count, bytes):
         message = outbox.send_message(bytes)
         sender.send(message)
 
-    while sender.stream_out or receiver.stream_in:
-
+    while sender.busy() or receiver.busy():
         for message in sender.deliver():
             delivered.receive(message)
 
@@ -138,7 +137,7 @@ def test_partial_messages(helper):
         sender.send(message)
 
     socket = sender.socket
-    stream = sender.stream_out
+    stream = ''.join([ package[0] for package in sender.outgoing])
 
     # Manually deliver the stream in small chunks.
     while stream:
@@ -156,6 +155,6 @@ def test_partial_messages(helper):
 
 # }}}1
 
-testing.title("Testing the low-level network interface...")
+testing.title("Testing the network module...")
 testing.run()
 

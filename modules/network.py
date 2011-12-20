@@ -150,25 +150,20 @@ class Client:
 
 class Pipe:
     """ Allows nonblocking communication across a network connection.  Pipes
-    are often not used directly, but instead passed to higher level
-    communication frameworks, like the forum. """
+    are often not used directly, but are instead passed to higher level
+    communication frameworks like forums or conversations. """
 
     # Constructor {{{1
     def __init__(self, socket):
         self.socket = socket
-
-        self.stream_in = ""
-        self.stream_out = ""
-
         self.locked = False
-        self.pending_deliveries = []
+
+        self.incoming = ""
+        self.outgoing = []
 
         self.socket.setblocking(False)
 
     # Socket Destruction {{{1
-    def idle(self):
-        return self.stream_in == self.stream_out == ""
-
     def close(self):
         self.socket.close()
         self.unlock()
@@ -187,6 +182,13 @@ class Pipe:
         This method must be reimplemented in subclasses and should return a
         data string. """
         raise NotImplementedError
+
+    # Busy and Idle {{{1
+    def busy(self):
+        return self.incoming or self.outgoing
+
+    def idle(self):
+        return self.incoming == "" and self.outgoing == []
 
     # Locking and Unlocking {{{1
 
@@ -219,24 +221,21 @@ class Pipe:
         # default, this value will be the message itself.
 
         receipt = message if receipt is None else receipt
-        delivery = len(stream), receipt
+        self.outgoing.append([stream, receipt])
 
-        self.stream_out += stream
-        self.pending_deliveries.append(delivery)
-
-    """ 
     def deliver(self):
+        receipts = []
 
-        while self.stream_out:
+        while self.outgoing:
 
             try:
-                stream, receipt = self.stream_out[0]
+                stream, receipt = self.outgoing[0]
 
-                delivered = self.socket.send(stream)
-                remainder = stream[delivered:]
+                sent = self.socket.send(stream)
+                self.outgoing[0][0] = stream[sent:]
 
-                if not remainder:
-                    self.stream_out.pop(0)
+                if not self.outgoing[0][0]:
+                    self.outgoing.pop(0)
                     receipts.append(receipt)
 
             except socket.error, message:
@@ -248,75 +247,6 @@ class Pipe:
 
                 # Any other flavor of exception is taken to be a fatal error.
                 else: raise
-
-        return receipts
-    """
-
-    def deliver(self):
-        assert self.locked
-
-        receipts = []
-
-        try:
-            # Deliver as much data as possible without blocking.
-            bytes_delivered = self.socket.send(self.stream_out)
-            self.stream_out = self.stream_out[bytes_delivered:]
-
-        except socket.error, message:
-            
-            # This exception is triggered when no bytes at all can be sent.
-            # Even though this usually indicates a serious problem, it is
-            # silently ignored.
-            if message.errno == errno.EAGAIN: pass
-
-            # Any other flavor of exception is taken to be a fatal error.
-            else: raise
-
-        else:
-
-            # Each pending delivery contains two pieces of information: the
-            # length of that delivery and a receipt object to return if it has
-            # been completely sent.  This loop finds all of the deliveries that
-            # have been successfully sent, removes then from the list of
-            # pending deliveries, and returns the appropriate receipt objects.
-
-            bytes_confirmed = 0
-
-            while self.pending_deliveries:
-                bytes, receipt = self.pending_deliveries.pop(0)
-
-                bytes_confirmed += bytes
-                bytes_remaining = bytes_confirmed - bytes_delivered
-
-                if bytes_remaining > 0:
-
-                    # This is triggered when the message has only been been
-                    # partially sent.  The message is placed back on the
-                    # pending delivery queue, but its length is reset to the
-                    # number of bytes that have not yet been delivered.
-
-                    delivery_remaining = bytes_remaining, receipt
-                    self.pending_deliveries.insert(0, delivery_remaining)
-
-                    # After this is done, the loop needs to be exited.  If it
-                    # isn't, the pending deliveries queue will be destroyed.
-
-                    break
-
-                else:
-                    receipts.append(receipt)
-
-        return receipts
-
-    def deliver_everything(self):
-        assert self.locked
-
-        # This is a blocking version of deliver.  Continue delivering messages
-        # until none are left.
-
-        receipts = []
-        while self.stream_out:
-            receipts += self.deliver()
 
         return receipts
 
@@ -332,7 +262,7 @@ class Pipe:
 
         while True:
             try:
-                self.stream_in += self.socket.recv(4096)
+                self.incoming += self.socket.recv(4096)
 
             except socket.error, message:
                 if message.errno == errno.EAGAIN: break
@@ -343,7 +273,7 @@ class Pipe:
         # it will be completed later.
 
         while True:
-            stream_length = len(self.stream_in)
+            stream_length = len(self.incoming)
             header_length = Header.length
 
             # Make sure the complete header is present, then determine the size
@@ -352,7 +282,7 @@ class Pipe:
             if stream_length < header_length:
                 break
 
-            header_stream = self.stream_in[:header_length]
+            header_stream = self.incoming[:header_length]
             header_type, packet_length = Header.unpack(header_stream)
 
             # Make sure that the message data is complete.  This is especially
@@ -362,8 +292,8 @@ class Pipe:
             if stream_length < packet_length:
                 break
 
-            data = self.stream_in[header_length:packet_length]
-            self.stream_in = self.stream_in[packet_length:]
+            data = self.incoming[header_length:packet_length]
+            self.incoming = self.incoming[packet_length:]
 
             # Interpret the unpacked data based on the message type contained
             # in the header.  There is only one kind of message right now, but
