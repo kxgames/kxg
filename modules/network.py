@@ -24,7 +24,6 @@ class Host:
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         self.closed = False
-        self.next_identity = 1
 
     # Pipe Creation {{{1
     def open(self):
@@ -42,30 +41,23 @@ class Host:
         error = "This host is no longer accepting connections."
         assert not self.finished(), error
 
-        try:
+        while not self.finished():
+
             # Continue looping until accept() throws an exception.
-            while not self.finished():
+            try:
                 connection, address = self.socket.accept()
                 pipe = self.instantiate(connection)
 
-                # Assign the pipe a unique identity.
-                identity = self.next_identity
-                self.next_identity += 1
-
-                with pipe:
-                    pipe.greet(identity)
-                    pipe.deliver()
-
                 self.callback(pipe)
 
-        except socket.error, message:
+            except socket.error, message:
 
-            # This message is triggered by accept() when there are no more
-            # connections to accept.  
-            if message.errno == errno.EAGAIN: return
+                # This message is triggered by accept() when there are no more
+                # connections to accept.  
+                if message.errno == errno.EAGAIN: return
 
-            # Treat any other flavor of exception as a fatal error.
-            else: raise
+                # Treat any other flavor of exception as a fatal error.
+                else: raise
 
     def finished(self):
         return self.closed
@@ -126,9 +118,8 @@ class Client:
     mediated by the pipe. """
 
     # Constructor {{{1
-    def __init__(self, host, port, identity=0, callback=lambda pipe: None):
+    def __init__(self, host, port, callback=lambda pipe: None):
         self.callback = callback
-        self.identity = identity
 
         self.pipe = None
         self.address = host, port
@@ -142,24 +133,18 @@ class Client:
 
     # Pipe Creation {{{1
     def connect(self):
-        if self.pipe and not self.pipe.get_identity():
-            with self.pipe:
-                self.pipe.receive()
+        assert not self.finished()
 
-            if self.pipe.get_identity():
-                self.callback(self.pipe)
+        error = self.socket.connect_ex(self.address)
 
-        elif self.socket.connect_ex(self.address) == 0:
-            socket = self.socket
-            identity = self.identity
+        if error == 0:
+            self.pipe = self.instantiate(self.socket)
+            self.callback(self.pipe)
 
-            self.pipe = self.instantiate(socket)
-
-        else:
-            pass
+        return error
 
     def finished(self):
-        return self.pipe and self.pipe.get_identity()
+        return bool(self.pipe)
 
     # }}}1
 
@@ -171,7 +156,6 @@ class Pipe:
     # Constructor {{{1
     def __init__(self, socket):
         self.socket = socket
-        self.identity = 0
 
         self.stream_in = ""
         self.stream_out = ""
@@ -204,10 +188,6 @@ class Pipe:
         data string. """
         raise NotImplementedError
 
-    # Identity Access {{{1
-    def get_identity(self):
-        return self.identity
-
     # Locking and Unlocking {{{1
 
     # The purpose of these two methods is to allow higher level messaging
@@ -228,25 +208,11 @@ class Pipe:
     # }}}1
 
     # Outgoing Messages {{{1
-    def greet(self, identity):
-        assert self.locked
-        assert not self.identity
-
-        greeting = Greeting.pack(identity)
-        stream = Header.pack_greeting(greeting)
-
-        self.identity = identity
-        self.stream_out += stream
-
-        delivery = len(stream), None
-        self.pending_deliveries.append(delivery)
-
     def send(self, message, receipt=None):
         assert self.locked
-        assert self.identity
 
         data = self.pack(message)
-        stream = Header.pack_message(data)
+        stream = Header.pack(data)
 
         # The receipt argument allows you to provide a value that will returned
         # back to you by deliver() once this message is actually sent.  By
@@ -257,6 +223,34 @@ class Pipe:
 
         self.stream_out += stream
         self.pending_deliveries.append(delivery)
+
+    """ 
+    def deliver(self):
+
+        while self.stream_out:
+
+            try:
+                stream, receipt = self.stream_out[0]
+
+                delivered = self.socket.send(stream)
+                remainder = stream[delivered:]
+
+                if not remainder:
+                    self.stream_out.pop(0)
+                    receipts.append(receipt)
+
+            except socket.error, message:
+                
+                # This exception is triggered when no bytes at all can be sent.
+                # Even though this usually indicates a serious problem, it is
+                # silently ignored.
+                if message.errno == errno.EAGAIN: break
+
+                # Any other flavor of exception is taken to be a fatal error.
+                else: raise
+
+        return receipts
+    """
 
     def deliver(self):
         assert self.locked
@@ -372,17 +366,12 @@ class Pipe:
             self.stream_in = self.stream_in[packet_length:]
 
             # Interpret the unpacked data based on the message type contained
-            # in the header.  Greetings are a special type of message used to
-            # assign a common identity to both ends of a pipe.
+            # in the header.  There is only one kind of message right now, but
+            # that may change in the future.
 
             if header_type == Header.message:
-                assert self.identity
                 message = self.unpack(data)
                 messages.append(message)
-
-            elif header_type == Header.greeting:
-                assert self.identity == 0
-                self.identity = Greeting.unpack(data)
 
             else:
                 raise AssertionError
@@ -400,15 +389,9 @@ class Header:
     length = struct.calcsize(format)
 
     message = 0
-    greeting = 1
 
     @classmethod
-    def pack_greeting(cls, data):
-        header = struct.pack(cls.format, cls.greeting, len(data))
-        return header + data
-
-    @classmethod
-    def pack_message(cls, data):
+    def pack(cls, data):
         header = struct.pack(cls.format, cls.message, len(data))
         return header + data
 
@@ -419,24 +402,6 @@ class Header:
     
     # }}}1
     
-class Greeting:
-    """ Packs and unpacks a greeting messages.  These messages have special
-    meaning to pipes and are used to assign identities across the network. """
-
-    # Greeting Format {{{1
-    format = '!I'
-    length = struct.calcsize(format)
-
-    @classmethod
-    def pack(cls, identity):
-        return struct.pack(cls.format, identity)
-
-    @classmethod
-    def unpack(cls, data):
-        return struct.unpack(cls.format, data)[0]
-
-    # }}}1
-
 class PickleFactory:
     """ Provides an instantiate() method that crates PicklePipe objects.  This
     method needs to be redefines in the host, client, and server classes. """

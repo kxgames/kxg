@@ -5,11 +5,8 @@ import testing
 
 from helpers.pipes import *
 
-simple = testing.Suite("Performing simple tests...")
-rigorous = testing.Suite("Performing rigorous tests...")
-
 # Isolated Pipes {{{1
-@simple.test
+@testing.test
 def isolated_pipes(helper):
     machine, port = 'localhost', 10236
 
@@ -27,7 +24,7 @@ def isolated_pipes(helper):
     else: raise AssertionError
 
     # Now test an isolated client.
-    client = PickleClient(machine, port, identity=1)
+    client = PickleClient(machine, port)
 
     client.connect()
     client.connect()
@@ -35,16 +32,12 @@ def isolated_pipes(helper):
     assert not client.finished()
 
 # Connected Pipes {{{1
-@simple.test
+@testing.test
 def connected_pipes(helper):
     host, port = 'localhost', 10236
 
-    def check_client(pipe):
-        assert pipe.get_identity() == 1
-
-    def check_server(pipes):
-        assert len(pipes) == 1
-        assert pipes[0].get_identity() == 1
+    def check_client(pipe):  pass
+    def check_server(pipes): assert len(pipes) == 1
 
     server = PickleServer(port, seats=1, callback=check_server)
     client = PickleClient(host, port, callback=check_client)
@@ -52,15 +45,14 @@ def connected_pipes(helper):
     server.open()
 
     client.connect()    # Establish a connection.
-    server.accept()     # Accept the connection and assign an identity.
+    server.accept()     # Accept the connection.
     client.connect()    # Acknowledge the new connection.
-    client.connect()    # Receive the assigned identity.
 
     assert server.finished()
     assert client.finished()
 
 # Simple Messages {{{1
-@simple.test
+@testing.test
 def simple_messages(helper):
     host, port = 'localhost', 10236
 
@@ -70,8 +62,9 @@ def simple_messages(helper):
     # Setup a network connection.
     server.open()
 
-    client.connect(); server.accept()
-    client.connect(); client.connect()
+    client.connect()
+    server.accept()
+    client.connect()
 
     sender = client.get_pipe()
     receiver = server.get_pipes()[0]
@@ -96,13 +89,13 @@ def simple_messages(helper):
 # }}}1
 
 # Large Messages {{{1
-@rigorous.test
+@testing.test
 def test_many_messages(helper):
-    test_stressful_conditions(count=2**12, bytes=2**4)
+    test_stressful_conditions(count=2**13, bytes=2**4)
 
-@rigorous.test
+@testing.test
 def test_large_messages(helper):
-    test_stressful_conditions(count=2**4, bytes=2**17)
+    test_stressful_conditions(count=2**6, bytes=2**18)
 
 def test_stressful_conditions(count, bytes):
     sender, receiver = connect()
@@ -128,7 +121,7 @@ def test_stressful_conditions(count, bytes):
     received.check(outbox)
 
 # Partial Messages {{{1
-@rigorous.test
+@testing.test
 def test_partial_messages(helper):
     sender, receiver = connect()
     inbox, outbox = Inbox(), Outbox()
@@ -163,5 +156,6 @@ def test_partial_messages(helper):
 
 # }}}1
 
-testing.run(simple, rigorous)
+testing.title("Testing the low-level network interface...")
+testing.run()
 

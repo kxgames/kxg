@@ -96,11 +96,8 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
     # Connect each of the clients to the server.  The connect() method for the
     # clients has to be called a number of times.
     for client in clients:
-        client.connect();   assert not client.finished()
-        client.connect();   assert not client.finished()
-
+        while not client.finished(): client.connect()
         server.accept();    assert not server.empty()
-        client.connect();   assert client.finished()
 
     # Make sure that the server has stopped accepting new connections.
     assert server.full()
@@ -111,21 +108,9 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
     servers = server.get_pipes()
     clients = [ client.get_pipe() for client in clients ]
 
-    identity = lambda pipe: pipe.get_identity()
-
-    servers.sort(key=identity)
-    clients.sort(key=identity)
-
-    # Make sure that the right number of connections were made, and that the
-    # server assigned valid identity numbers.
+    # Make sure that the right number of connections were made.
     assert len(clients) == pipes
     assert len(servers) == pipes
-
-    for index, server in enumerate(servers):
-        assert server.get_identity() == 1 + index
-
-    for index, client in enumerate(clients):
-        assert client.get_identity() == 1 + index
 
     # Return the newly created connections. If only one connection is being
     # created, return the pipes as simple objects rather than lists.
