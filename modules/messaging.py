@@ -250,12 +250,85 @@ class Conversation:
 
     # }}}1
 
-class Request:
+class SimpleSend(Conversation):
+
+    """ Sends a single message and finishes without waiting for a response.
+    This class is intended only for brief exchanges with SimpleReceive.  It
+    should not be used in more complex protocols. """
+
+    # Setup {{{1
+    def __init__(self, pipe, message):
+        send = Send(message); finish = Finish()
+        send.transition(finish)
+        self.conversation = Conversation(pipe, send)
+
+    # }}}1
+
+class SimpleReceive(Conversation):
+
+    """ Waits to receive a single message, then finishes.  This class is meant
+    to be used with SimpleSend, and should not be used in more complicated
+    protocols. """
+
+    # Setup {{{1
+    def __init__(self, pipe, flavor, callback=lambda message: None):
+        self.receive = Receive(); finish = Finish()
+        self.receive.transition(finish, flavor, callback)
+        self.conversation = Conversation(pipe, receive)
+
+    def get_message(self):
+        return self.receive.get_message()
+
+    # }}}1
+
+class SimpleRequest(Conversation):
+
+    """ Sends a single message and waits to receive a response.  This class is
+    can be used, in conjunction with SimpleResponse, to request that
+    information be sent over the network. """
+
+    # Setup {{{1
+    def __init__(self, pipe, message, flavor, callback):
+        request = Send(message)
+        response = Receive()
+        finish = Finish()
+
+        request.transition(response)
+        response.transition(finish, flavor, callback)
+
+        self.conversation = Conversation(pipe, request)
+        self.response = response
+
+    def get_response(self):
+        return self.response.get_message()
+
+    # }}}1
+
+class SimpleResponse(Conversation):
+
+    """ Waits to receive a request, then respond with a predefined response.
+    This class is meant to be used with SimpleRequest to reply to simple
+    requests. """
+
+    # Setup {{{1
+    def __init__(self, pipe, flavor, message):
+        request = Receive()
+        response = Send(message)
+        finish = Finish()
+
+        request.transition(response, flavor)
+        request.transition(finish)
+
+        self.conversation = Conversation(pipe, request)
+
+    # }}}1
+
+class FullRequest(Conversation):
 
     """ Sends a request and waits for it to either be accepted or rejected.
-    This class is a thin wrapper around a conversation and a number of
-    different exchanges, meant to be useful in the most common situations.  If
-    you want to make a custom conversation, this may be useful to look at. """
+    This class is a wrapper around a conversation and a number of different
+    exchanges, meant to be useful in the most common situations.  If you want
+    to make a custom conversation, this may be useful to look at. """
 
     # Setup {{{1
     def __init__(self, pipe, message, accept_flavor, reject_flavor):
@@ -290,16 +363,7 @@ class Request:
         self.result = False
         self.response = None
 
-    # Convenience Methods {{{1
-    def start(self):
-        self.conversation.start()
-
-    def update(self):
-        return self.conversation.update()
-
-    def finished(self):
-        return self.conversation.finished()
-
+    # Attributes {{{1
     def get_accepted(self):
         assert self.finished()
         return self.finished() and self.result
@@ -314,7 +378,7 @@ class Request:
 
     # }}}1
 
-class Response:
+class FullResponse(Conversation):
 
     """ Waits for a request to arrive and, once it does, decides whether or not
     to accept it.  This class is meant to work with the request class above.
@@ -348,16 +412,7 @@ class Response:
         self.conversation = Conversation(pipe, request)
         self.request = None
 
-    # Convenience Methods {{{1
-    def start(self):
-        self.conversation.start()
-
-    def update(self):
-        return self.conversation.update()
-
-    def finished(self):
-        return self.conversation.finished()
-
+    # Attributes {{{1
     def get_request(self):
         assert self.finished()
         return self.request
@@ -365,10 +420,10 @@ class Response:
     # }}}1
 
 ###############################################################################
-# The classes beyond this point are primarily intended for use within the      
-# four classes above this point.  Some of these classes can still be used on   
-# their own, but are only necessary in unusual situations, while others        
-# should never be directly used.  Just be sure you know what you are doing.    
+# The classes beyond this point are primarily intended for use within the
+# classes above this point.  Some of these classes can still be used on their
+# own, but are only necessary in unusual situations, while others should never
+# be directly used.  Just be sure you know what you are doing.
 
 class Exchange:
 
