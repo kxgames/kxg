@@ -349,7 +349,7 @@ def facade_setup(helper):
             return self.pattern.pop(0)
 
     def request():
-        request = Request(client,
+        request = FullRequest(client,
                 request_message, accept_flavor, reject_flavor)
 
         request.start()
@@ -359,7 +359,7 @@ def facade_setup(helper):
         assert pattern
         helper.expected = pattern
 
-        response = Response(server,
+        response = FullResponse(server,
                 decision_callback(pattern), accept_message, reject_message)
 
         response.start()
