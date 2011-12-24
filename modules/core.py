@@ -1,6 +1,7 @@
 from __future__ import division
 
 import pygame.time
+import multiprocessing
 from messaging import Forum
 
 class Loop:
@@ -34,8 +35,53 @@ class Loop:
 
     # }}}1
 
+class LoopDebugger:
+
+    """ Simultaneously plays any number of different game loops, by executing
+    each loop in its own process.  This greatly facilitates the debugging and
+    testing multiplayer games. """
+
+    # Process Class {{{1
+    class Process(multiprocessing.Process):
+
+        def __init__(self, name, loop):
+            multiprocessing.Process.__init__(self, name=name)
+            self.loop = loop
+
+        def __nonzero__(self):
+            return self.is_alive()
+
+        def run(self):
+            try: self.loop.play()
+            except KeyboardInterrupt:
+                pass
+
+    # }}}1
+
+    # Constructor {{{1
+    def __init__(self):
+        self.threads = []
+
+    # Run Methods {{{1
+    def loop(self, name, loop):
+        thread = LoopDebugger.Process(name, loop)
+        self.threads.append(thread)
+
+    def run(self):
+        try:
+            for thread in self.threads:
+                thread.start()
+
+            for thread in self.threads:
+                thread.join()
+
+        except KeyboardInterrupt:
+            pass
+
+    # }}}1
+
 class Engine:
-    """ Control everything happening in the game.  This is just an abstract
+    """ Controls everything happening in the game.  This is just an abstract
     base class providing methods for updating and switching engines. """
 
     # Constructor {{{1
@@ -85,8 +131,8 @@ class Engine:
     # }}}1
 
 class ExitEngine(Engine):
-    """ Exit the game loop and terminate the program.  This class is only meant
-    to provide a clean and easy way to close the game. """
+    """ Exits the game loop and terminates the program.  This class is only
+    meant to provide a clean and easy way to close the game. """
 
     # Constructor {{{1
     def __init__(self, loop):
@@ -99,9 +145,9 @@ class ExitEngine(Engine):
     # }}}1
 
 class GameEngine(Engine):
-    """ Play the game using the standard game loop.  This class assumes that
+    """ Plays the game using the standard game loop.  This class assumes that
     the world, game, and tasks attributes are all defined in a subclass.  The
-    tasks generate messages, which are passed through the forum to the game.
+    tasks generate messages which are passed through the forum to the game.
     The game is responsible for changing the game world. """
 
     # Constructor {{{1
@@ -148,7 +194,7 @@ class GameEngine(Engine):
         for task in self.tasks:
             task.update(time)
 
-        self.forum.deliver()
+        self.forum.update()
         self.game.update(time)
 
     def teardown(self):
@@ -161,7 +207,7 @@ class GameEngine(Engine):
 
 class Task:
     """ Controls a single aspect of an engine.  Classes that implement this
-    interface can be easily integrated into the serial or parallel engines.
+    interface can be easily integrated into game engine and its subclasses.
     That said, a class can be manually used in any engine without inheriting
     from this. """
 

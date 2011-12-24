@@ -36,34 +36,6 @@ class Forum:
 
         self.setup(*pipes)
 
-    # }}}1
-
-    # Setup and Teardown {{{1
-    def setup(self, *pipes):
-        """ Connect this forum to another forum on a remote machine.  Any
-        message published by either forum will be relayed to the other.  This
-        method must be called before the forum is locked. """
-
-        assert not self.locked
-
-        for pipe in pipes:
-            pipe.register(self.target)
-            self.pipes.append(pipe)
-
-    def teardown(self):
-        """ Disconnect this forum from any forum over the network.  The pipes
-        that were being used to communicate with the remote forums will still
-        be active, they just won't relay any incoming messages to this forum
-        anymore. """
-
-        self.pipes = []
-        self.history = {}
-
-        self.subscriptions = {}
-        self.publications = queue.Queue()
-
-        self.locked = False
-
     # Access Control {{{1
     def get_member(self):
         return self.member
@@ -141,6 +113,7 @@ class Forum:
             # Deliver the message to any remote peers.
             for pipe in self.pipes:
                 if pipe is not publication.origin:
+                    print "Forum: Delivering a message."
                     pipe.send(message, publication.receipt)
 
         # Send any queued up outgoing messages.
@@ -216,7 +189,6 @@ class Conversation:
         for exchange in self.exchanges:
             message = exchange.send()
             if message is not None:
-                print "Sending message:", message
                 self.pipe.send(message)
 
         self.pipe.deliver()
@@ -224,7 +196,6 @@ class Conversation:
 
     def update_incoming(self):
         for message in self.pipe.receive():
-            print "Receiving message:", message
             for exchange in self.exchanges:
                 exchange.receive(message)
             self.update_exchanges()
@@ -260,7 +231,8 @@ class SimpleSend(Conversation):
     def __init__(self, pipe, message):
         send = Send(message); finish = Finish()
         send.transition(finish)
-        self.conversation = Conversation(pipe, send)
+
+        Conversation.__init__(self, pipe, send)
 
     # }}}1
 
@@ -274,7 +246,8 @@ class SimpleReceive(Conversation):
     def __init__(self, pipe, flavor, callback=lambda message: None):
         self.receive = Receive(); finish = Finish()
         self.receive.transition(finish, flavor, callback)
-        self.conversation = Conversation(pipe, receive)
+
+        Conversation.__init__(self, pipe, self.receive)
 
     def get_message(self):
         return self.receive.get_message()
@@ -296,7 +269,7 @@ class SimpleRequest(Conversation):
         request.transition(response)
         response.transition(finish, flavor, callback)
 
-        self.conversation = Conversation(pipe, request)
+        Conversation.__init__(self, pipe, request)
         self.response = response
 
     def get_response(self):
@@ -319,7 +292,7 @@ class SimpleResponse(Conversation):
         request.transition(response, flavor)
         request.transition(finish)
 
-        self.conversation = Conversation(pipe, request)
+        Conversation.__init__(self, pipe, request)
 
     # }}}1
 
@@ -358,7 +331,7 @@ class FullRequest(Conversation):
         # conversation object.  The second argument to the constructor
         # indicates that the conversation will begin by sending the request.
 
-        self.conversation = Conversation(pipe, request)
+        Conversation.__init__(self, pipe, request)
 
         self.result = False
         self.response = None
@@ -409,7 +382,7 @@ class FullResponse(Conversation):
         accept.transition(finish)
         reject.transition(request)
 
-        self.conversation = Conversation(pipe, request)
+        Conversation.__init__(self, pipe, request)
         self.request = None
 
     # Attributes {{{1
