@@ -15,8 +15,8 @@ class Sprite:
         self.max_acceleration = infinity
         self.max_velocity = infinity
 
-    def setup(self, r=Vector.null(), max_a=infinity, max_v=infinity):
-        self.position = r
+    def setup(self, p=Vector.null(), max_a=infinity, max_v=infinity):
+        self.position = p
         self.max_acceleration = max_a
         self.max_velocity = max_v
 
@@ -79,7 +79,8 @@ class Sprite:
 
 class Vehicle (Sprite):
     """ An application of the Sprite class with flocking capabilities. 
-    Note: Non-behavior (ie: external) accelerations are ignored."""
+    Note: Non-behavior (ie: external) accelerations are ignored; However you
+    can write your own behavior and its acceleration will be included. """
 
     # Constructor {{{1
 
@@ -92,8 +93,13 @@ class Vehicle (Sprite):
         self.mass = 1
         self.behavior_acceleration = Vector.null()
 
-    def setup(self, pos, mass=1, max_a=inf, max_v=inf, facing=Vector.null()):
-        Sprite.setup(self, pos, max_a, max_v)
+    def setup(self, 
+            position=Vector.null(),
+            maximum_acceleration=inf,
+            maximum_velocity=inf,
+            mass=1, 
+            facing=Vector.null()):
+        Sprite.setup(self, position, maximum_acceleration, maximum_velocity)
         self.mass = mass
         if not facing == Vector.null():
             self.facing = facing.normal
@@ -102,6 +108,8 @@ class Vehicle (Sprite):
     def update(self, time):
         """ Update acceleration. Accounts for the importance and
         priority (order) of multiple behaviors. """
+        
+        # .... I feel this stuff could be done alot better.
         total_acceleration = Vector.null()
         max_jerk = self.max_acceleration
 
@@ -143,19 +151,35 @@ class Vehicle (Sprite):
 class Base:
     """ The base class for all behavior classes. """
     # Base {{{1
-    def __init__ (self, sprite, weight):
+    def __init__ (self, sprite, power):
         self.sprite = sprite
-        self.weight = weight
+        self.power = power
         self.last_delta_velocity = Vector.null()
 
     def get_delta_velocity (self):
         return self.last_delta_velocity
     # }}}1
 
+class Friction (Base):
+    # Fiction {{{1
+    def __init__ (self, sprite, power, friction_coefficient):
+        Base.__init__(self, sprite, power)
+
+        self.friction = friction_coefficient
+    
+    def update (self):
+        velocity = self.sprite.get_velocity()
+        acceleration = Vector.null()
+        if velocity.magnitude > .0001:
+            acceleration = -velocity * self.friction
+        self.last_delta_velocity = acceleration
+        return acceleration, self.power
+    # }}}1
+
 class Seek(Base):
     # Seek {{{1
-    def __init__ (self, sprite, weight, target, los=0.0):
-        Base.__init__(self, sprite, weight)
+    def __init__ (self, sprite, power, target, los=0.0):
+        Base.__init__(self, sprite, power)
 
         self.target = target
         self.los = los
@@ -176,13 +200,13 @@ class Seek(Base):
             delta_velocity = desired_velocity - self.sprite.get_velocity()
 
         self.last_delta_velocity = delta_velocity
-        return delta_velocity, self.weight
+        return delta_velocity, self.power
     # }}}1
 
 class Flee(Base):
     # Flee {{{1
-    def __init__ (self, sprite, weight, target, los=0.0):
-        Base.__init__(self, sprite, weight)
+    def __init__ (self, sprite, power, target, los=0.0):
+        Base.__init__(self, sprite, power)
 
         self.target = target
         self.los = los
@@ -206,13 +230,13 @@ class Flee(Base):
             delta_velocity = desired_velocity - self.sprite.get_velocity()
 
         self.last_delta_velocity = delta_velocity
-        return delta_velocity, self.weight
+        return delta_velocity, self.power
     # }}}1
 
 class Wander(Base):
     # Wander {{{1
-    def __init__ (self, sprite, weight, wander_radius, distance, jitter):
-        Base.__init__(self, sprite, weight)
+    def __init__ (self, sprite, power, wander_radius, distance, jitter):
+        Base.__init__(self, sprite, power)
 
         self.target = Sprite()
 
@@ -242,6 +266,6 @@ class Wander(Base):
         # in effect? Dont know if this is actually a problem.
 
         self.last_delta_velocity = delta_velocity
-        return delta_velocity, self.weight
+        return delta_velocity, self.power
     # }}}1
 
