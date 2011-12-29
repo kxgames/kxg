@@ -19,6 +19,7 @@ class Forum:
 
         self.subscriptions = {}
         self.publications = queue.Queue()
+        self.incoming_publications = []
 
         class Publisher:
             publish = self.publish
@@ -91,11 +92,19 @@ class Forum:
 
         assert self.locked
 
-        # Add any incoming messages to the network queue.
+        # Receive and store any incoming messages.
         for pipe in self.pipes:
             for message in pipe.receive():
                 publication = Publication(message, origin=pipe)
-                self.publications.put(publication)
+                self.incoming_publications.append(publication)
+
+        # Add at most a single incoming message to the publication queue.  This
+        # helps prevent race conditions, because it guarantees that each
+        # incoming message gets fully processed.
+
+        if self.incoming_publications:
+            publication = self.incoming_publications.pop(0)
+            self.publications.put(publication)
 
         while True:
             # Pop messages off the publication queue one at a time.

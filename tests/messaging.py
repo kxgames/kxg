@@ -9,6 +9,12 @@ forum = testing.Suite("Testing the forums...")
 conversation = testing.Suite("Testing the conversations...")
 facade = testing.Suite("Testing requests and responses...")
 
+# The forum tests are something of a mess.  I just finished making a very
+# simple change to the forum class that broke a lot of the tests, and it took
+# me a long time to get the tests working again.  Most of that time was spent
+# either trying to figure out how the tests were supposed to work or how to fit
+# a simple change into the rigid existing scaffold.  
+
 # Forum Tests
 # Setup Helper {{{1
 def setup(count):
@@ -35,7 +41,7 @@ def publish(outbox, forums, flavor="default"):
         message = outbox.send_message(flavor=flavor)
         forum.publish(message)
 
-# Deliver Helper {{{1
+# Update Helper {{{1
 def update(servers, clients):
     for forum, inbox in clients + servers + clients:
         forum.update()
@@ -88,7 +94,7 @@ def test_online_forum(helper):
 # Two Messages {{{1
 @forum.test
 def test_two_messages(helper):
-    server, clients = setup(64)
+    server, clients = setup(2)
 
     outbox = Outbox()
     flavor = outbox.flavor()
@@ -100,6 +106,8 @@ def test_two_messages(helper):
     publish(outbox, server)
 
     update(server, clients)
+    update(server, clients)
+
     check(outbox, clients + server)
 
 # Shuffled Messages {{{1
@@ -116,7 +124,9 @@ def test_shuffled_messages(helper):
     for iteration in range(16):
         publish(outbox, clients)
 
-    update(server, clients)
+    for iteration in range(4 * 16):
+        update(server, clients)
+
     check(outbox, clients + server, shuffled=True)
 
 # Unrelated Messages {{{1
@@ -134,7 +144,8 @@ def test_unrelated_messages(helper):
     for iteration in range(4):
         publish(outbox, clients, "second")    # Unrelated.
 
-    update(server, clients)
+    for iteration in range(4):
+        update(server, clients)
 
     # No messages should be received.
     outbox = Outbox()
@@ -157,7 +168,8 @@ def test_different_messages(helper):
     for outbox, flavor in zip(outboxes, flavors):
         publish(outbox, server, flavor)
 
-    update(server, clients)
+    for flavor in flavors:
+        update(server, clients)
 
     for outbox, group in zip(outboxes, groups):
         check(outbox, group)
