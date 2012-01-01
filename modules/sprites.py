@@ -1,5 +1,6 @@
 from vector import *
-from utilities.infinity import *
+
+infinity = inf = float("inf")
 
 class Sprite:
     """ A parent class for every game object that can move.  This class stores
@@ -32,7 +33,7 @@ class Sprite:
         self.velocity += self.acceleration * (time / 2); self.check_velocity()
         self.position += self.velocity * time
         self.velocity += self.acceleration * (time / 2); self.check_velocity()
-
+        
     def check_acceleration(self):
         a = self.acceleration
         if a.magnitude > self.max_acceleration:
@@ -92,8 +93,13 @@ class Vehicle (Sprite):
         self.mass = 1
         self.behavior_acceleration = Vector.null()
 
-    def setup(self, pos, mass=1, max_a=inf, max_v=inf, facing=Vector.null()):
-        Sprite.setup(self, pos, max_a, max_v)
+    def setup(self,
+            position=Vector.null(),
+            mass=1,
+            maximum_acceleration=inf,
+            maximum_velocity=inf,
+            facing=Vector.null()):
+        Sprite.setup(self, position, maximum_acceleration, maximum_velocity)
         self.mass = mass
         if not facing == Vector.null():
             self.facing = facing.normal
@@ -109,6 +115,7 @@ class Vehicle (Sprite):
             acceleration, importance = behavior.update()
             weighted_acceleration = acceleration * importance
 
+            """ 
             if max_jerk >= weighted_acceleration.magnitude:
                 max_jerk -= weighted_acceleration.magnitude
                 total_acceleration += weighted_acceleration
@@ -116,7 +123,8 @@ class Vehicle (Sprite):
                 total_acceleration += weighted_acceleration.normal * max_jerk
                 break
             else:
-                break
+                break """
+            total_acceleration += weighted_acceleration
 
         self.acceleration = total_acceleration
 
@@ -140,22 +148,34 @@ class Vehicle (Sprite):
 
     # }}}1
 
-class Base:
+class BaseBehavior:
     """ The base class for all behavior classes. """
-    # Base {{{1
+    # BaseBehavior {{{1
     def __init__ (self, sprite, weight):
         self.sprite = sprite
         self.weight = weight
         self.last_delta_velocity = Vector.null()
+    
+    def update(self):
+        raise NotImplementedError
 
     def get_delta_velocity (self):
         return self.last_delta_velocity
     # }}}1
 
-class Seek(Base):
+class Friction(BaseBehavior):
+    # An empty friction behavior {{{1
+    def __init__(self, sprite, weight, friction):
+        BaseBehavior.__init__(self, sprite, weight)
+    
+    def update(self):
+        return Vector.null(), self.weight
+    # }}}1
+
+class Seek(BaseBehavior):
     # Seek {{{1
     def __init__ (self, sprite, weight, target, los=0.0):
-        Base.__init__(self, sprite, weight)
+        BaseBehavior.__init__(self, sprite, weight)
 
         self.target = target
         self.los = los
@@ -179,10 +199,10 @@ class Seek(Base):
         return delta_velocity, self.weight
     # }}}1
 
-class Flee(Base):
+class Flee(BaseBehavior):
     # Flee {{{1
     def __init__ (self, sprite, weight, target, los=0.0):
-        Base.__init__(self, sprite, weight)
+        BaseBehavior.__init__(self, sprite, weight)
 
         self.target = target
         self.los = los
@@ -209,10 +229,10 @@ class Flee(Base):
         return delta_velocity, self.weight
     # }}}1
 
-class Wander(Base):
+class Wander(BaseBehavior):
     # Wander {{{1
     def __init__ (self, sprite, weight, wander_radius, distance, jitter):
-        Base.__init__(self, sprite, weight)
+        BaseBehavior.__init__(self, sprite, weight)
 
         self.target = Sprite()
 
