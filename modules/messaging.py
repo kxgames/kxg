@@ -113,7 +113,7 @@ class Forum:
             # Deliver the message to any remote peers.
             for pipe in self.pipes:
                 if pipe is not publication.origin:
-                    print "Forum: Delivering a message."
+                    #print "Forum: Delivering a message."
                     pipe.send(message, publication.receipt)
 
         # Send any queued up outgoing messages.
