@@ -1,6 +1,8 @@
 import network
 import Queue as queue
 
+from utilities.infinity import *
+
 class Forum:
     """ Manages a messaging system that allows messages to be published for any
     interested subscriber to receive.  If desired, published messages will even
@@ -9,7 +11,7 @@ class Forum:
     any time from any thread. """
 
     # Constructor {{{1
-    def __init__(self, *pipes):
+    def __init__(self, *pipes, **options):
         """ Create and prepare a new forum object.  If any network connections
         are passed into the constructor, the forum will presume that other
         forums are listening and will attempt to communicate with them. """
@@ -19,6 +21,10 @@ class Forum:
 
         self.subscriptions = {}
         self.publications = queue.Queue()
+
+        safety_flag = options.get("safe", True)
+
+        self.incoming_limit = 1 if safety_flag else infinity
         self.incoming_publications = []
 
         class Publisher:
@@ -92,17 +98,28 @@ class Forum:
 
         assert self.locked
 
-        # Receive and store any incoming messages.
+        # Accept any messages that came in over the network since the last
+        # update.  Not all of these messages will necessarily delivered this
+        # time.  Those that aren't will be stored and delivered later.
+        
         for pipe in self.pipes:
             for message in pipe.receive():
                 publication = Publication(message, origin=pipe)
                 self.incoming_publications.append(publication)
 
-        # Add at most a single incoming message to the publication queue.  This
-        # helps prevent race conditions, because it guarantees that each
-        # incoming message gets fully processed.
+        # Decide how many messages to deliver.  It is safer to deliver only
+        # one, because this eliminates some potential race conditions.
+        # However, sometimes this performance hit is unacceptable.
 
-        if self.incoming_publications:
+        iteration = 0
+        while True:
+            iteration += 1
+
+            if iteration < self.incoming_limit:
+                break
+            if not self.incoming_publications:
+                break
+
             publication = self.incoming_publications.pop(0)
             self.publications.put(publication)
 
