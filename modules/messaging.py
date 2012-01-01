@@ -79,7 +79,7 @@ class Forum:
         method must be called before the forum is locked. """
 
         assert not self.locked
-        self.pipes = pipes
+        self.pipes.extend(pipes)
 
     def update(self):
         """ Deliver any messages that have been published since the last call
@@ -99,22 +99,28 @@ class Forum:
 
         while True:
             # Pop messages off the publication queue one at a time.
-            try: publication = self.publications.get(False)
+            try: 
+                publication = self.publications.get(False)
+
+                # Deliver the message to local subscribers.
+                message = publication.message
+                flavor = type(message)
+
+                for callback in self.subscriptions.get(flavor, []):
+                    callback(message)
+
+                # Deliver the message to any remote peers.
+                for pipe in self.pipes:
+                    if pipe is not publication.origin:
+                        pipe.send(message, publication.receipt)
+
+                # Deliver the message to any remote peers.
+                for pipe in self.pipes:
+                    if pipe is not publication.origin:
+                        #print "Forum: Delivering a message."
+                        pipe.send(message, publication.receipt)
             except queue.Empty:
                 break
-
-            # Deliver the message to local subscribers.
-            message = publication.message
-            flavor = type(message)
-
-            for callback in self.subscriptions.get(flavor, []):
-                callback(message)
-
-            # Deliver the message to any remote peers.
-            for pipe in self.pipes:
-                if pipe is not publication.origin:
-                    #print "Forum: Delivering a message."
-                    pipe.send(message, publication.receipt)
 
         # Send any queued up outgoing messages.
         for pipe in self.pipes:
