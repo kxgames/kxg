@@ -166,7 +166,7 @@ class BaseBehavior:
         return self.last_delta_velocity
     # }}}1
 
-class Friction (Base):
+class Friction (BaseBehavior):
     # Fiction {{{1
     def __init__ (self, sprite, power, friction_coefficient):
         BaseBehavior.__init__(self, sprite, power)
