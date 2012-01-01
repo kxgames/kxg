@@ -12,11 +12,11 @@ class Host:
     but by itself the host cannot. """
 
     # Constructor {{{1
-    def __init__(self, port, queue=5, callback=lambda pipe: None):
+    def __init__(self, host, port, queue=5, callback=lambda pipe: None):
         self.callback = callback
         self.queue = queue
 
-        self.address = '', port
+        self.address = host, port
         self.socket = socket.socket()
 
         # The second option allows ports to be reused immediately.
@@ -80,7 +80,7 @@ class Server(Host):
     the case, you need to use hosts instead. """
 
     # Constructor {{{1
-    def __init__(self, port, seats, callback=lambda pipes: None):
+    def __init__(self, host, port, seats, callback=lambda pipes: None):
         self.pipes = []
         self.seats = seats
 
@@ -91,7 +91,7 @@ class Server(Host):
                 callback(self.pipes)
                 self.close()
 
-        Host.__init__(self, port, queue=seats, callback=greet)
+        Host.__init__(self, host, port, queue=seats, callback=greet)
 
     def __iter__(self):
         assert self.full()
