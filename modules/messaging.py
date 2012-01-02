@@ -115,7 +115,7 @@ class Forum:
         while True:
             iteration += 1
 
-            if iteration < self.incoming_limit:
+            if iteration > self.incoming_limit:
                 break
             if not self.incoming_publications:
                 break

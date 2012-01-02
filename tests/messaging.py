@@ -9,6 +9,14 @@ forum = testing.Suite("Testing the forums...")
 conversation = testing.Suite("Testing the conversations...")
 facade = testing.Suite("Testing requests and responses...")
 
+# I accidentally created a bug that prevented any messages from being received
+# over pipes, and it was not caught by any of these tests.  That's pretty
+# fucked up.
+#
+# The bug was in the forum code that limits the number of messages received by
+# the forum on any particular update cycle.  The greater than sign was a less
+# than sign.
+
 # The forum tests are something of a mess.  I just finished making a very
 # simple change to the forum class that broke a lot of the tests, and it took
 # me a long time to get the tests working again.  Most of that time was spent
