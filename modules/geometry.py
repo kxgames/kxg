@@ -26,6 +26,13 @@ class Vector(object):
         return magnitude * Vector(math.cos(theta), math.sin(theta))
 
     @staticmethod
+    def inside_box(size):
+        """ Create a vector at some random point within the given box. """
+        x = size.x * random.uniform(0, 1)
+        y = size.y * random.uniform(0, 1)
+        return Vector(x, y)
+
+    @staticmethod
     def from_radians(angle):
         """ Create a vector that makes the given angle with the x-axis. """
         return Vector(math.cos(angle), math.sin(angle))
@@ -175,7 +182,7 @@ class Vector(object):
         """ Get the second coordinate in this vector. """
         return self.__y
 
-    # Make (r, th) and alias for (x, y).
+    # Make (r, th) an alias for (x, y).
     get_r = get_x
     get_th = get_y
 
