@@ -4,6 +4,7 @@ import Queue as queue
 from utilities.infinity import *
 
 class Forum:
+
     """ Manages a messaging system that allows messages to be published for any
     interested subscriber to receive.  If desired, published messages will even
     be delivered across a network.  Furthermore, since the system was designed
@@ -11,6 +12,7 @@ class Forum:
     any time from any thread. """
 
     # Constructor {{{1
+
     def __init__(self, *pipes, **options):
         """ Create and prepare a new forum object.  If any network connections
         are passed into the constructor, the forum will presume that other
@@ -44,6 +46,7 @@ class Forum:
         self.setup(*pipes)
 
     # Access Control {{{1
+
     def get_member(self):
         return self.member
 
@@ -56,10 +59,12 @@ class Forum:
     # }}}1
 
     # Subscriptions {{{1
+
     def subscribe(self, flavor, callback):
         """ Attach a callback to a particular flavor of message.  For
-        simplicity, the message's flavor is always the message's class.  Once
-        the forum is locked, new subscriptions can no longer be made. """
+        simplicity, the message's flavor is always the message's class.  This
+        requires that all messages be instances of new-style classes.  Once the
+        forum is locked, new subscriptions can no longer be made. """
 
         assert not self.locked
 
@@ -69,6 +74,7 @@ class Forum:
             self.subscriptions[flavor] = [callback]
 
     # Publications {{{1
+
     def publish(self, message, callback=lambda: None):
         """ Publish the given message so subscribers to that class of message
         can react to it.  If any remote forums are connected, the underlying
@@ -80,6 +86,7 @@ class Forum:
     # }}}1
 
     # Setup, Update, and Teardown {{{1
+
     def setup(self, *pipes):
         """ Connect this forum to another forum on a remote machine.  Any
         message published by either forum will be relayed to the other.  This
@@ -159,9 +166,11 @@ class Forum:
         self.unlock()
 
     # Lock and Unlock {{{1
+
     def lock(self):
         """ Prevent the forum from making any more subscriptions and allow it
         to begin delivering publications. """
+
         self.locked = True
 
         for pipe in self.pipes:
@@ -170,6 +179,7 @@ class Forum:
     def unlock(self):
         """ Prevent the forum from delivering messages and allow it to make new
         subscriptions.  All existing subscriptions are cleared. """
+
         self.locked = False
 
         self.subscriptions = {}
@@ -553,6 +563,7 @@ class Finish(Exchange):
     # }}}1
 
 class Publication:
+
     """ Represents messages that are waiting to be delivered within a forum.
     Outside of the forum, this class should never be used. """
 
