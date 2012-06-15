@@ -1,6 +1,4 @@
-from vector import *
-
-infinity = inf = float("inf")
+from geometry import *
 
 class Sprite:
     """ A parent class for every game object that can move.  This class stores

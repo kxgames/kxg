@@ -7,6 +7,8 @@ from __future__ import division
 import math
 import random
 
+infinity = inf = float('inf')
+
 class Vector(object):
     """ Represents a two-dimensional vector.  In particular, this class
     features a number of factory methods to create vectors from angles and
