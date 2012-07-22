@@ -3,7 +3,7 @@ from __future__ import division
 import pygame
 import multiprocessing
 
-class Main:
+class Main (object):
     """ Manage whichever engine is currently active.  This involves both
     updating the current engine and handling transitions between engines. """
 
@@ -40,7 +40,7 @@ class Main:
 
     # }}}1
 
-class MultiplayerDebugger:
+class MultiplayerDebugger (object):
     """ Simultaneously plays any number of different game loops, by executing
     each loop in its own process.  This greatly facilitates the debugging and
     testing multiplayer games. """
@@ -86,7 +86,7 @@ class MultiplayerDebugger:
 
     # }}}1
 
-class Engine:
+class Engine (object):
 
     # Constructor {{{1
 
@@ -317,7 +317,7 @@ class MultiplayerClientGameEngine (GameEngine):
 class MultiplayerServerGameEngine (GameEngine):
     pass
 
-class GameBlueprint:
+class GameBlueprint (object):
 
     # Constructor {{{1
 
@@ -364,7 +364,7 @@ class GameBlueprint:
 
     # }}}1
 
-class GameActor:
+class GameActor (object):
 
     # Constructor {{{1
 
@@ -440,47 +440,146 @@ class GameActor:
 
     # }}}1
 
-class GameWorld (GameActor):
+class GameToken (object):
 
     # Constructor {{{1
 
-    __init__ = GameActor.__init__
+    def __init__(self):
+        self._proxies = {}
 
-    # Attributes and Operators {{{1
+    # Proxy Access Methods {{{1
 
-    def get_world(self):
-        return self
+    def get_proxy(self, name):
 
-    def set_world(self, world):
-        pass
+        # Create proxies on demand.
 
-    # }}}1
-    
-    # Virtual Interface {{{1
+        if name not in self._proxies:
+            classes = self.get_proxy_classes()
+            proxy = classes.get(name, GameTokenProxy)(name, self)
+            self._proxies[name] = proxy
 
-    def get_read_only_methods(self):
-        raise NotImplementedError
-    
-    # Restricted Functionality {{{1
+        return self._proxies[name]
 
-    def request(self, message):
-        raise NotImplementedError
-
-    def is_postgame_finished(self):
-        raise NotImplementedError
+    @classmethod
+    def get_proxy_classes(cls):
+        return {}
 
     # }}}1
 
-class ReadOnlyWorld:
+# Getter Method Decorators {{{1
 
-    # Implementation {{{1
+def data_getter(method):
+    method.data_getter = True
+    return method
 
-    def __init__(self, world):
-        methods = world.get_read_only_methods()
-        self.methods = { method.func_name : method for method in methods }
+def token_getter(method):
+    method.token_getter = True
+    return method
 
-    def __getattr__(self, getter):
-        return self.methods[getter]
+def token_wrapper(wrapper):
+
+    def real_decorator(method):
+        method.token_wrapper = wrapper
+        return method
+
+    return real_decorator
+
+# }}}1
+
+class MetaTokenProxy (type):
+
+    # Class Instantiation {{{1
+
+    def __call__(cls, name, token):
+
+        # Create the new proxy object.
+        proxy = cls.__new__(cls)
+
+        proxy._name = name
+        proxy._token = token
+        proxy._methods = {}
+
+        for key in dir(token):
+            member = getattr(token, key)
+
+            # Look for annotated methods.
+
+            data_getter = hasattr(member, 'data_getter')
+            token_getter = hasattr(member, 'token_getter')
+            token_wrapper = hasattr(member, 'token_wrapper')
+
+            if not callable(member):
+                continue
+
+            # Check for improper use of decorators.
+
+            if data_getter and token_getter:
+                raise BadTokenAttribute('defined-twice')
+
+            if token_wrapper and not token_getter:
+                raise BadTokenAttribute('unused-wrapper')
+
+            # Record the marked methods in the new class member.
+
+            if data_getter:
+                proxy._methods[key] = member
+
+            if token_getter:
+                wrapper = cls.wrap_token_getter(name, member)
+                proxy._methods[key] = wrapper
+
+        proxy.__init__()
+        
+        return proxy
+
+    # Token Getter Wrappers {{{1
+
+    @staticmethod
+    def wrap_token_getter(name, member):
+
+        if hasattr(member, 'token_wrapper'):
+
+            token_wrapper = member.token_wrapper
+
+            def decorator(*args, **kwargs):
+                result = member(*args, **kwargs)
+                return token_wrapper(result)
+
+        else:
+
+            def decorator(*args, **kwargs):
+                result = member(*args, **kwargs)
+
+                if isinstance(result, GameToken):
+                    return result.get_proxy(name)
+
+                elif isinstance(result, (list, tuple)):
+                    proxies = [ token.get_proxy(name) for token in result ]
+                    return tuple(proxies)
+
+                elif isinstance(result, dict):
+                    proxies = {
+                            key : token.get_proxy(name)
+                            for key, token in results }
+                    return proxies
+
+                else:
+                    raise ProxyCastingError()
+
+        return decorator
+
+    # }}}1
+
+class GameTokenProxy (object):
+
+    # Metaclass Definition {{{1
+
+    __metaclass__ = MetaTokenProxy
+
+    # Attribute Access {{{1
+
+    def __getattr__(self, name):
+        return self._methods[name]
 
     # }}}1
 
