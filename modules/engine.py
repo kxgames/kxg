@@ -147,6 +147,9 @@ class CleanupEngine (Engine):
     # }}}1
 
 class GameEngine (Engine):
+    pass
+    
+class SinglePlayerGameEngine (GameEngine):
 
     # Constructor {{{1
 
@@ -175,10 +178,10 @@ class GameEngine (Engine):
         self.players = self.blueprint.create_players()
 
         self.actors = self.players + [self.referee]
-        read_only_world = ReadOnlyWorld(self.world)
 
         for actor in self.actors:
-            actor.set_world(read_only_world)
+            proxy = self.world.get_proxy(actor.get_name())
+            actor.set_world(proxy)
 
     def setup_mailbox(self):
 
@@ -187,12 +190,9 @@ class GameEngine (Engine):
             entity.set_pipe(pipes[0])
             return pipes[1]
 
-        self.world_pipe = setup_pipe(self.world)
         self.referee_pipe = setup_pipe(self.referee)
         self.player_pipes = [ setup_pipe(player) for player in self.players ]
-
-        self.speaking_pipes = [self.referee_pipe] + self.player_pipes
-        self.listening_pipes = [self.world_pipe] + self.speaking_pipes
+        self.all_pipes = [self.referee_pipe] + self.player_pipes
 
     # Update Methods {{{1
 
@@ -201,13 +201,13 @@ class GameEngine (Engine):
         state, state_changed = self.check_state()
 
         if state_changed == True:
-            self.reset_mailbox(state)
             self.reset_world(state)
+            self.reset_mailbox(state)
             self.reset_actors(state)
 
+        self.update_world(state, time)
         self.update_actors(state, time)
         self.update_mailbox(state, time)
-        self.update_world(state, time)
 
         if state == self.blueprint.define_final_state():
             self.check_for_finish()
@@ -222,20 +222,25 @@ class GameEngine (Engine):
 
         for pipe, message in self.receive_requests():
 
-            status = message.validate(self.world)
-            response = message.response(status)
+            world = self.world
+            verified = message.check(world)
 
-            if response is not None:
-                pipe.send(response)
+            if not verified:
+                print "Message not verified!"
 
-            if status == True:
-                self.forward_request(message)
+                continue
+
+            message.execute(world)
+
+            for actor in self.actors:
+                name = actor.get_name()
+                message.notify(name, actor)
 
             if type(message) == self.transition_message:
                 self.switch_states()
 
+
     def update_world(self, state, time):
-        self.world.dispatch()
         self.world.update(state, time)
 
     def reset_world(self, state):
@@ -294,22 +299,19 @@ class GameEngine (Engine):
 
         requests = []
 
-        for pipe in self.speaking_pipes:
+        for pipe in self.all_pipes:
             for message in pipe.receive():
                 request = pipe, message
                 requests.append(request)
 
         return requests
 
-    def forward_request(self, message):
+    def broadcast_response(self, message):
 
-        for pipe in self.listening_pipes:
+        for pipe in self.all_pipes:
             pipe.send(message)
 
     # }}}1
-    
-class SinglePlayerGameEngine (GameEngine):
-    pass
 
 class MultiplayerClientGameEngine (GameEngine):
     pass
@@ -385,6 +387,9 @@ class GameActor (object):
 
     # Attributes and Operators {{{1
 
+    def get_name(self):
+        return 'actor'
+
     def get_world(self):
         return self.__world
 
@@ -440,6 +445,82 @@ class GameActor (object):
 
     # }}}1
 
+# Actor Decorators:
+
+# It looks like the game engine will need a class to conceal the actors from
+# the messages.  These decorators will be used to decide how much should be
+# revealed.  The proper way to do this would require an intermediate object,
+# controlled by the game engine, to place between the actor and the message.
+# This object would also be able to not complain if certain actor methods are
+# not found, which would be a good thing.
+     
+def message_handler(method):
+    """ This decorator attempts to convert all of the arguments passed into the
+    decorated function into token proxies.  This is meant to protect the game
+    actors from the game messages, which have access to the raw world.
+    However, at the present time there is no "proxy" object between the actor
+    and the message, so this protection can be circumvented by simply
+    forgetting to decorate the actor's message handler methods.
+
+    Furthermore, this decorator only works when every argument is either a
+    token or a list/tuple/dict of tokens.  It can't handle any arguments that
+    are either not tokens or are well-hidden tokens.  The two empty decorators
+    defined below are meant to help with this problem, but they add a lot of
+    complexity to the system.
+
+    Another caveat is that this decorator doesn't know which actor it's
+    attached to.  This means that it can only return generic proxies, not
+    proxies containing actor-specific information.  
+    
+    While I'm still not sure how great this system is, it is worth noting that
+    the "Get Proxy Tokens" fold is copied from the MetaTokenProxy class.  If
+    this system does get used in the long term, the function to convert tokens
+    into proxies should be made reusable. """
+
+    # Get Proxy Tokens {{{1
+
+    def get_proxy(name, object):
+
+        if object is None:
+            return object
+
+        elif isinstance(object, GameToken):
+            return object.get_proxy(name)
+
+        elif isinstance(object, (list, tuple)):
+            proxies = [ token.get_proxy(name) for token in object ]
+            return tuple(proxies)
+
+        elif isinstance(object, dict):
+            proxies = {
+                    key : token.get_proxy(name)
+                    for key, token in objects }
+            return proxies
+
+        else:
+            raise ProxyCastingError()
+
+    # Decorate the Handler {{{1
+
+    def real_decorator(*args, **kwargs):
+
+        self = args[0]
+        args = [ get_proxy('fuck', argument) for argument in args[1:] ]
+        kwargs = { key : get_proxy('fuck', argument)
+                for key, argument in kwargs.items() }
+
+        return method(self, *args, **kwargs)
+
+    return real_decorator
+    
+    # }}}1
+
+def protect_argument(name, function):
+    raise NotImplementedError
+
+def unprotect_argument(name):
+    raise NotImplementedError
+
 class GameToken (object):
 
     # Constructor {{{1
@@ -485,6 +566,61 @@ def token_wrapper(wrapper):
     return real_decorator
 
 # }}}1
+
+class GameWorld (GameToken):
+    """ Everything in this class is duplicated in the GameActor class.  I
+    should have a generic base class that implements the setup/update/teardown
+    functionality.  Of course, I'll have to think about ways to generalize that
+    scheme first.  But it might be a good feature to stick into the base Engine
+    class. """
+
+    # Constructor {{{1
+
+    def __init__(self):
+        GameToken.__init__(self)
+
+        self.setup_methods = {
+                'pregame' : self.setup_pregame,
+                'game' : self.setup_game,
+                'postgame' : self.setup_postgame }
+
+        self.update_methods = {
+                'pregame' : self.update_pregame,
+                'game' : self.update_game,
+                'postgame' : self.update_postgame }
+
+    # }}}1
+
+    # Game Loop Methods {{{1
+
+    def setup(self, state):
+        self.setup_methods[state]()
+
+    def update(self, state, time):
+        self.update_methods[state](time)
+
+    # Virtual Interface {{{1
+
+    def setup_pregame(self):
+        raise NotImplementedError
+
+    def setup_game(self):
+        raise NotImplementedError
+
+    def setup_postgame(self):
+        raise NotImplementedError
+
+    def update_pregame(self, time):
+        raise NotImplementedError
+
+    def update_game(self, time):
+        raise NotImplementedError
+
+    def update_postgame(self, time):
+        raise NotImplementedError
+
+    # }}}1
+    # }}}1
 
 class MetaTokenProxy (type):
 
@@ -550,7 +686,10 @@ class MetaTokenProxy (type):
             def decorator(*args, **kwargs):
                 result = member(*args, **kwargs)
 
-                if isinstance(result, GameToken):
+                if result is None:
+                    return result
+
+                elif isinstance(result, GameToken):
                     return result.get_proxy(name)
 
                 elif isinstance(result, (list, tuple)):
@@ -587,10 +726,13 @@ class GameMessage (object):
 
     # Virtual Interface {{{1
 
-    def validate(self):
+    def check(self, world):
         raise NotImplementedError
 
-    def response(self, status):
+    def execute(self, world):
+        raise NotImplementedError
+
+    def notify(self, name, actor):
         raise NotImplementedError
 
     # }}}1
