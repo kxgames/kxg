@@ -270,8 +270,7 @@ class SinglePlayerGameEngine (GameEngine):
             message.execute(world)
 
             for actor in self.actors:
-                try: message.notify(actor, actor.get_name())
-                except AttributeError: pass
+                message.notify(actor, actor.get_name())
 
             if type(message) == self.transition_message:
                 self.switch_states()
@@ -642,7 +641,7 @@ class MetaTokenProxy (type):
 
     # }}}2
     
-# Game Token Proxy {{{1
+#Simple Game Token Proxy {{{1
 
 class GameTokenProxy (object):
 
