@@ -1,7 +1,6 @@
 from __future__ import division
 
 import pygame
-import inspect
 
 # Main (Game Loop) {{{1
 
@@ -179,6 +178,41 @@ class GameBlueprint (object):
         return self.state_transitions[state]
 
 # }}}1
+# Game Token Proxy Lock {{{1
+
+class ProxyLock:
+
+    def __init__(self, access, actor=None):
+        self.current_access = access
+        self.current_actor = actor
+
+    def __enter__(self):
+        self.previous_access = GameTokenProxy._access
+        self.previous_actor = GameTokenProxy._actor
+
+        GameTokenProxy._access = self.current_access
+        GameTokenProxy._actor = self.current_actor
+
+    def __exit__(self, *args, **kwargs):
+        GameTokenProxy._access = self.previous_access
+        GameTokenProxy._actor = self.previous_actor
+
+    @staticmethod
+    def restrict_default_access():
+        GameTokenProxy._access = 'protected'
+
+    @staticmethod
+    def allow_default_access():
+        GameTokenProxy._access = 'unprotected'
+
+class ProtectedProxyLock (ProxyLock):
+    def __init__(self, actor):
+        ProxyLock.__init__(self, 'protected', actor.get_name())
+
+class UnprotectedProxyLock (ProxyLock):
+    def __init__(self):
+        ProxyLock.__init__(self, 'unprotected', None)
+
 # Single Player Game Engine {{{1
 
 class SinglePlayerGameEngine (GameEngine):
@@ -205,6 +239,7 @@ class SinglePlayerGameEngine (GameEngine):
     def setup(self):
 
         self.state = self.blueprint.define_initial_state()
+        ProxyLock.restrict_default_access()
 
         self.setup_actors()
         self.setup_mailbox()
@@ -216,11 +251,9 @@ class SinglePlayerGameEngine (GameEngine):
         self.players = self.blueprint.create_players()
 
         self.actors = self.players + [self.referee]
-        self.actor_proxies = [ actor.get_proxy() for actor in self.actors ]
 
         for actor in self.actors:
-            proxy = self.world.get_proxy(actor.get_name())
-            actor.set_world(proxy)
+            actor.set_world(self.world)
 
     def setup_mailbox(self):
 
@@ -253,9 +286,11 @@ class SinglePlayerGameEngine (GameEngine):
 
     def update_actors(self, state, time):
 
+
         for actor in self.actors:
-            actor.dispatch()
-            actor.update(state, time)
+            with ProtectedProxyLock(actor):
+                actor.dispatch()
+                actor.update(state, time)
 
     def update_mailbox(self, state, time):
 
@@ -267,19 +302,23 @@ class SinglePlayerGameEngine (GameEngine):
             if not verified:
                 continue
 
-            message.execute(world)
+            with UnprotectedProxyLock():
+                message.execute(world)
 
             for actor in self.actors:
-                message.notify(actor, actor.get_name())
+                with ProtectedProxyLock(actor):
+                    message.notify(actor)
 
             if type(message) == self.transition_message:
                 self.switch_states()
 
     def update_world(self, state, time):
-        self.world.update(state, time)
+        with UnprotectedProxyLock():
+            self.world.update(state, time)
 
     def reset_world(self, state):
-        self.world.setup(state)
+        with UnprotectedProxyLock():
+            self.world.setup(state)
 
     def reset_actors(self, state):
         for actor in self.actors:
@@ -369,7 +408,6 @@ class GameActor (object):
 
         self._world = None
         self._pipe = None
-        self._proxy = GameActorProxy(self)
 
         self.setup_methods = {
                 'pregame' : self.setup_pregame,
@@ -388,9 +426,6 @@ class GameActor (object):
 
     def get_world(self):
         return self._world
-
-    def get_proxy(self):
-        return self._proxy
 
     def set_world(self, world):
         self._world = world
@@ -444,218 +479,73 @@ class GameActor (object):
 
     # }}}2
 
-# Game Actor Proxy {{{1
-
-class GameActorProxy (object):
-
-    def __init__(self, actor, strict_checking=False):
-
-        self.methods = {}
-        self.strict_checking = strict_checking
-
-        for key in dir(actor):
-            member = getattr(actor, key)
-
-            # Search for labeled methods.
-
-            if not inspect.ismethod(member):
-                continue
-
-            if not hasattr(member, 'message_handler'):
-                continue
-
-            # Make sure the method has the right signature.
-
-            definition = inspect.getargspec(member)
-
-            if len(definition.args) != 2:
-                raise BadMessageHandler()
-
-            if definition.varargs or definition.keywords or definition.defaults:
-                raise BadMessageHandler()
-
-            # Create a wrapper.
-
-            self.methods[key] = self.make_wrapper(actor, member)
-
-    @staticmethod
-    def make_wrapper(actor, member):
-        """ For some reason this needs to be it's own function.  If I simply
-        define the wrapper function inside of __init__, the member variable in
-        the wrapped function takes on the last value it took on while still
-        inside __init__.  This was always update_pregame(), since it was the
-        last alphabetically. """
-
-        def wrapper(message):
-
-            if not isinstance(message, GameMessage):
-                raise BadProxyArgument()
-
-            name = actor.get_name()
-            proxy = message.get_proxy(name)
-
-            return member(proxy)
-
-        return wrapper
-
-
-    def __getattr__(self, name):
-
-        if name in self.methods:
-            return self.methods[name]
-
-        elif not self.strict_checking:
-            return lambda self, message: None
-
-        else:
-            raise AttributeError
-
-def message_handler(method):
-    method.message_handler = True
-    return method
-
 # Game Token {{{1
 
 class GameToken (object):
 
-    def __init__(self):
-        self._proxies = {}
+    def __new__(cls, *args, **kwargs):
 
-    def get_proxy(self, name):
+        token = object.__new__(cls, *args, **kwargs)
+        token.__init__(*args, **kwargs)
+        proxy = GameTokenProxy(token)
 
-        # Create proxies on demand.
+        return proxy
 
-        if name not in self._proxies:
-            classes = self.get_proxy_classes()
-            proxy = classes.get(name, GameTokenProxy)(name, self)
-            self._proxies[name] = proxy
-
-        return self._proxies[name]
-
-    @classmethod
-    def get_proxy_classes(cls):
+    def __extend__(self):
         return {}
 
 def data_getter(method):
     method.data_getter = True
     return method
 
-def token_getter(method):
-    method.token_getter = True
-    return method
-
-def token_wrapper(wrapper):
-
-    def real_decorator(method):
-        method.token_wrapper = wrapper
-        return method
-
-    return real_decorator
-
-# Game Token Proxy Metaclass {{{1
-
-class MetaTokenProxy (type):
-
-    # Class Instantiation {{{2
-
-    def __call__(cls, name, token):
-
-        # Create the new proxy object.
-        proxy = cls.__new__(cls)
-
-        proxy._name = name
-        proxy._token = token
-        proxy._methods = {}
-
-        for key in dir(token):
-            member = getattr(token, key)
-
-            # Look for annotated methods.
-
-            data_getter = hasattr(member, 'data_getter')
-            token_getter = hasattr(member, 'token_getter')
-            token_wrapper = hasattr(member, 'token_wrapper')
-
-            if not callable(member):
-                continue
-
-            # Check for improper use of decorators.
-
-            if data_getter and token_getter:
-                raise BadTokenAttribute('defined-twice')
-
-            if token_wrapper and not token_getter:
-                raise BadTokenAttribute('unused-wrapper')
-
-            # Record the marked methods in the new class member.
-
-            if data_getter:
-                proxy._methods[key] = member
-
-            if token_getter:
-                wrapper = cls.wrap_token_getter(name, member)
-                proxy._methods[key] = wrapper
-
-        proxy.__init__()
-        
-        return proxy
-
-    # Token Getter Wrappers {{{2
-
-    @staticmethod
-    def wrap_token_getter(name, member):
-
-        if hasattr(member, 'token_wrapper'):
-
-            token_wrapper = member.token_wrapper
-
-            def decorator(*args, **kwargs):
-                result = member(*args, **kwargs)
-                return token_wrapper(result)
-
-        else:
-
-            def decorator(*args, **kwargs):
-                result = member(*args, **kwargs)
-
-                if result is None:
-                    return result
-
-                elif isinstance(result, GameToken):
-                    return result.get_proxy(name)
-
-                elif isinstance(result, (list, tuple)):
-                    proxies = [ token.get_proxy(name) for token in result ]
-                    return tuple(proxies)
-
-                elif isinstance(result, dict):
-                    proxies = {
-                            key : token.get_proxy(name)
-                            for key, token in results }
-                    return proxies
-
-                else:
-                    raise ProxyCastingError()
-
-        return decorator
-
-    # }}}2
-    
-#Simple Game Token Proxy {{{1
+# Game Token Proxy {{{1
 
 class GameTokenProxy (object):
 
-    __metaclass__ = MetaTokenProxy
+    _access = 'unprotected'
+    _actor = None
 
-    def __getattr__(self, name):
-        return self._methods[name]
+    def __init__(self, token):
 
-    def get_token(self):
-        return self._token
+        self._token = token
+        self._extensions = {
+                actor : extension_class(self)
+                for actor, extension_class in token.__extend__().items() }
+
+    def __getattr__(self, key):
+
+        access = GameTokenProxy._access
+        actor = GameTokenProxy._actor
+
+        token = self._token
+        extension = self._extensions.get(actor)
+
+        if hasattr(token, key):
+            member = getattr(token, key)
+
+            if access == 'unprotected' or hasattr(member, 'data_getter'):
+                return member
+            else:
+                raise TokenPermissionError(key)
+
+        elif extension and hasattr(extension, key):
+            return getattr(extension, key)
+
+        else:
+            raise AttributeError(key)
+
+class TokenPermissionError (Exception):
+    pass
+
+# Game Token Extension {{{1
+
+class GameTokenExtension (object):
+    def __init__(self, token):
+        pass
 
 # Game Message {{{1
 
-class GameMessage (GameToken):
+class GameMessage (object):
 
     def check(self, world):
         raise NotImplementedError
@@ -663,7 +553,7 @@ class GameMessage (GameToken):
     def execute(self, world):
         raise NotImplementedError
 
-    def notify(self, name, actor):
+    def notify(self, actor):
         raise NotImplementedError
 
 # Game World {{{1
@@ -673,7 +563,7 @@ class GameWorld (GameToken):
     should have a generic base class that implements the setup/update/teardown
     functionality.  Of course, I'll have to think about ways to generalize that
     scheme first.  But it might be a good feature to stick into the base Engine
-    class. """
+    class.   I also would like a way to avoid multiple inheritance. """
 
     def __init__(self):
         GameToken.__init__(self)
