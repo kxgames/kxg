@@ -2,8 +2,6 @@ from __future__ import division
 
 import pygame
 
-# Main (Game Loop) {{{1
-
 class Main (object):
     """ Manage whichever engine is currently active.  This involves both
     updating the current engine and handling transitions between engines. """
@@ -37,7 +35,6 @@ class Main (object):
     def is_finished(self):
         return self.stop_flag
 
-# Multiplayer Debugger {{{1
 
 class MultiplayerDebugger (object):
     """ Simultaneously plays any number of different game loops, by executing
@@ -46,7 +43,6 @@ class MultiplayerDebugger (object):
 
     import multiprocessing
 
-    # Process Class {{{2
     class Process(multiprocessing.Process):
 
         def __init__(self, name, loop):
@@ -61,7 +57,7 @@ class MultiplayerDebugger (object):
             except KeyboardInterrupt:
                 pass
 
-    # }}}2
+
 
     def __init__(self):
         self.threads = []
@@ -81,8 +77,6 @@ class MultiplayerDebugger (object):
         except KeyboardInterrupt:
             pass
 
-# }}}1
-# Engine {{{1
 
 class Engine (object):
 
@@ -118,7 +112,6 @@ class Engine (object):
     def teardown(self):
         raise NotImplementedError
 
-# Cleanup Engine {{{1
 
 class CleanupEngine (Engine):
 
@@ -128,14 +121,10 @@ class CleanupEngine (Engine):
     def setup(self):
         self.exit_program()
 
-# }}}1
-# Game Engine {{{1
 
 class GameEngine (Engine):
     pass
     
-# Game Blueprint {{{1
-
 class GameBlueprint (object):
 
     def __init__(self):
@@ -177,8 +166,6 @@ class GameBlueprint (object):
     def define_next_state(self, state):
         return self.state_transitions[state]
 
-# }}}1
-# Game Token Proxy Lock {{{1
 
 class ProxyLock:
 
@@ -205,15 +192,18 @@ class ProxyLock:
     def allow_default_access():
         GameTokenProxy._access = 'unprotected'
 
+
 class ProtectedProxyLock (ProxyLock):
+
     def __init__(self, actor):
         ProxyLock.__init__(self, 'protected', actor.get_name())
 
+
 class UnprotectedProxyLock (ProxyLock):
+
     def __init__(self):
         ProxyLock.__init__(self, 'unprotected', None)
 
-# Single Player Game Engine {{{1
 
 class SinglePlayerGameEngine (GameEngine):
     """ Manages running all of the game components on a single machine.  Right
@@ -223,18 +213,12 @@ class SinglePlayerGameEngine (GameEngine):
     pipes, which I think is overkill.  In the future pipes will only be used
     for the multiplayer engines. """
 
-    # Constructor {{{2
-
     def __init__(self, master, blueprint):
         Engine.__init__(self, master)
         self.blueprint = blueprint
 
         self.state = None
         self.state_changed = True
-
-    # }}}2
-
-    # Setup Methods {{{2
 
     def setup(self):
 
@@ -266,8 +250,6 @@ class SinglePlayerGameEngine (GameEngine):
         self.player_pipes = [ setup_pipe(player) for player in self.players ]
         self.all_pipes = [self.referee_pipe] + self.player_pipes
 
-    # Update Methods {{{2
-
     def update(self, time):
 
         state, state_changed = self.check_state()
@@ -285,7 +267,6 @@ class SinglePlayerGameEngine (GameEngine):
             self.check_for_finish()
 
     def update_actors(self, state, time):
-
 
         for actor in self.actors:
             with ProtectedProxyLock(actor):
@@ -348,14 +329,8 @@ class SinglePlayerGameEngine (GameEngine):
         if all(statuses):
             self.exit_engine()
 
-    # Teardown Methods {{{2
-
     def teardown(self):
         pass
-
-    # }}}2
-
-    # State Machine Methods {{{2
 
     def switch_states(self):
         self.state = self.blueprint.define_next_state(self.state)
@@ -366,8 +341,6 @@ class SinglePlayerGameEngine (GameEngine):
         self.state_changed = False
 
         return self.state, state_changed
-
-    # Message Handling Methods {{{2
 
     def receive_requests(self):
 
@@ -384,25 +357,16 @@ class SinglePlayerGameEngine (GameEngine):
 
         for pipe in self.all_pipes:
             pipe.send(message)
-    # }}}2
 
-# Multiplayer Client Game Engine {{{1
 
 class MultiplayerClientGameEngine (GameEngine):
     pass
 
-# Multiplayer Server Game Engine {{{1
-
 class MultiplayerServerGameEngine (GameEngine):
     pass
 
-# }}}1
-
-# Game Actor {{{1
 
 class GameActor (object):
-
-    # Constructor {{{2
 
     def __init__(self):
 
@@ -419,8 +383,6 @@ class GameActor (object):
                 'game' : self.update_game,
                 'postgame' : self.update_postgame }
 
-    # Attributes and Operators {{{2
-
     def get_name(self):
         return 'actor'
 
@@ -432,8 +394,6 @@ class GameActor (object):
 
     def set_pipe(self, pipe):
         self._pipe = pipe
-
-    # Virtual Interface {{{2
 
     def setup_pregame(self):
         raise NotImplementedError
@@ -456,17 +416,11 @@ class GameActor (object):
     def is_postgame_finished(self):
         return True
 
-    # }}}2
-
-    # Game Loop Methods {{{2
-
     def setup(self, state):
         self.setup_methods[state]()
 
     def update(self, state, time):
         self.update_methods[state](time)
-
-    # Message Handling Methods {{{2
 
     def request(self, message):
         self._pipe.send(message)
@@ -477,9 +431,6 @@ class GameActor (object):
     def respond(self, flavor, callback):
         self._pipe.register(flavor, callback)
 
-    # }}}2
-
-# Game Token {{{1
 
 class GameToken (object):
 
@@ -494,11 +445,6 @@ class GameToken (object):
     def __extend__(self):
         return {}
 
-def data_getter(method):
-    method.data_getter = True
-    return method
-
-# Game Token Proxy {{{1
 
 class GameTokenProxy (object):
 
@@ -534,16 +480,13 @@ class GameTokenProxy (object):
         else:
             raise AttributeError(key)
 
+
 class TokenPermissionError (Exception):
     pass
-
-# Game Token Extension {{{1
 
 class GameTokenExtension (object):
     def __init__(self, token):
         pass
-
-# Game Message {{{1
 
 class GameMessage (object):
 
@@ -556,7 +499,6 @@ class GameMessage (object):
     def notify(self, actor):
         raise NotImplementedError
 
-# Game World {{{1
 
 class GameWorld (GameToken):
     """ Everything in this class is duplicated in the GameActor class.  I
@@ -602,26 +544,26 @@ class GameWorld (GameToken):
     def update_postgame(self, time):
         raise NotImplementedError
 
-# }}}1
 
-# Pipe {{{1
+
+def data_getter(method):
+    method.data_getter = True
+    return method
+
 
 class Pipe (object):
-
-    # Comments {{{2
 
     # This should be in it's own module, along with the network pipe and
     # possibly some high-level messaging frameworks.  The frameworks are less
     # important to me now that the game engine is basically its own
     # super-specific mailbox framework.
 
-    # Construction {{{2
-
-    # This little bit of black magic is probably more confusing than it's
-    # worth.  It makes the constructor appear to return two pipes that have
-    # already been connected to each other.
-
     def __new__(pipe_cls):
+
+        # This little bit of black magic is probably more confusing than it's
+        # worth.  It makes the constructor appear to return two pipes that have
+        # already been connected to each other.
+
         queues = [], []
         pipes = object.__new__(pipe_cls), object.__new__(pipe_cls)
 
@@ -640,10 +582,6 @@ class Pipe (object):
 
         self.locked = False
 
-    # }}}2
-
-    # Subscription Methods {{{2
-
     def listen(self, *flavors):
         assert not self.locked
         self.filters.update(flavors)
@@ -657,8 +595,6 @@ class Pipe (object):
         self.filters = set()
         self.callbacks = dict()
 
-    # Locking Methods {{{2
-
     def lock(self):
         assert not self.locked
         self.locked = True
@@ -667,16 +603,12 @@ class Pipe (object):
         assert self.locked
         self.locked = False
 
-    # Outgoing messages {{{2
-
     def send(self, message):
         assert not self.locked
         self.outgoing_queue.append(message)
 
     def deliver(self):
         assert not self.locked
-
-    # Incoming Messages {{{2
 
     def receive(self):
         assert not self.locked
@@ -706,6 +638,4 @@ class Pipe (object):
 
             callback(message)
 
-    # }}}2
 
-# }}}1
