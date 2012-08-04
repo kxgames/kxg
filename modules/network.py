@@ -1,5 +1,15 @@
 import errno, socket, struct, pickle
 
+# Closing Sockets
+# ===============
+# I think it would be useful to carefully go through and compare this code to
+# that in the asyncore module, since it does a good job of handling errors.  In
+# particular, I noticed that my code doesn't notice when socket.recv() returns
+# 0 bytes.  When this happens, the socket is actually trying to communicate
+# the fact that the connection has been closed.  If I handle this more
+# gracefully, I might manage to avoid the shutdown problems that plague the
+# code.
+
 # Server Documentation
 # ====================
 # I had a hard time figuring out how to use the Server class.  It's not enough
@@ -221,7 +231,7 @@ class Pipe:
         # default, this value will be the message itself.
 
         receipt = message if receipt is None else receipt
-        self.outgoing.append([stream, receipt])
+        self.outgoing.append((stream, receipt))
 
     def deliver(self):
         receipts = []
@@ -333,8 +343,8 @@ class Header:
     # }}}1
     
 class PickleFactory:
-    """ Provides an instantiate() method that crates PicklePipe objects.  This
-    method needs to be redefines in the host, client, and server classes. """
+    """ Provides an instantiate() method that creates PicklePipe objects.  This
+    method needs to be redefined in the host, client, and server classes. """
 
     # Factory Method {{{1
     def instantiate(self, socket):

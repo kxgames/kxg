@@ -526,6 +526,7 @@ class Finish(Exchange):
     # }}}1
 
 class Publication:
+
     """ Represents messages that are waiting to be delivered within a forum.
     Outside of the forum, this class should never be used. """
 
