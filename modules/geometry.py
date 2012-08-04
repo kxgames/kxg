@@ -7,6 +7,8 @@ from __future__ import division
 import math
 import random
 
+infinity = inf = float('inf')
+
 class Vector(object):
     """ Represents a two-dimensional vector.  In particular, this class
     features a number of factory methods to create vectors from angles and
@@ -24,6 +26,13 @@ class Vector(object):
         """ Create a unit vector pointing in a random direction. """
         theta = random.uniform(0, 2 * math.pi)
         return magnitude * Vector(math.cos(theta), math.sin(theta))
+
+    @staticmethod
+    def inside_box(size):
+        """ Create a vector at some random point within the given box. """
+        x = size.x * random.uniform(0, 1)
+        y = size.y * random.uniform(0, 1)
+        return Vector(x, y)
 
     @staticmethod
     def from_radians(angle):
@@ -175,7 +184,7 @@ class Vector(object):
         """ Get the second coordinate in this vector. """
         return self.__y
 
-    # Make (r, th) and alias for (x, y).
+    # Make (r, th) an alias for (x, y).
     get_r = get_x
     get_th = get_y
 

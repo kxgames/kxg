@@ -16,13 +16,13 @@ class Loop:
         # All subclasses need to define self.engine.
         self.engine.setup()
 
-        while not self.finished():
+        while not self.is_finished():
             time = clock.tick(frequency) / 1000
             self.engine.update(time)
 
-            if self.engine.finished():
+            if self.engine.is_finished():
                 self.engine.teardown()
-                self.engine = self.engine.successor()
+                self.engine = self.engine.get_successor()
                 self.engine.setup()
 
         self.engine.teardown()
@@ -30,7 +30,7 @@ class Loop:
     def exit(self):
         self.stop_flag = True
 
-    def finished(self):
+    def is_finished(self):
         return self.stop_flag
 
     # }}}1
@@ -85,13 +85,16 @@ class Engine:
     base class providing methods for updating and switching engines. """
 
     # Constructor {{{1
+
     def __init__(self, loop):
         self.loop = loop
         self.stop_flag = False
 
     # Attributes {{{1
+
     def get_loop(self):
         return self.loop
+
     # }}}1
 
     # Loop Completion {{{1
@@ -103,15 +106,16 @@ class Engine:
         """ Exit the game once the current update ends. """
         self.loop.exit()
 
-    def finished(self):
+    def is_finished(self):
         """ Return true if this engine is done executing. """
         return self.stop_flag
 
-    def successor(self):
+    def get_successor(self):
         """ Create and return the engine that should be executed next. """
         return None
 
     # Loop Methods {{{1
+
     def setup(self):
         """ Setup the engine.  This is called exactly one time before the first
         update cycle. """
@@ -127,20 +131,6 @@ class Engine:
         """ Tear down the engine.  This is called after the last update, but
         before the successor() method is called to get the next engine. """
         raise NotImplementedError
-
-    # }}}1
-
-class ExitEngine(Engine):
-    """ Exits the game loop and terminates the program.  This class is only
-    meant to provide a clean and easy way to close the game. """
-
-    # Constructor {{{1
-    def __init__(self, loop):
-        Engine.__init__(self, loop)
-
-    # Loop Methods {{{1
-    def setup(self):
-        self.exit_loop()
 
     # }}}1
 
@@ -202,6 +192,20 @@ class GameEngine(Engine):
             task.teardown()
 
         self.game.teardown()
+
+    # }}}1
+
+class ExitEngine(Engine):
+    """ Exits the game loop and terminates the program.  This class is only
+    meant to provide a clean and easy way to close the game. """
+
+    # Constructor {{{1
+    def __init__(self, loop):
+        Engine.__init__(self, loop)
+
+    # Loop Methods {{{1
+    def setup(self):
+        self.exit_loop()
 
     # }}}1
 

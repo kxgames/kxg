@@ -83,7 +83,7 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
 
     # Create a web of client server connections.  The pickle family of socket
     # wrappers are used for convenience.
-    server = PickleServer(port, pipes)
+    server = PickleServer(host, port, pipes)
     clients = [ PickleClient(host, port) for each in range(pipes) ]
 
     # Have the server start listening to the given port.  No clients should be
