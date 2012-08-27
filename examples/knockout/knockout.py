@@ -188,15 +188,18 @@ class PunchBoxer (kxg.Message):
 
     def setup(self, world, id_factory):
         time = world.get_elapsed_time()
-        self.damage = self.puncher.get_attack(time)
+        damage = self.puncher.get_attack(time)
+
+        self.damage = abs(damage)
+        self.backfired = (damage < 0)
 
     def execute(self, world):
         punchee = self.puncher.get_opponent()
-        world.punch_boxer(self.puncher, punchee, self.damage)
+        world.punch_boxer(self.puncher, punchee, self.damage, self.backfired)
 
     def notify(self, actor):
         punchee = self.puncher.get_opponent()
-        actor.punch_boxer(self.puncher, punchee, self.damage)
+        actor.punch_boxer(self.puncher, punchee, self.damage, self.backfired)
 
 
 class FinishGame (kxg.Message):
@@ -250,9 +253,11 @@ class World (kxg.World):
         self.boxers.append(boxer)
         return boxer
 
-    def punch_boxer(self, puncher, punchee, damage):
+    def punch_boxer(self, puncher, punchee, damage, backfired):
         self.elapsed_time = 0
-        punchee.take_damage(damage)
+
+        if not backfired: punchee.take_damage(damage)
+        else:             puncher.take_damage(damage)
 
     def finish_game(self, winner):
         self.winner = winner
@@ -311,10 +316,14 @@ class Referee (kxg.Referee):
             message = StartGame()
             self.send_message(message)
 
-    def punch_boxer(self, puncher, punchee, damage):
-        if punchee.get_health() < 0:
-            message = FinishGame(winner=puncher)
+    def punch_boxer(self, puncher, punchee, damage, backfired):
+        boxer = punchee if not backfired else puncher
+        opponent = boxer.get_opponent()
+
+        if boxer.get_health() < 0:
+            message = FinishGame(winner=opponent)
             self.send_message(message)
+
 
     def finish_game(self, winner):
         self.finish()
@@ -329,12 +338,11 @@ class Console (kxg.Actor):
 
     your_punch_message = "You punched %s for %d damage!"
     their_punch_message = "You were punched by %s for %d damage!"
-    punch_backfire_message = "Ouch! You punched yourself for %d damage!"
+    your_backfire_message = "Ouch! You punched yourself for %d damage!"
+    their_backfire_message = "%s punched himself for %d damage!"
 
     status_message = '(%d:%02d)    %s: %d    %s: %d'
-
-    victory_message = "You win!"
-    defeat_message = "You lose."
+    victory_message = "You win!"; defeat_message = "You lose."
 
     def __init__(self, quiet=False):
         kxg.Actor.__init__(self)
@@ -400,13 +408,20 @@ class Console (kxg.Actor):
     def create_boxer(self, boxer, is_you):
         if is_you: self.boxer = boxer
 
-    def punch_boxer(self, puncher, punchee, damage):
-        message_info = punchee.get_name(), damage
+    def punch_boxer(self, puncher, punchee, damage, backfired):
+        punch_data = punchee.get_name(), damage
+        backfire_data = puncher.get_name()
 
         if puncher is self.boxer:
-            print '\r' + Console.your_punch_message % message_info
+            if not backfired:
+                print '\r' + Console.your_punch_message % punch_data
+            else:
+                print '\r' + Console.your_backfire_message % damage
         else:
-            print '\r' + Console.their_punch_message % message_info
+            if not backfired:
+                print '\r' + Console.their_punch_message % punch_data
+            else:
+                print '\r' + Console.their_backfire_message % backfire_data
 
     def finish_game(self, winner):
         if winner is self.boxer:
@@ -436,7 +451,7 @@ class AI (kxg.Actor):
     def create_boxer(self, boxer, is_you):
         pass
 
-    def punch_boxer(self, puncher, punchee, damage):
+    def punch_boxer(self, puncher, punchee, damage, backfired):
         pass
 
     def finish_game(self, winner):
