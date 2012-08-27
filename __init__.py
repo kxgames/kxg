@@ -20,4 +20,6 @@ import network, messaging
 
 # Import a few of the most useful classes into the top-level namespace.
 from engine import *
-del Pipe
+
+del RemoteActor, Mailbox, LocalMailbox, RemoteMailbox
+del TokenProxy, ProxyLock, ProtectedProxyLock, UnprotectedProxyLock
