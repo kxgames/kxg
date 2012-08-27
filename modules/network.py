@@ -7,8 +7,8 @@ import errno, socket, struct, pickle
 # particular, I noticed that my code doesn't notice when socket.recv() returns
 # 0 bytes.  When this happens, the socket is actually trying to communicate
 # the fact that the connection has been closed.  If I handle this more
-# gracefully, I might manage to avoid the shutdown problems that plague the
-# code.
+# gracefully, I might manage to avoid the shutdown problems that have been
+# plaguing the code.
 
 # Server Documentation
 # ====================
@@ -21,7 +21,6 @@ class Host:
     connection, a new pipe is created.  The pipe can be used for communication,
     but by itself the host cannot. """
 
-    # Constructor {{{1
     def __init__(self, host, port, queue=5, callback=lambda pipe: None):
         self.callback = callback
         self.queue = queue
@@ -35,7 +34,6 @@ class Host:
 
         self.closed = False
 
-    # Pipe Creation {{{1
     def open(self):
         """ Bind the socket to the address specified in the constructor, but
         don't begin accepting connections yet.  This should only be called
@@ -77,7 +75,6 @@ class Host:
         self.socket.close()
         self.closed = True
 
-    # }}}1
 
 class Server(Host):
     """ Accepts a preset number of incoming network connections.  Once that
@@ -89,7 +86,6 @@ class Server(Host):
     you know in advance how many clients will be connecting.  If this is not
     the case, you need to use hosts instead. """
 
-    # Constructor {{{1
     def __init__(self, host, port, seats, callback=lambda pipes: None):
         self.pipes = []
         self.seats = seats
@@ -108,7 +104,6 @@ class Server(Host):
         for pipe in zip(self.pipes, self.identities):
             yield pipe
 
-    # Pipe Access {{{1
     def get_pipes(self):
         assert self.full()
         return self.pipes
@@ -119,7 +114,6 @@ class Server(Host):
     def full(self):
         return len(self.pipes) == self.seats
 
-    # }}}1
 
 class Client:
     """ Establishes a connection to a remote machine.  Clients can connect to
@@ -127,7 +121,6 @@ class Client:
     is created and the client itself can be destroyed.  All communication is
     mediated by the pipe. """
 
-    # Constructor {{{1
     def __init__(self, host, port, callback=lambda pipe: None):
         self.callback = callback
 
@@ -137,11 +130,9 @@ class Client:
         self.socket = socket.socket()
         self.socket.setblocking(False)
 
-    # Pipe Access {{{1
     def get_pipe(self):
         return self.pipe
 
-    # Pipe Creation {{{1
     def connect(self):
         assert not self.finished()
 
@@ -156,14 +147,12 @@ class Client:
     def finished(self):
         return bool(self.pipe)
 
-    # }}}1
 
 class Pipe:
     """ Allows nonblocking communication across a network connection.  Pipes
     are often not used directly, but are instead passed to higher level
     communication frameworks like forums or conversations. """
 
-    # Constructor {{{1
     def __init__(self, socket):
         self.socket = socket
         self.locked = False
@@ -173,14 +162,10 @@ class Pipe:
 
         self.socket.setblocking(False)
 
-    # Socket Destruction {{{1
     def close(self):
         self.socket.close()
         self.unlock()
 
-    # }}}1
-
-    # Message Packing {{{1
     def pack(self, message):
         """ Convert a message object into a string suitable for sending across
         the network.  This method must be reimplemented in subclasses and
@@ -193,33 +178,23 @@ class Pipe:
         data string. """
         raise NotImplementedError
 
-    # Busy and Idle {{{1
     def busy(self):
         return self.incoming or self.outgoing
 
     def idle(self):
         return self.incoming == "" and self.outgoing == []
 
-    # Locking and Unlocking {{{1
-
-    # The purpose of these two methods is to allow higher level messaging
-    # frameworks to be sure that they have exclusive use of this pipe.  If the
-    # pipe is already locked, it has to be unlocked before another framework
-    # can use it.
-
     def lock(self):
         assert not self.locked
         self.locked = True
 
+    __enter__ = lock
+
     def unlock(self, *ignore):
         self.locked = False
 
-    __enter__ = lock
     __exit__ = unlock
 
-    # }}}1
-
-    # Outgoing Messages {{{1
     def send(self, message, receipt=None):
         assert self.locked
 
@@ -242,7 +217,7 @@ class Pipe:
                 stream, receipt = self.outgoing[0]
 
                 sent = self.socket.send(stream)
-                self.outgoing[0][0] = stream[sent:]
+                self.outgoing[0] = stream[sent:], receipt
 
                 if not self.outgoing[0][0]:
                     self.outgoing.pop(0)
@@ -260,7 +235,6 @@ class Pipe:
 
         return receipts
 
-    # Incoming Messages {{{1
     def receive(self):
         assert self.locked
 
@@ -318,13 +292,12 @@ class Pipe:
 
         return messages
 
-    # }}}1
+
 
 class Header:
     """ Packs and unpacks the header information that gets attached to every
     message.  This is meant purely for internal use within pipes. """
 
-    # Header Format {{{1
     format = '!BI'
     length = struct.calcsize(format)
 
@@ -340,28 +313,30 @@ class Header:
         header_type, data_length = struct.unpack(cls.format, header_stream)
         return header_type, cls.length + data_length
     
-    # }}}1
-    
+
+
 class PickleFactory:
     """ Provides an instantiate() method that creates PicklePipe objects.  This
     method needs to be redefined in the host, client, and server classes. """
 
-    # Factory Method {{{1
     def instantiate(self, socket):
         return PicklePipe(socket)
     
-    # }}}1
 
-class PickleHost(Host, PickleFactory): pass
-class PickleServer(Server, PickleFactory): pass
-class PickleClient(Client, PickleFactory): pass
+class PickleHost(Host, PickleFactory):
+    pass
+
+class PickleServer(Server, PickleFactory):
+    pass
+
+class PickleClient(Client, PickleFactory):
+    pass
 
 class PicklePipe(Pipe):
     """ Prepares message objects to be sent over the network using the pickle
     module.  This is a very general solution, but it will often use more
     bandwidth than an optimized client. """
 
-    # Message Packing {{{1
     def pack(self, message):
 
         # The second parameter to dumps() tells pickle which protocol (i.e.
@@ -373,5 +348,4 @@ class PicklePipe(Pipe):
     def unpack(self, packet):
         return pickle.loads(packet)
 
-    # }}}1
 
