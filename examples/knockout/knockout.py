@@ -17,14 +17,29 @@ import kxg
 import sys, select, string
 
 class ClientLoop (kxg.MainLoop):
+
     def __init__(self, name, host, port):
         self.stage = ClientConnectionStage(self, name, host, port)
 
+    @staticmethod
+    def from_arguments(arguments):
+        name, host, port = arguments.name, arguments.host, arguments.port
+        return ClientLoop(name, host, port)
+
+
 class ServerLoop (kxg.MainLoop):
+
     def __init__(self, host, port):
         self.stage = ServerConnectionStage(self, host, port)
 
+    @staticmethod
+    def from_arguments(arguments):
+        host, port = arguments.host, arguments.port
+        return ServerLoop(host, port)
+
+
 class SandboxLoop (kxg.MainLoop):
+
     def __init__(self, name):
         world, referee = World(), Referee()
         actors_to_greetings = {
@@ -33,6 +48,11 @@ class SandboxLoop (kxg.MainLoop):
 
         self.stage = kxg.SinglePlayerGameStage(
                 self, world, referee, actors_to_greetings)
+
+    @staticmethod
+    def from_arguments(arguments):
+        return SandboxLoop(arguments.name)
+
 
 class ClientConnectionStage (kxg.Stage):
 
@@ -493,4 +513,32 @@ class Boxer (kxg.Token):
         self.health -= damage
 
 
+
+if __name__ == '__main__':
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+
+    server_parser = subparsers.add_parser('server')
+    server_parser.add_argument('--host', '-x', default='localhost')
+    server_parser.add_argument('--port', '-p', default=53351, type=int)
+    server_parser.set_defaults(loop_factory=ServerLoop.from_arguments)
+
+    client_parser = subparsers.add_parser('client')
+    client_parser.add_argument('name')
+    client_parser.add_argument('--host', '-x', default='localhost')
+    client_parser.add_argument('--port', '-p', default=53351, type=int)
+    client_parser.set_defaults(loop_factory=ClientLoop.from_arguments)
+
+    sandbox_parser = subparsers.add_parser('sandbox')
+    sandbox_parser.add_argument('name')
+    sandbox_parser.set_defaults(loop_factory=SandboxLoop.from_arguments)
+
+    arguments = parser.parse_args()
+    loop_factory = arguments.loop_factory
+
+    game = loop_factory(arguments)
+    game.play()
 
