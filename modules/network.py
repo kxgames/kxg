@@ -21,9 +21,9 @@ class Host:
     connection, a new pipe is created.  The pipe can be used for communication,
     but by itself the host cannot. """
 
-    def __init__(self, host, port, queue=5, callback=lambda pipe: None):
+    def __init__(self, host, port, callback=lambda pipe: None):
         self.callback = callback
-        self.queue = queue
+        self.queue = 5
 
         self.address = host, port
         self.socket = socket.socket()
