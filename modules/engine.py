@@ -285,7 +285,7 @@ class RemoteActor (Actor):
         #self.finish()
 
     def is_finished(self):
-        return False
+        return self.pipe.finished()
         #return not self.pipe.busy()
 
     def get_name(self):

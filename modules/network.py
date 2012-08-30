@@ -97,7 +97,7 @@ class Server(Host):
                 callback(self.pipes)
                 self.close()
 
-        Host.__init__(self, host, port, queue=seats, callback=greet)
+        Host.__init__(self, host, port, callback=greet)
 
     def __iter__(self):
         assert self.full()
@@ -155,15 +155,17 @@ class Pipe:
 
     def __init__(self, socket):
         self.socket = socket
-        self.locked = False
+        self.socket.setblocking(False)
 
         self.incoming = ""
         self.outgoing = []
 
-        self.socket.setblocking(False)
+        self.locked = False
+        self.closed = False
 
     def close(self):
         self.socket.close()
+        self.closed = True
         self.unlock()
 
     def pack(self, message):
@@ -178,12 +180,6 @@ class Pipe:
         data string. """
         raise NotImplementedError
 
-    def busy(self):
-        return self.incoming or self.outgoing
-
-    def idle(self):
-        return self.incoming == "" and self.outgoing == []
-
     def lock(self):
         assert not self.locked
         self.locked = True
@@ -194,6 +190,12 @@ class Pipe:
         self.locked = False
 
     __exit__ = unlock
+
+    def busy(self):
+        return self.incoming or self.outgoing
+
+    def idle(self):
+        return self.incoming == "" and self.outgoing == []
 
     def send(self, message, receipt=None):
         assert self.locked
@@ -242,11 +244,17 @@ class Pipe:
 
         # Begin by reading as much data as possible out of the network
         # interface and into a text stream.  If there was already data in the
-        # stream, the new data is appended to it.
+        # stream, the new data is appended to it.  If no bytes are returned,
+        # the socket has been closed by the remote end.
 
         while True:
             try:
-                self.incoming += self.socket.recv(4096)
+                next_packet = self.socket.recv(4096)
+                self.incoming += next_packet
+
+                if len(next_packet) == 0:
+                    self.closed = True
+                    break
 
             except socket.error, message:
                 if message.errno == errno.EAGAIN: break
@@ -292,6 +300,8 @@ class Pipe:
 
         return messages
 
+    def finished(self):
+        return self.closed
 
 
 class Header:

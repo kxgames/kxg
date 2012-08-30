@@ -84,8 +84,13 @@ def simple_messages(helper):
     assert sent == received
 
     # Close the connection.
+    assert not sender.finished()
     sender.close()
-    receiver.close()
+    assert sender.finished()
+
+    assert not receiver.finished()
+    receiver.receive()
+    assert receiver.finished()
 
 
 @testing.test
