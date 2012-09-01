@@ -4,31 +4,8 @@ import pygame
 
 # Things to Do
 # ============
-# 1. Write Knockout.  I think some things are still missing and/or rough around
-#    the edges, but now the most efficient way to find these things will be to
-#    just write a game.
-#
-# 2. Allow each Actor to specify its own frame rate.  
-#
-# 3. When a message is rejected because it fails the checks, I usually have a
-#    hard time figuring out what's going on.
-#
-# 4. I don't like how the game ends.  Currently, all of the actors have to
-#    indicate that they are finished, and then the game ends.  But I can't
-#    really think of any situation where one actor would want to prevent the
-#    game from exiting.  Furthermore, the engine is set up to share information
-#    about the world, not the actors.  It is a little awkward trying to keep
-#    the actors in sync.  
-#
-#    All that said, I do want to keep the server running until any messages it
-#    wants to send have been sent.  Maybe this should be the role of the
-#    teardown function in the RemoteActor class, although it would then have to
-#    block.  I might also be able to handle this using is_finished(), although
-#    my first crack at it didn't work.
-#
-#    Also, right now my network code doesn't know when a socket is closed.  If
-#    I add in that functionality, that could also provide a nice way to solve
-#    this problem.
+# 1. Allow each Actor to specify its own frame rate.  
+# 2. Write comments, maybe create a sphinx page.
 
 class MainLoop (object):
     """ Manage whichever stage is currently active.  This involves both
@@ -227,9 +204,10 @@ class MultiplayerServerGameStage (GameStage):
 class Actor (object):
 
     def __init__(self):
-        self.player = None
+        self.ambassador = self.get_name()
         self.messages = []
         self.finished = False
+        self.greeted = False
 
     def get_name(self):
         raise NotImplementedError
@@ -257,8 +235,11 @@ class Actor (object):
         buffer = self.messages; self.messages = []
         return buffer
 
-    def update_message(self, message, status):
-        message.update(self, status)
+    def accept_message(self, message, verified):
+        message.accept(self, verified)
+
+    def reject_message(self, message):
+        message.reject(self)
 
     def dispatch_message(self, message):
         pass
@@ -268,8 +249,16 @@ class Actor (object):
         message.notify(self)
 
     def receive_greeting(self, message):
+        # A greeting is a special type of message that specifies which player
+        # is associated with this actor.  Only messages that are subclasses of
+        # the base Greeting class and that were sent by this actor will be
+        # interpreted as greetings.  It is an error for one actor to receive
+        # more than one greeting.
+        
         if isinstance(message, Greeting) and message.was_sent_from_here():
-            self.player = message.get_player()
+            if self.greeted: raise ActorGreetedTwice()
+            self.ambassador = message.get_sender()
+            self.greeted = True
 
 
 class RemoteActor (Actor):
@@ -307,10 +296,12 @@ class RemoteActor (Actor):
 
         return Actor.deliver_messages(self)
 
-    def update_message(self, message, status):
-        if message.was_rejected():
-            message.pack()
-            self.pipe.send(message)
+    def accept_message(self, message, verified):
+        pass
+
+    def reject_message(self, message):
+        message.pack()
+        self.pipe.send(message)
 
     def dispatch_message(self, message):
         message.pack()
@@ -323,7 +314,6 @@ class RemoteActor (Actor):
 class Referee (Actor):
     def __init__(self):
         Actor.__init__(self)
-        self.player = 'referee'
 
 class Mailbox (object):
 
@@ -350,36 +340,16 @@ class LocalMailbox (Mailbox):
             packages += [ (actor, message) for message in messages ]
 
         for sender, message in packages:
-            status = message.check(self.world, sender.player)
+            status = message.check(self.world, sender.ambassador)
             message.set_status(status)
 
             if message.was_accepted():
-                sender.update_message(message, 'accepted')
+                sender.accept_message(message, True)
             else:
-                sender.update_message(message, 'rejected')
+                sender.reject_message(message)
                 continue
 
-            message.setup(self.world, self.id_factory)
-
-            # Here's the problem: The execute method changes the original
-            # message object, but not any of the clones I made earlier.
-            #
-            #private_messages = []
-            #
-            #for actor in self.actors:
-            #    private_message = message.copy()
-            #    private_message.set_origin(actor == sender)
-            #    private_messages.append((actor, private_message))
-            #
-            #for actor, private_message in private_messages:
-            #    actor.dispatch_message(private_message)
-            #
-            #with UnprotectedProxyLock():
-            #    message.execute(self.world)
-            #
-            #for actor, private_message in private_messages:
-            #    with ProtectedProxyLock(actor):
-            #        actor.receive_message(private_message)
+            message.setup(self.world, sender.ambassador, self.id_factory)
 
             for actor in self.actors:
                 private_message = message.copy()
@@ -410,15 +380,15 @@ class RemoteMailbox (Mailbox):
     def update(self):
 
         actor = self.actor
-        player = actor.player
+        ambassador = actor.ambassador
 
         for message in actor.deliver_messages():
-            status = message.check(self.world, player)
+            status = message.check(self.world, ambassador)
 
             if status:
-                actor.update_message(message, 'pending')
+                actor.accept_message(message, False)
             else:
-                actor.update_message(message, 'rejected')
+                actor.reject_message(message)
                 continue
 
             message.pack()
@@ -429,13 +399,12 @@ class RemoteMailbox (Mailbox):
         for message in self.pipe.receive():
             message.unpack(self.world)
 
-            if message.was_accepted():
-                actor.update_message(message, 'accepted')
-            else:
-                actor.update_message(message, 'rejected')
-                continue
-
-            actor.dispatch_message(message)
+            if message.was_sent_from_here():
+                if message.was_accepted():
+                    actor.accept_message(message, True)
+                else:
+                    actor.reject_message(message)
+                    continue
 
             with UnprotectedProxyLock():
                 message.execute(self.world)
@@ -463,8 +432,8 @@ class IdFactory (object):
 
 
 
-def data_getter(method):
-    method.data_getter = True
+def read_only(method):
+    method.read_only = True
     return method
 
 
@@ -484,7 +453,7 @@ class Token (object):
     def __extend__(self):
         return {}
 
-    @data_getter
+    @read_only
     def get_id(self):
         return self.id
 
@@ -532,7 +501,7 @@ class TokenProxy (object):
         if hasattr(token, key):
             member = getattr(token, key)
 
-            if access == 'unprotected' or hasattr(member, 'data_getter'):
+            if access == 'unprotected' or hasattr(member, 'read_only'):
                 return member
             else:
                 raise TokenPermissionError(key)
@@ -592,7 +561,7 @@ class UnprotectedProxyLock (ProxyLock):
 
 class Message (object):
 
-    def check(self, world, player):
+    def check(self, world, sender):
         """ Returns true if the message is consistent with the state of the
         game world.  This method may be called several times on different
         hosts, and for that reason it is not able to modify the game world. """
@@ -601,7 +570,7 @@ class Message (object):
     def update(self, actor, status):
         pass
 
-    def setup(self, world, id_factory):
+    def setup(self, world, sender, id_factory):
         """ Allows the message to claim unique ID numbers for new objects being
         created.  In multiplayer games, this method is only called on the
         server to guarantee that the given ID numbers are unique. """
@@ -661,6 +630,12 @@ class Message (object):
             setattr(self, name, token)
 
 
+    def reject(self, actor):
+        raise UnhandledMessageRejection(self)
+
+    def accept(self, actor, pending):
+        pass
+
     def set_status(self, status):
         self._status = status
 
@@ -678,5 +653,5 @@ class Message (object):
 
 
 class Greeting (Message):
-    def get_player(self):
+    def get_sender(self):
         raise NotImplementedError
