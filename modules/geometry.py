@@ -44,6 +44,13 @@ class Vector(object):
         """ Create a vector that makes the given angle with the x-axis. """
         return Vector.from_radians(angle * math.pi / 180)
 
+    @staticmethod
+    def from_tuple(coordinate):
+        """ Create a vector from a two element tuple. """
+        x = coordinate[0]
+        y = coordinate[1]
+        return Vector(x, y)
+
     # Math Methods {{{1
     @staticmethod
     def get_radians(A, B):

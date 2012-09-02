@@ -15,8 +15,9 @@ del os, repository
 
 # Expose all of the modules included in this package.
 import engine
-import geometry, sprites
+import geometry, sprites, keychain
 import network, messaging
+import pygame_maps
 
 # Import a few of the most useful classes into the top-level namespace.
 from engine import *
