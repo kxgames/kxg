@@ -5,7 +5,6 @@ import testing
 
 from helpers.pipes import *
 
-# Isolated Pipes {{{1
 @testing.test
 def isolated_pipes(helper):
     machine, port = 'localhost', 10236
@@ -31,13 +30,16 @@ def isolated_pipes(helper):
 
     assert not client.finished()
 
-# Connected Pipes {{{1
 @testing.test
 def connected_pipes(helper):
     host, port = 'localhost', 10236
 
-    def check_client(pipe):  pass
-    def check_server(pipes): assert len(pipes) == 1
+    def check_client(pipe):
+        pass
+
+    def check_server(pipes):
+        assert len(pipes) == 1
+
 
     server = PickleServer(host, port, seats=1, callback=check_server)
     client = PickleClient(host, port, callback=check_client)
@@ -51,7 +53,6 @@ def connected_pipes(helper):
     assert server.finished()
     assert client.finished()
 
-# Simple Messages {{{1
 @testing.test
 def simple_messages(helper):
     host, port = 'localhost', 10236
@@ -83,12 +84,15 @@ def simple_messages(helper):
     assert sent == received
 
     # Close the connection.
+    assert not sender.finished()
     sender.close()
-    receiver.close()
+    assert sender.finished()
 
-# }}}1
+    assert not receiver.finished()
+    receiver.receive()
+    assert receiver.finished()
 
-# Large Messages {{{1
+
 @testing.test
 def test_many_messages(helper):
     test_stressful_conditions(count=2**12, bytes=2**5)
@@ -119,7 +123,6 @@ def test_stressful_conditions(count, bytes):
     delivered.check(outbox)
     received.check(outbox)
 
-# Partial Messages {{{1
 @testing.test
 def test_partial_messages(helper):
     sender, receiver = connect()
@@ -153,7 +156,6 @@ def test_partial_messages(helper):
     disconnect(sender, receiver)
     inbox.check(outbox)
 
-# }}}1
 
 testing.title("Testing the network module...")
 testing.run()

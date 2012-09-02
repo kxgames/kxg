@@ -4,14 +4,11 @@ import Queue as queue
 from utilities.infinity import *
 
 class Forum:
-
     """ Manages a messaging system that allows messages to be published for any
     interested subscriber to receive.  If desired, published messages will even
     be delivered across a network.  Furthermore, since the system was designed
     to work with concurrent applications, messages can be safely published at
     any time from any thread. """
-
-    # Constructor {{{1
 
     def __init__(self, *pipes, **options):
         """ Create and prepare a new forum object.  If any network connections
@@ -45,21 +42,6 @@ class Forum:
 
         self.setup(*pipes)
 
-    # Access Control {{{1
-
-    def get_member(self):
-        return self.member
-
-    def get_publisher(self):
-        return self.publisher
-
-    def get_subscriber(self):
-        return self.subscriber
-
-    # }}}1
-
-    # Subscriptions {{{1
-
     def subscribe(self, flavor, callback):
         """ Attach a callback to a particular flavor of message.  For
         simplicity, the message's flavor is always the message's class.  This
@@ -73,8 +55,6 @@ class Forum:
         except KeyError:
             self.subscriptions[flavor] = [callback]
 
-    # Publications {{{1
-
     def publish(self, message, callback=lambda: None):
         """ Publish the given message so subscribers to that class of message
         can react to it.  If any remote forums are connected, the underlying
@@ -82,10 +62,6 @@ class Forum:
 
         publication = Publication(message, receipt=callback)
         self.publications.put(publication)
-
-    # }}}1
-
-    # Setup, Update, and Teardown {{{1
 
     def setup(self, *pipes):
         """ Connect this forum to another forum on a remote machine.  Any
@@ -165,8 +141,6 @@ class Forum:
         equivalent to calling unlock. """
         self.unlock()
 
-    # Lock and Unlock {{{1
-
     def lock(self):
         """ Prevent the forum from making any more subscriptions and allow it
         to begin delivering publications. """
@@ -188,25 +162,33 @@ class Forum:
         for pipe in self.pipes:
             pipe.unlock()
 
-    # }}}1
+
+    def get_member(self):
+        return self.member
+
+    def get_publisher(self):
+        return self.publisher
+
+    def get_subscriber(self):
+        return self.subscriber
+
+
 
 class Conversation:
-
     """ Manages a messaging system that allows two participants to carry out
     brief conversations.  During the conversation, each participant can easily
     transition back and forth between sending requests and waiting for
     responses.  These transitions are setup in advance, and played out after
     the conversation starts. """
     
-    # Constructor {{{1
     def __init__(self, pipe, *exchanges):
         self.pipe = pipe
         self.exchanges = exchanges
         self.closed = False
 
-    # }}}1
+    def get_pipe(self):
+        return self.pipe
 
-    # Setup Methods {{{1
     def setup(self, *exchanges):
         self.exchanges += exchanges
 
@@ -214,11 +196,11 @@ class Conversation:
         self.pipe.lock()
         self.setup(*exchanges)
 
-    # Update Methods {{{1
     def update(self):
-        self.update_outgoing()
-        self.update_incoming()
-        self.update_finished()
+        if not self.finished():
+            self.update_outgoing()
+            self.update_incoming()
+            self.update_finished()
 
         return self.finished()
 
@@ -246,40 +228,32 @@ class Conversation:
         if not self.exchanges and self.pipe.idle():
             self.finish()
 
-    # Teardown Methods {{{1
     def finish(self):
         self.pipe.unlock()
-
         self.exchanges = []
         self.closed = True
 
     def finished(self):
         return self.closed
 
-    # }}}1
 
 class SimpleSend(Conversation):
-
     """ Sends a single message and finishes without waiting for a response.
     This class is intended only for brief exchanges with SimpleReceive.  It
     should not be used in more complex protocols. """
 
-    # Setup {{{1
     def __init__(self, pipe, message):
         send = Send(message); finish = Finish()
         send.transition(finish)
 
         Conversation.__init__(self, pipe, send)
 
-    # }}}1
 
 class SimpleReceive(Conversation):
-
     """ Waits to receive a single message, then finishes.  This class is meant
     to be used with SimpleSend, and should not be used in more complicated
     protocols. """
 
-    # Setup {{{1
     def __init__(self, pipe, flavor, callback=lambda message: None):
         self.receive = Receive(); finish = Finish()
         self.receive.transition(finish, flavor, callback)
@@ -289,15 +263,12 @@ class SimpleReceive(Conversation):
     def get_message(self):
         return self.receive.get_message()
 
-    # }}}1
 
 class SimpleRequest(Conversation):
-
     """ Sends a single message and waits to receive a response.  This class is
-    can be used, in conjunction with SimpleResponse, to request that
-    information be sent over the network. """
+    can be used in conjunction with SimpleResponse to request that information
+    be sent over the network. """
 
-    # Setup {{{1
     def __init__(self, pipe, message, flavor, callback):
         request = Send(message)
         response = Receive()
@@ -312,15 +283,12 @@ class SimpleRequest(Conversation):
     def get_response(self):
         return self.response.get_message()
 
-    # }}}1
 
 class SimpleResponse(Conversation):
-
     """ Waits to receive a request, then respond with a predefined response.
     This class is meant to be used with SimpleRequest to reply to simple
     requests. """
 
-    # Setup {{{1
     def __init__(self, pipe, flavor, message):
         request = Receive()
         response = Send(message)
@@ -331,16 +299,13 @@ class SimpleResponse(Conversation):
 
         Conversation.__init__(self, pipe, request)
 
-    # }}}1
 
 class FullRequest(Conversation):
-
     """ Sends a request and waits for it to either be accepted or rejected.
     This class is a wrapper around a conversation and a number of different
     exchanges, meant to be useful in the most common situations.  If you want
     to make a custom conversation, this may be useful to look at. """
 
-    # Setup {{{1
     def __init__(self, pipe, message, accept_flavor, reject_flavor):
 
         # Begin by setting up all the exchanges that can happen on this side
@@ -373,7 +338,6 @@ class FullRequest(Conversation):
         self.result = False
         self.response = None
 
-    # Attributes {{{1
     def get_accepted(self):
         assert self.finished()
         return self.finished() and self.result
@@ -386,16 +350,13 @@ class FullRequest(Conversation):
         assert self.finished()
         return self.response
 
-    # }}}1
 
 class FullResponse(Conversation):
-
     """ Waits for a request to arrive and, once it does, decides whether or not
     to accept it.  This class is meant to work with the request class above.
     Normally the request will come from the client side and the response from
     the server side. """
 
-    # Setup {{{1
     def __init__(self, pipe, flavor_callback, accept_message, reject_message):
 
         # Begin by setting up all the exchanges that can happen on this side of
@@ -422,27 +383,22 @@ class FullResponse(Conversation):
         Conversation.__init__(self, pipe, request)
         self.request = None
 
-    # Attributes {{{1
     def get_request(self):
         assert self.finished()
         return self.request
 
-    # }}}1
 
-###############################################################################
 # The classes beyond this point are primarily intended for use within the
 # classes above this point.  Some of these classes can still be used on their
 # own, but are only necessary in unusual situations, while others should never
 # be directly used.  Just be sure you know what you are doing.
 
 class Exchange:
-
     """ Represents a single exchange in a conversation.  The basic examples,
     which are all implemented by subclasses below, include sending messages,
     receiving messages, and ending the conversation.  Complex conversations can
     be created by linking a number of these exchanges together. """
     
-    # Interface Definition {{{1
     def send(self):
         """ Returns a message that should be sent to the other end of the
         conversation.  Be careful, because this method will be called every
@@ -466,19 +422,15 @@ class Exchange:
         messages have been completely sent and received, respectively. """
         return False
 
-    # }}}1
 
 class Send(Exchange):
-
     """ Sends a message and immediately transitions to a different exchange.
     That exchange must be specified before the conversation starts. """
 
-    # Constructor {{{1
     def __init__(self, message):
         self.message = message
         self.exchange = None
 
-    # Interface Methods {{{1
     def send(self):
         return self.message
 
@@ -488,16 +440,13 @@ class Send(Exchange):
     def next(self):
         return self.exchange
 
-    # }}}1
 
 class Receive(Exchange):
-
     """ Waits for a message to be received, then transitions the conversation
     to another exchanges based on the content of the message.  Different types
     of messages can cause different transitions.  The message type is the
     message class by default, but this can be controlled by a callback. """
 
-    # Constructor and Attributes {{{1
     def __init__(self, flavor=lambda message: type(message)):
         self.flavor = flavor
 
@@ -521,7 +470,6 @@ class Receive(Exchange):
     def get_messages(self):
         return self.messages
 
-    # Interface Methods {{{1
     def receive(self, message):
         self.received = message
 
@@ -543,32 +491,24 @@ class Receive(Exchange):
         
         return transition
 
-    # }}}1
 
 class Finish(Exchange):
-
     """ Ends the conversation without sending or receiving anything.  Note that
     this does not end the conversation running on the far side of the
     connection. """
 
-    # Constructor {{{1
     def __init__(self, callback=lambda: None):
         self.callback = callback
 
-    # Interface Methods {{{1
     def finish(self):
         self.callback()
         return True
 
-    # }}}1
 
 class Publication:
-
     """ Represents messages that are waiting to be delivered within a forum.
     Outside of the forum, this class should never be used. """
 
-    # Constructor {{{1
-    
     # The origin argument specifies the pipe that delivered this publication.
     # It is used to avoid returning a incoming message to the forum that
     # originally sent it.  For new publications, this field isn't important and
@@ -583,5 +523,4 @@ class Publication:
         self.origin = origin
         self.receipt = receipt
 
-    # }}}1
 
