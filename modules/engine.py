@@ -1,6 +1,7 @@
 from __future__ import division
 
 import pygame
+import functools
 
 # Things to Do
 # ============
@@ -12,12 +13,11 @@ class MainLoop (object):
     updating the current stage and handling transitions between stages. """
 
     def play(self, frequency=50):
-
         try:
             clock = pygame.time.Clock()
             self.stop_flag = False
 
-            # All subclasses need to define self.stage.
+            self.stage = self.get_initial_stage()
             self.stage.setup()
 
             while not self.is_finished():
@@ -38,6 +38,9 @@ class MainLoop (object):
 
     def exit(self):
         self.stop_flag = True
+
+    def get_initial_stage(self):
+        raise NotImplementedError
 
     def is_finished(self):
         return self.stop_flag
@@ -139,20 +142,20 @@ class GameStage (Stage):
     def setup(self):
         self.mailbox.setup(self.world, self.actors)
 
-        with UnprotectedProxyLock():
+        with UnprotectedTokenLock():
             self.world.setup()
 
         for actor in self.actors:
             actor.setup(self.world)
 
     def update(self, time):
-        with UnprotectedProxyLock():
+        with UnprotectedTokenLock():
             self.world.update(time)
 
         still_playing = False
 
         for actor in self.actors:
-            with ProtectedProxyLock(actor):
+            with ProtectedTokenLock(actor):
                 actor.update(time)
             if not actor.is_finished():
                 still_playing = True
@@ -170,14 +173,17 @@ class GameStage (Stage):
 
 
 class SinglePlayerGameStage (GameStage):
-    def __init__(self, master, world, referee, actors_to_greetings):
+    def __init__(self, master, world, referee, remaining_actors):
 
         mailbox = LocalMailbox()
         actors = [referee]
 
-        for actor, greeting in actors_to_greetings.items():
-            actor.send_message(greeting)
-            actors.append(actor)
+        if isinstance(actors, dict):
+            for actor, greeting in remaining_actors.items():
+                actor.send_message(greeting)
+                actors.append(actor)
+        else:
+            actors.extend(remaining_actors)
 
         GameStage.__init__(self, master, world, mailbox, actors)
 
@@ -188,15 +194,18 @@ class MultiplayerClientGameStage (GameStage):
         GameStage.__init__(self, master, world, mailbox, [actor])
 
 class MultiplayerServerGameStage (GameStage):
-    def __init__(self, master, world, referee, pipes_to_greetings):
+    def __init__(self, master, world, referee, pipes):
 
         mailbox = LocalMailbox()
         actors = [referee]
 
-        for pipe, greeting in pipes_to_greetings.items():
-            actor = RemoteActor(pipe)
-            actor.send_message(greeting)
-            actors.append(actor)
+        if isinstance(pipes, dict):
+            for pipe, greeting in pipes.items():
+                actor = RemoteActor(pipe)
+                actor.send_message(greeting)
+                actors.append(actor)
+        else:
+            actors += [RemoteActor(pipe) for pipe in pipes]
             
         GameStage.__init__(self, master, world, mailbox, actors)
 
@@ -356,13 +365,13 @@ class LocalMailbox (Mailbox):
                 private_message.set_origin(actor == sender)
                 actor.dispatch_message(private_message)
 
-            with UnprotectedProxyLock():
+            with UnprotectedTokenLock():
                 message.execute(self.world)
 
             for actor in self.actors:
                 private_message = message.copy()
                 private_message.set_origin(actor == sender)
-                with ProtectedProxyLock(actor):
+                with ProtectedTokenLock(actor):
                     actor.receive_message(private_message)
 
 
@@ -406,10 +415,10 @@ class RemoteMailbox (Mailbox):
                     actor.reject_message(message)
                     continue
 
-            with UnprotectedProxyLock():
+            with UnprotectedTokenLock():
                 message.execute(self.world)
 
-            with ProtectedProxyLock(actor):
+            with ProtectedTokenLock(actor):
                 actor.receive_message(message)
 
 
@@ -432,38 +441,54 @@ class IdFactory (object):
 
 
 
-def read_only(method):
-    method.read_only = True
-    return method
-
-
 class Token (object):
 
-    def __new__(cls, *args, **kwargs):
-
-        token = object.__new__(cls, *args, **kwargs)
-        token.__init__(*args, **kwargs)
-        proxy = TokenProxy(token)
-
-        return proxy
+    _access = 'protected'
+    _actor = None
 
     def __init__(self, id):
-        self.id = id
+        self._id = id
+        self._extensions = {
+                actor : extension_class(self)
+                for actor, extension_class in self.__extend__().items() }
+
+    def __getattr__(self, key):
+        # Don't recursively look for the '_extensions' attribute.  When the
+        # token is being unpickled, this method is called before that attribute
+        # is defined. 
+
+        if key == '_extensions':
+            return {}
+
+        # Search for the extension that correspond to the currently active
+        # actor and defer any unknown attribute accesses onto it.
+
+        actor = Token._actor
+        extension = self._extensions.get(actor)
+
+        if extension and hasattr(extension, key):
+            return getattr(extension, key)
+        else:
+            raise AttributeError(key)
 
     def __extend__(self):
         return {}
 
-    @read_only
     def get_id(self):
-        return self.id
+        return self._id
+
+    def get_extension(self):
+        actor = Token._actor
+        extension = self._extensions.get(actor)
+
+        if extension: return extension
+        else: raise AttributeError
+
+    def check_for_safety(self):
+        assert self._access == 'unprotected'
 
 
 class World (Token):
-    """ Everything in this class is duplicated in the Actor class.  I should
-    have a generic base class that implements the setup/update/teardown
-    functionality.  Of course, I'll have to think about ways to generalize that
-    scheme first.  But it might be a good feature to stick into the base Engine
-    class.   I also would like a way to avoid multiple inheritance. """
 
     def __init__(self):
         Token.__init__(self, 0)
@@ -478,84 +503,46 @@ class World (Token):
         raise NotImplementedError
 
 
-class TokenProxy (object):
-
-    _access = 'unprotected'
-    _actor = None
-
-    def __init__(self, token):
-
-        self._token = token
-        self._extensions = {
-                actor : extension_class(self)
-                for actor, extension_class in token.__extend__().items() }
-
-    def __getattr__(self, key):
-
-        access = TokenProxy._access
-        actor = TokenProxy._actor
-
-        token = self._token
-        extension = self._extensions.get(actor)
-
-        if hasattr(token, key):
-            member = getattr(token, key)
-
-            if access == 'unprotected' or hasattr(member, 'read_only'):
-                return member
-            else:
-                raise TokenPermissionError(key)
-
-        elif extension and hasattr(extension, key):
-            return getattr(extension, key)
-
-        else:
-            raise AttributeError(key)
-
-
-class TokenPermissionError (Exception):
-    pass
-
 class TokenExtension (object):
     def __init__(self, token):
         pass
 
-class ProxyLock:
+class TokenLock:
 
     def __init__(self, access, actor=None):
         self.current_access = access
         self.current_actor = actor
 
     def __enter__(self):
-        self.previous_access = TokenProxy._access
-        self.previous_actor = TokenProxy._actor
+        self.previous_access = Token._access
+        self.previous_actor = Token._actor
 
-        TokenProxy._access = self.current_access
-        TokenProxy._actor = self.current_actor
+        Token._access = self.current_access
+        Token._actor = self.current_actor
 
     def __exit__(self, *args, **kwargs):
-        TokenProxy._access = self.previous_access
-        TokenProxy._actor = self.previous_actor
+        Token._access = self.previous_access
+        Token._actor = self.previous_actor
 
     @staticmethod
     def restrict_default_access():
-        TokenProxy._access = 'protected'
+        Token._access = 'protected'
 
     @staticmethod
     def allow_default_access():
-        TokenProxy._access = 'unprotected'
+        Token._access = 'unprotected'
 
 
-class ProtectedProxyLock (ProxyLock):
+class ProtectedTokenLock (TokenLock):
 
     def __init__(self, actor):
-        ProxyLock.__init__(self, 'protected', actor.get_name())
+        TokenLock.__init__(self, 'protected', actor.get_name())
 
 
-class UnprotectedProxyLock (ProxyLock):
+class UnprotectedTokenLock (TokenLock):
 
     def __init__(self):
-        ProxyLock.__init__(self, 'unprotected', None)
+        TokenLock.__init__(self, 'unprotected', None)
 
 
 
@@ -567,7 +554,10 @@ class Message (object):
         hosts, and for that reason it is not able to modify the game world. """
         pass
 
-    def update(self, actor, status):
+    def reject(self, actor):
+        raise UnhandledMessageRejection(self)
+
+    def accept(self, actor, pending):
         pass
 
     def setup(self, world, sender, id_factory):
@@ -609,7 +599,7 @@ class Message (object):
         for name in dir(self):
             attribute = getattr(self, name)
 
-            if isinstance(attribute, TokenProxy):
+            if isinstance(attribute, Token):
                 packing_list[name] = attribute.get_id()
                 delattr(self, name)
 
@@ -628,13 +618,6 @@ class Message (object):
         for name, id in packed_tokens:
             token = world.get_token(id)
             setattr(self, name, token)
-
-
-    def reject(self, actor):
-        raise UnhandledMessageRejection(self)
-
-    def accept(self, actor, pending):
-        pass
 
     def set_status(self, status):
         self._status = status
@@ -655,3 +638,13 @@ class Message (object):
 class Greeting (Message):
     def get_sender(self):
         raise NotImplementedError
+
+
+def check_for_safety(method):
+    @functools.wraps(method)
+    def decorator(self, *args, **kwargs):
+        self.check_for_safety()
+        return method(self, *args, **kwargs)
+    return decorator
+
+
