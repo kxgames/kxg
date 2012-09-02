@@ -1,12 +1,15 @@
 from __future__ import print_function
+
+import sys
 import copy
+
+import pygame_maps
 
 # Things to do:
 #   ~ Add a universal reset key (ie. ESC). Or other universal trigger
 #       keys. 
 #       NOTE: a reset key is pointless... Just never register the
 #       key and it will always fail, thereby resetting the chain.
-#   ~ Add ability to handle modifier keys such as Shift or Ctrl.
 #
 #   ~ Add sequence objects? The Key chain would update a list of
 #       sequences. Each sequence would remove themselves when they
@@ -22,10 +25,26 @@ import copy
 #       Intended for use with optional information for a sequence.
 #       Issue: Can create really confusing situations with different
 #       chains executing simultaniously.
+#   ~ Add background chains. Similar to ghost chains and exceptions.
+#       They will ignore unrelated input, but will not prevent other
+#       hotkey branches from running or executing. 
+#   ~ Add chains with optional args. After each major key (a,b,c in
+#       example), the user can enter an argument hotkey or the next
+#       major key.
+#       
+#       a ----------> b ----------> c------------> execute()
+#        \        ^    \        ^    \        ^
+#        arg1 --->^    arg1 --->^    arg1 --->^
+#          \      ^      \      ^      \      ^
+#          arg2 ->^      arg2 ->^      arg2 ->^
+#            \    ^        \    ^        \    ^
+#            arg3 ^        arg3 ^        arg3 ^
+#
+#   ~ Add infinite argument keys. Used for entering whole words? (for
+#       in game messaging?)
 
 class KeyChain:
 
-    # Constructor {{{1
     def __init__ (self):
 
         self.active = None
@@ -44,8 +63,6 @@ class KeyChain:
         self.root_node.setup (self, None, None, None)
         self.activate (self.root_node)
 
-    # Registering {{{1
-
     def register_lens (self, name, lens):
 
         # A lens is a dictionary mapping input to input.
@@ -61,6 +78,38 @@ class KeyChain:
 
         new_lens = Lense (self, name, copy.copy(lens))
         self.lenses[name] = new_lens
+
+    def register_chain_key (self, sequence, callback, args):
+
+        # This event assumes all sequence members are pygame keys.
+
+        k2s = pygame_maps.key_to_string
+
+        new_sequence = []
+
+        for member in sequence:
+            new_sequence.append (k2s[member])
+
+        self.register_chain (new_sequence, callback, args)
+
+    def register_chain_mouse (self, sequence, callback, args):
+        
+        # This function assumes sequence members with even indices are
+        # pygame event types and the odd members are pygame mouse 
+        # button numbers.
+
+        e2s = pygame_maps.event_to_string
+        m2s = pygame_maps.mouse_to_string
+
+        new_sequence = []
+        even = True
+
+        for member in sequence:
+            if even:    new_sequence.append (e2s[member])
+            else:       new_sequence.append (m2s[member])
+            even = not even
+
+        self.register_chain (new_sequence, callback, args)
 
     def register_chain (self, sequence, callback, args):
 
@@ -114,18 +163,19 @@ class KeyChain:
 
             return node
 
-    # Handle methods {{{1
-    def handle (self, input, lens_only=False):
+    def handle_key (self, input, lens_only=False):
 
-        # Print out some messages
-        if self.verbose and lens_only == False:
-            print ('Checking input %s' %input)
-            if len(self.sequence) > 0:
-                print ('    Current_sequence: ', end='')
-                for item in self.sequence[:-1]:
-                    print ('%s, ' %item, end='')
-                else:
-                    print ('%s' %self.sequence[-1])
+        self.handle (pygame_maps.key_to_string[input], lens_only)
+
+    def handle_event (self, input, lens_only=False):
+
+        self.handle (pygame_maps.event_to_string[input], lens_only)
+
+    def handle_mouse (self, input, lens_only=False):
+
+        self.handle (pygame_maps.mouse_to_string[input], lens_only)
+
+    def handle (self, input, lens_only=False):
 
         # See if the input is really a lens.
         if input in self.lenses:
@@ -135,15 +185,15 @@ class KeyChain:
             # Toggle the lens.
             if lens in self.active_lenses:
 
-                if self.verbose:
-                    print ('Deactivating the %s lens' %lens.get_name())
+                #if self.verbose:
+                #    print ('Deactivating the %s lens' %lens.get_name())
 
                 self.active_lenses.remove (lens)
 
             else:
 
-                if self.verbose:
-                    print ('Activating the %s lens' %lens.get_name())
+                #if self.verbose:
+                #    print ('Activating the %s lens' %lens.get_name())
 
                 self.active_lenses.append (lens)
 
@@ -155,9 +205,9 @@ class KeyChain:
 
                 if input in lens:
 
-                    if self.verbose:
-                        print ('Applying the %s lens' %lens.get_name())
-                        print ('    %s  ->  %s' %(input, lens[input]))
+                    #if self.verbose:
+                    #    print ('Applying the %s lens' %lens.get_name())
+                    #    print ('    %s  ->  %s' %(input, lens[input]))
 
                     input = lens[input]
 
@@ -174,11 +224,9 @@ class KeyChain:
         self.sequence = []
         self.activate (self.root_node)
 
-    # }}}1
 
 class Lense (dict):
 
-    # Methods {{{1
     def __init__ (self, manager, name, map):
         dict.__init__(self, map)
 
@@ -193,11 +241,9 @@ class Lense (dict):
         
         return self.manager
 
-    # }}}1
 
 class Node:
 
-    # Constructor {{{1
     def __init__ (self):
 
         self.manager = None
@@ -212,7 +258,6 @@ class Node:
         self.key = key
         self.add_callback(callback, args)
 
-    # Augmenting methods {{{1
     def add_callback(self, callback, args):
 
         if callback != None:
@@ -229,35 +274,30 @@ class Node:
 
         self.links[key] = node
 
-    # Handle Methods {{{1
     def check (self, input):
 
-        #if self.verbose: print (input, end='')
+        if self.verbose: 
+            print ("%s, " %input, end='')
+            sys.stdout.flush()
 
         # If the current Node has a link that matches the input, execute
         # that link's callbacks. Otherwise, the sequence breaks.
         if input in self.links:
-            if self.verbose: print ('    %s OK.' %input)
             self.links[input].execute()
 
         else:
-            if self.verbose: print ('    %s fails.' %input)
+            if self.verbose: print (' fails.')
             self.break_sequence()
     
     def execute (self):
 
-        if self.verbose:
-            if len(self.callbacks) > 0:
-                seq = self.manager.sequence
-                for member in seq[:-1]:
-                    print ('%s, ' %member, end='')
-                else:
-                    print ('%s passes. ' %seq[-1])
-                    print ('    Now calling:')
-                    
-
         if len(self.links) > 0: self.select()
         else: self.manager.reset()
+
+        if self.verbose:
+            if len(self.callbacks) > 0:
+                print (' OK.')
+                print ('    Now calling:')
 
         for callback in self.callbacks:
 
@@ -273,7 +313,6 @@ class Node:
 
         self.manager.reset()
 
-    # Operators {{{1
     def __eq__ (self, other):
 
         if isinstance (other, Node):
@@ -308,10 +347,11 @@ class Node:
     def __str__ (self):
 
         return self.__repr__()
-    # }}}1
 
 
-# Testing {{{1
+
+
+
 def __test__ ():
     class Obj:
         pass

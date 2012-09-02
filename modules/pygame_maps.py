@@ -16,8 +16,8 @@ from pygame.locals import *
 #   key_to_string        K_A  --> "K_A"
 #   string_to_key       "K_A" -->  K_A
 #
-#   type_to_string       KEYUP  --> "KEYUP"
-#   string_to_type      "KEYUP" -->  KEYUP
+#   event_to_string       KEYUP  --> "KEYUP"
+#   string_to_event      "KEYUP" -->  KEYUP
 #
 #######################################################################
 
@@ -164,7 +164,7 @@ for key in key_to_string:
 
 #######################################################################
 
-type_to_string = {                          ##  event variables  ##
+event_to_string = {                          ##  event variables  ##
     QUIT : "QUIT",	     	            #   none
     ACTIVEEVENT : "ACTIVEEVENT",	    #   gain, state
     KEYDOWN : "KEYDOWN",	     	    #   unicode, key, mod
@@ -182,10 +182,10 @@ type_to_string = {                          ##  event variables  ##
     USEREVENT : "USEREVENT"                 #   code
     }
 
-string_to_type = {}
-for type in type_to_string:
-    string = type_to_string[type]
-    string_to_type[string] = type
+string_to_event = {}
+for event in event_to_string:
+    string = event_to_string[event]
+    string_to_event[string] = event
 
 #######################################################################
 
