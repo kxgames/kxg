@@ -17,21 +17,26 @@ class MainLoop (object):
             clock = pygame.time.Clock()
             self.stop_flag = False
 
-            self.stage = self.get_initial_stage()
-            self.stage.setup()
+            stage = self.get_initial_stage()
+            stage.set_master(self)
+            stage.setup()
 
             while not self.is_finished():
                 time = clock.tick(frequency) / 1000
-                self.stage.update(time)
+                stage.update(time)
 
-                if self.stage.is_finished():
-                    self.stage.teardown()
-                    self.stage = self.stage.get_successor()
-                    if self.stage: self.stage.setup()
-                    else: self.exit()
+                if stage.is_finished():
+                    stage.teardown()
+                    stage = stage.get_successor()
 
-            if self.stage:
-                self.stage.teardown()
+                    if stage:
+                        stage.set_master(self)
+                        stage.setup()
+                    else:
+                        self.exit()
+
+            if stage:
+                stage.teardown()
 
         except KeyboardInterrupt:
             print
@@ -91,30 +96,26 @@ class MultiplayerDebugger (object):
 
 class Stage (object):
 
-    def __init__(self, master_or_stage):
-        if isinstance(master_or_stage, MainLoop):
-            self.master = master_or_stage
-        elif hasattr(master_or_stage, 'get_master'):
-            self.master = master_or_stage.get_master()
-        else:
-            raise ValueError("Must provide stage with a parent object.")
-
-        self.stop_flag = False
+    def __init__(self):
+        self._stop_flag = False
 
     def get_master(self):
-        return self.master
+        return self._master
+
+    def set_master(self, master):
+        self._master = master
 
     def exit_stage(self):
         """ Stop this stage from executing once the current update ends. """
-        self.stop_flag = True
+        self._stop_flag = True
 
     def exit_program(self):
         """ Exit the game once the current update ends. """
-        self.master.exit()
+        self._master.exit()
 
     def is_finished(self):
         """ Return true if this stage is done executing. """
-        return self.stop_flag
+        return self._stop_flag
 
     def get_successor(self):
         """ Create and return the stage that should be executed next. """
@@ -132,15 +133,28 @@ class Stage (object):
 
 class GameStage (Stage):
 
-    def __init__(self, master, world, mailbox, actors):
-        Stage.__init__(self, master)
-
+    def __init__(self, world, mailbox, actors):
+        Stage.__init__(self)
         self.world = world
         self.mailbox = mailbox
         self.actors = actors
 
     def setup(self):
+        """ Prepares the actors, world, and messaging system to begin playing
+        the game.  This function is only called once, and is therefore useful
+        for initialization code. """
+
+        # Setup the mailbox, then immediately collect any greeting messages
+        # that have been sent.  Doing this guarantees that the greetings are
+        # processed before any other messages.  Once the actor setup methods
+        # are called, other messages may go on the queue.
+
         self.mailbox.setup(self.world, self.actors)
+        self.mailbox.collect()
+
+        # Setup the world before setting up the actors, so that the actors can
+        # feel free to read information out of the world when building
+        # themselves.
 
         with UnprotectedTokenLock():
             self.world.setup()
@@ -149,6 +163,12 @@ class GameStage (Stage):
             actor.setup(self.world)
 
     def update(self, time):
+        """ Sequentially updates the actors, world, and messaging system.  The
+        loop terminates once all of the actors indicate that they are done.  """
+
+        self.mailbox.collect()
+        self.mailbox.update()
+
         with UnprotectedTokenLock():
             self.world.update(time)
 
@@ -160,8 +180,6 @@ class GameStage (Stage):
             if not actor.is_finished():
                 still_playing = True
 
-        self.mailbox.update()
-
         if not still_playing:
             self.exit_stage()
 
@@ -169,12 +187,12 @@ class GameStage (Stage):
         for actor in self.actors:
             actor.teardown()
 
-        self.world.teardown()
+        with UnprotectedTokenLock():
+            self.world.teardown()
 
 
 class SinglePlayerGameStage (GameStage):
-    def __init__(self, master, world, referee, remaining_actors):
-
+    def __init__(self, world, referee, remaining_actors):
         mailbox = LocalMailbox()
         actors = [referee]
 
@@ -185,17 +203,15 @@ class SinglePlayerGameStage (GameStage):
         else:
             actors.extend(remaining_actors)
 
-        GameStage.__init__(self, master, world, mailbox, actors)
+        GameStage.__init__(self, world, mailbox, actors)
 
 class MultiplayerClientGameStage (GameStage):
-    def __init__(self, master, world, actor, pipe):
-
+    def __init__(self, world, actor, pipe):
         mailbox = RemoteMailbox(pipe)
-        GameStage.__init__(self, master, world, mailbox, [actor])
+        GameStage.__init__(self, world, mailbox, [actor])
 
 class MultiplayerServerGameStage (GameStage):
-    def __init__(self, master, world, referee, pipes):
-
+    def __init__(self, world, referee, pipes):
         mailbox = LocalMailbox()
         actors = [referee]
 
@@ -207,7 +223,7 @@ class MultiplayerServerGameStage (GameStage):
         else:
             actors += [RemoteActor(pipe) for pipe in pipes]
             
-        GameStage.__init__(self, master, world, mailbox, actors)
+        GameStage.__init__(self, world, mailbox, actors)
 
 
 class Actor (object):
@@ -282,12 +298,11 @@ class RemoteActor (Actor):
         # executing until all of the actors report that they are finished.
         #self.finish()
 
+    def get_name(self):
+        return "remote"
+
     def is_finished(self):
         return self.pipe.finished()
-        #return not self.pipe.busy()
-
-    def get_name(self):
-        return "__remote__"
 
     def setup(self, world):
         self.world = world
@@ -309,11 +324,12 @@ class RemoteActor (Actor):
         pass
 
     def reject_message(self, message):
-        message.pack()
+        message.set_origin(True)
+        message.pack(self.world)
         self.pipe.send(message)
 
     def dispatch_message(self, message):
-        message.pack()
+        message.pack(self.world)
         self.pipe.send(message)
 
     def receive_message(self, message):
@@ -327,8 +343,10 @@ class Referee (Actor):
 class Mailbox (object):
 
     def setup(self, world, actors):
-        self.world = world
-        self.actors = actors
+        raise NotImplementedError
+
+    def collect(self):
+        raise NotImplementedError
 
     def update(self):
         raise NotImplementedError
@@ -337,16 +355,19 @@ class Mailbox (object):
 class LocalMailbox (Mailbox):
 
     def setup(self, world, actors):
-        Mailbox.setup(self, world, actors)
+        self.world = world
+        self.actors = actors
+        self.packages = []
         self.id_factory = IdFactory(world)
 
-    def update(self):
-
-        packages = []
-
+    def collect(self):
         for actor in self.actors:
             messages = actor.deliver_messages()
-            packages += [ (actor, message) for message in messages ]
+            self.packages += [ (actor, message) for message in messages ]
+
+    def update(self):
+        packages = self.packages
+        self.packages = []
 
         for sender, message in packages:
             status = message.check(self.world, sender.ambassador)
@@ -362,7 +383,7 @@ class LocalMailbox (Mailbox):
 
             for actor in self.actors:
                 private_message = message.copy()
-                private_message.set_origin(actor == sender)
+                private_message.set_origin(actor is sender)
                 actor.dispatch_message(private_message)
 
             with UnprotectedTokenLock():
@@ -370,7 +391,7 @@ class LocalMailbox (Mailbox):
 
             for actor in self.actors:
                 private_message = message.copy()
-                private_message.set_origin(actor == sender)
+                private_message.set_origin(actor is sender)
                 with ProtectedTokenLock(actor):
                     actor.receive_message(private_message)
 
@@ -385,13 +406,16 @@ class RemoteMailbox (Mailbox):
         assert len(actors) == 1
         self.world = world
         self.actor = actors[0]
+        self.messages = []
+
+    def collect(self):
+        self.messages += self.actor.deliver_messages()
 
     def update(self):
-
         actor = self.actor
         ambassador = actor.ambassador
 
-        for message in actor.deliver_messages():
+        for message in self.messages:
             status = message.check(self.world, ambassador)
 
             if status:
@@ -400,10 +424,11 @@ class RemoteMailbox (Mailbox):
                 actor.reject_message(message)
                 continue
 
-            message.pack()
+            message.pack(self.world)
             self.pipe.send(message)
 
         self.pipe.deliver()
+        self.messages = []
 
         for message in self.pipe.receive():
             message.unpack(self.world)
@@ -439,6 +464,14 @@ class IdFactory (object):
 
         return result
 
+
+
+def check_for_safety(method):
+    @functools.wraps(method)
+    def decorator(self, *args, **kwargs):
+        self.check_for_safety()
+        return method(self, *args, **kwargs)
+    return decorator
 
 
 class Token (object):
@@ -487,11 +520,31 @@ class Token (object):
     def check_for_safety(self):
         assert self._access == 'unprotected'
 
+    def setup(self, world):
+        pass
+
+    def update(self, time):
+        pass
+
+    def teardown(self):
+        pass
+
 
 class World (Token):
 
     def __init__(self):
         Token.__init__(self, 0)
+        self._tokens = {}
+
+    def __contains__(self, token):
+        return token.get_id() in self._tokens
+
+    def get_token(self, id):
+        self._tokens[id]
+
+    @check_for_safety
+    def add_token(self, token):
+        self._tokens[token.get_id()] = token
 
     def setup(self):
         raise NotImplementedError
@@ -499,7 +552,7 @@ class World (Token):
     def update(self, time):
         raise NotImplementedError
 
-    def get_token(self, id):
+    def teardown(self):
         raise NotImplementedError
 
 
@@ -589,7 +642,7 @@ class Message (object):
         import copy
         return copy.copy(self)
 
-    def pack(self):
+    def pack(self, world):
         """ Modifies the message such that it can be faithfully pickled and
         sent over the network.  This primarily involves sending token ID
         numbers rather than tokens themselves. """
@@ -600,8 +653,9 @@ class Message (object):
             attribute = getattr(self, name)
 
             if isinstance(attribute, Token):
-                packing_list[name] = attribute.get_id()
-                delattr(self, name)
+                if attribute in world:
+                    packing_list[name] = attribute.get_id()
+                    delattr(self, name)
 
         assert not hasattr(self, '_packing_list')
         self._packing_list = packing_list
@@ -638,13 +692,5 @@ class Message (object):
 class Greeting (Message):
     def get_sender(self):
         raise NotImplementedError
-
-
-def check_for_safety(method):
-    @functools.wraps(method)
-    def decorator(self, *args, **kwargs):
-        self.check_for_safety()
-        return method(self, *args, **kwargs)
-    return decorator
 
 

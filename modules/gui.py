@@ -45,7 +45,6 @@ from pygame.locals import *
 class Keychain:
 
     def __init__ (self):
-
         self.active = None
         self.sequence = []
         self.root_node = None
@@ -55,7 +54,6 @@ class Keychain:
         self.lenses = {}
 
     def setup (self):
-
         # Create an empty root Node.
         self.root_node = Node ()
         self.root_node.verbose = self.verbose
@@ -63,7 +61,6 @@ class Keychain:
         self.activate (self.root_node)
 
     def register_lens (self, name, lens):
-
         # A lens is a dictionary mapping input to input.
         #
         # A lens will only be applied if it is active and the input is
@@ -75,15 +72,13 @@ class Keychain:
         if self.verbose: 
             print ('Registering lens : %s' %name)
 
-        new_lens = Lense (self, name, lens)
+        new_lens = Lens (self, name, lens)
         self.lenses[name] = new_lens
 
     def register_chain_key (self, sequence, callback, args):
-
         # This event assumes all sequence members are pygame keys.
 
         k2s = key_to_string
-
         new_sequence = []
 
         for member in sequence:
@@ -111,7 +106,6 @@ class Keychain:
         self.register_chain (new_sequence, callback, args)
 
     def register_chain (self, sequence, callback, args):
-
         # All objects have a built in node.select() callback. The user
         # inputted callback is added to the node's list of callbacks
         
@@ -130,12 +124,10 @@ class Keychain:
         if self.verbose: print ()
 
     def place_node (self, parent, key, callback, args):
-
         if self.verbose: 
             print ('~ Attempting Key "%s"' %(key))
 
         if key in parent.links:
-
             # The link already exists.
             if self.verbose: print ('    Link already exists')
             node = parent.links[key]
@@ -148,7 +140,6 @@ class Keychain:
             return node
 
         else:
-
             # If it doesn't exist, make a new node and place it in
             # the chain.
             node = Node()
@@ -159,55 +150,41 @@ class Keychain:
             node.setup (self, key, callback, args)
 
             parent.add_link (key, node)
-
             return node
 
     def handle_key (self, input, lens_only=False):
-
         self.handle (key_to_string[input], lens_only)
 
     def handle_event (self, input, lens_only=False):
-
         self.handle (event_to_string[input], lens_only)
 
     def handle_mouse (self, input, lens_only=False):
-
         self.handle (mouse_to_string[input], lens_only)
 
     def handle (self, input, lens_only=False):
-
         # See if the input is really a lens.
         if input in self.lenses:
-
             lens = self.lenses[input]
 
             # Toggle the lens.
             if lens in self.active_lenses:
-
                 #if self.verbose:
                 #    print ('Deactivating the %s lens' %lens.get_name())
-
                 self.active_lenses.remove (lens)
 
             else:
-
                 #if self.verbose:
                 #    print ('Activating the %s lens' %lens.get_name())
-
                 self.active_lenses.append (lens)
 
         elif not lens_only:
-
             # For any active lenses, create the image of the input
             # through the lens.
             for lens in self.active_lenses:
-
                 if input in lens:
-
                     #if self.verbose:
                     #    print ('Applying the %s lens' %lens.get_name())
                     #    print ('    %s  ->  %s' %(input, lens[input]))
-
                     input = lens[input]
 
             # Give the input to the active node.
@@ -215,16 +192,14 @@ class Keychain:
             self.active.check(input)
     
     def activate (self, new):
-
         self.active = new
 
     def reset (self):
-
         self.sequence = []
         self.activate (self.root_node)
 
 
-class Lense (dict):
+class Lens (dict):
 
     def __init__ (self, manager, name, map):
         dict.__init__(self, map)
@@ -233,101 +208,22 @@ class Lense (dict):
         self.name = name
 
     def get_name (self): 
-        
         return self.name
 
     def get_manager (self): 
-        
         return self.manager
 
 
 class Node:
 
     def __init__ (self):
-
         self.manager = None
         self.key = None
         self.callbacks = []
         self.links = {}
         self.verbose = False
 
-    def setup (self, manager, key, callback, args):
-
-        self.manager = manager
-        self.key = key
-        self.add_callback(callback, args)
-
-    def add_callback(self, callback, args):
-
-        if callback != None:
-
-            self.callbacks.append ((callback, args))
-            if self.verbose: 
-                print ('    Node callbacks:')
-                for callback in self.callbacks:
-                    print('      %s' %callback[0])
-
-    def add_link (self, key, node):
-
-        assert key not in self.links
-
-        self.links[key] = node
-
-    def check (self, input):
-
-        if self.verbose: 
-            print ("%s, " %input, end='')
-            sys.stdout.flush()
-
-        # If the current Node has a link that matches the input, execute
-        # that link's callbacks. Otherwise, the sequence breaks.
-        if input in self.links:
-            self.links[input].execute()
-
-        else:
-            if self.verbose: print (' fails.')
-            self.break_sequence()
-    
-    def execute (self):
-
-        if len(self.links) > 0: self.select()
-        else: self.manager.reset()
-
-        if self.verbose:
-            if len(self.callbacks) > 0:
-                print (' OK.')
-                print ('    Now calling:')
-
-        for callback in self.callbacks:
-
-            if self.verbose: print('      %s' %callback[0])
-            args = callback[1]
-            callback[0](args)
-
-    def select (self):
-        
-        self.manager.activate(self)
-
-    def break_sequence (self):
-
-        self.manager.reset()
-
-    def __eq__ (self, other):
-
-        if isinstance (other, Node):
-            return self.key == other.key
-        else:
-            try:
-                return self.key == other
-            except:
-                return False
-
-    def __ne__ (self, other):
-
-        return not self.__eq__(other)
-
-    def __repr__ (self):
-
+    def __str__ (self):
         key_str = ""
         if self.key == None:
             key_str = "No Key"
@@ -343,9 +239,70 @@ class Node:
 
         return key_str + "->{" + links_str + "}"
 
-    def __str__ (self):
+    def __repr__ (self):
+        return self.__str__()
 
-        return self.__repr__()
+    def __eq__ (self, other):
+        if isinstance (other, Node):
+            return self.key == other.key
+        else:
+            try: return self.key == other
+            except: return False
+
+    def __ne__ (self, other):
+        return not self.__eq__(other)
+
+
+    def setup (self, manager, key, callback, args):
+        self.manager = manager
+        self.key = key
+        self.add_callback(callback, args)
+
+    def add_callback(self, callback, args):
+        if callback != None:
+            self.callbacks.append ((callback, args))
+
+            if self.verbose: 
+                print ('    Node callbacks:')
+                for callback in self.callbacks:
+                    print('      %s' %callback[0])
+
+    def add_link (self, key, node):
+        assert key not in self.links
+        self.links[key] = node
+
+    def check (self, input):
+        if self.verbose: 
+            print ("%s, " %input, end='')
+            sys.stdout.flush()
+
+        # If the current Node has a link that matches the input, execute
+        # that link's callbacks. Otherwise, the sequence breaks.
+        if input in self.links:
+            self.links[input].execute()
+        else:
+            if self.verbose: print (' fails.')
+            self.break_sequence()
+    
+    def execute (self):
+        if len(self.links) > 0: self.select()
+        else: self.manager.reset()
+
+        if self.verbose:
+            if len(self.callbacks) > 0:
+                print (' OK.')
+                print ('    Now calling:')
+
+        for callback in self.callbacks:
+            if self.verbose: print('      %s' %callback[0])
+            args = callback[1]
+            callback[0](args)
+
+    def select (self):
+        self.manager.activate(self)
+
+    def break_sequence (self):
+        self.manager.reset()
 
 
 #######################################################################
