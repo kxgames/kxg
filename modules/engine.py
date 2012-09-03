@@ -540,7 +540,7 @@ class World (Token):
         return token.get_id() in self._tokens
 
     def get_token(self, id):
-        self._tokens[id]
+        return self._tokens[id]
 
     @check_for_safety
     def add_token(self, token):
@@ -651,12 +651,11 @@ class Message (object):
 
         for name in dir(self):
             attribute = getattr(self, name)
-
             if isinstance(attribute, Token):
                 if attribute in world:
                     packing_list[name] = attribute.get_id()
                     delattr(self, name)
-
+        
         assert not hasattr(self, '_packing_list')
         self._packing_list = packing_list
 
