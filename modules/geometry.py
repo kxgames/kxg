@@ -116,13 +116,19 @@ class Vector(object):
         """ Iterate over this vectors coordinates. """
         yield self.x; yield self.y
 
-    def __add__(self, v):
+    def __add__(self, other):
         """ Return the sum of this vector and the argument. """
-        return Vector(self.x + v.x, self.y + v.y)
+        if isinstance(other, Vector):
+            return Vector(self.x + other.x, self.y + other.y)
+        else:
+            return Vector(self.x + other, self.y + other)
 
-    def __sub__(self, v):
+    def __sub__(self, other):
         """ Return the difference between this vector and the argument. """
-        return Vector(self.x - v.x, self.y - v.y)
+        if isinstance(other, Vector):
+            return Vector(self.x - other.x, self.y - other.y)
+        else:
+            return Vector(self.x - other, self.y - other)
 
     def __neg__(self):
         """ Return a copy of this vector with the signs flipped. """
