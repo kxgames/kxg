@@ -467,6 +467,9 @@ class IdFactory (object):
 
 
 def check_for_safety(method):
+    # I don't understand exactly how this works, but wrapping the decorator
+    # function with the `functools' method allows pickle to understand the
+    # decorator.
     @functools.wraps(method)
     def decorator(self, *args, **kwargs):
         self.check_for_safety()
@@ -481,6 +484,7 @@ class Token (object):
 
     def __init__(self, id):
         self._id = id
+        self._registered = False
         self._extensions = {
                 actor : extension_class(self)
                 for actor, extension_class in self.__extend__().items() }
@@ -518,7 +522,8 @@ class Token (object):
         else: raise AttributeError
 
     def check_for_safety(self):
-        assert self._access == 'unprotected'
+        assert self._access == 'unprotected', "Don't have permission to modify token."
+        assert self._registered == True, "Token not added to world."
 
     def setup(self, world):
         pass
@@ -544,6 +549,7 @@ class World (Token):
 
     @check_for_safety
     def add_token(self, token):
+        token._registered = True
         self._tokens[token.get_id()] = token
 
     def setup(self):
