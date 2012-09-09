@@ -540,6 +540,7 @@ class World (Token):
     def __init__(self):
         Token.__init__(self, 0)
         self._tokens = {}
+        self._registered = True
 
     def __contains__(self, token):
         return token.get_id() in self._tokens
