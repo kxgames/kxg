@@ -271,7 +271,7 @@ class Actor (object):
 
     def receive_message(self, message):
         self.receive_greeting(message)
-        message.notify(self)
+        message.notify(self, message.was_sent_from_here())
 
     def receive_greeting(self, message):
         # A greeting is a special type of message that specifies which player
@@ -281,9 +281,11 @@ class Actor (object):
         # more than one greeting.
         
         if isinstance(message, Greeting) and message.was_sent_from_here():
-            if self.greeted: raise ActorGreetedTwice()
-            self.ambassador = message.get_sender()
-            self.greeted = True
+            if self.greeted:
+                raise ActorGreetedTwice()
+            else:
+                self.ambassador = message.get_sender()
+                self.greeted = True
 
 
 class RemoteActor (Actor):
@@ -475,6 +477,7 @@ def check_for_safety(method):
         self.check_for_safety()
         return method(self, *args, **kwargs)
     return decorator
+
 
 
 class Token (object):
