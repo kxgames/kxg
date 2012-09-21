@@ -5,29 +5,28 @@ import sys
 from pygame.locals import *
 
 # Things to do:
-#   ~ Add a universal reset key (ie. ESC). Or other universal trigger
-#       keys. 
-#       NOTE: a reset key is pointless... Just never register the
-#       key and it will always fail, thereby resetting the chain.
+# 1.  Add a universal reset key (i.e. ESC). Or other universal trigger
+#     keys.  NOTE: a reset key is pointless... Just never register the
+#     key and it will always fail, thereby resetting the chain.
 #
-#   ~ Add sequence objects? The Key chain would update a list of
-#       sequences. Each sequence would remove themselves when they
-#       execute or fail. When the list is empty, the keychain starts
-#       over.
-#   ~ Add exceptions for nodes. When a node is active, if a key that
+# 2.  Add sequence objects? The Key chain would update a list of
+#     sequences. Each sequence would remove themselves when they
+#     execute or fail. When the list is empty, the keychain starts
+#     over.
+# 3.  Add exceptions for nodes. When a node is active, if a key that
 #       would normally fail is entered, the node just ignores it.
 #       May be useful to prevent accidental input, such as mouse
 #       clicks.
-#   ~ Add ghost chains. When a node activates a ghost chain, somehow
+# 4.  Add ghost chains. When a node activates a ghost chain, somehow
 #       also activate the root. If a ghost chain fails, it does so 
 #       quietly. If it executes, then reset the whole keychain?
 #       Intended for use with optional information for a sequence.
 #       Issue: Can create really confusing situations with different
-#       chains executing simultaniously.
-#   ~ Add background chains. Similar to ghost chains and exceptions.
+#       chains executing simultaneously.
+# 5.  Add background chains. Similar to ghost chains and exceptions.
 #       They will ignore unrelated input, but will not prevent other
-#       hotkey branches from running or executing. 
-#   ~ Add chains with optional args. After each major key (a,b,c in
+#       hotkey branches from running or executing.
+# 6.  Add chains with optional args. After each major key (a,b,c in
 #       example), the user can enter an argument hotkey or the next
 #       major key.
 #       
@@ -39,8 +38,52 @@ from pygame.locals import *
 #            \    ^        \    ^        \    ^
 #            arg3 ^        arg3 ^        arg3 ^
 #
-#   ~ Add infinite argument keys. Used for entering whole words? (for
-#       in game messaging?)
+# 7.  Add infinite argument keys. Used for entering whole words? (for in game 
+      # messaging?)
+#
+# 8.  Let the user look at the currently active chain.  This would be useful 
+# if, for example, the GUI wants to change which buttons are highlighted as 
+# buttons are pressed.
+
+class TextKeychain:
+    
+    # Provide a simplified interface to the `Keychain' class which inherently 
+    # understands pygame commands.  This interface allows key sequences to be 
+    # represented as simple strings, which is generally more convenient and 
+    # intuitive than specifying lists of event objects.
+    # 
+    # However, this convenience comes at the cost of some flexibility.  An 
+    # obvious example is that arbitrary objects can no longer be used as input 
+    # events.  Furthermore, the order of events is more restrictive than it 
+    # used to be.  Modifier keys must be specified before regular keys, which 
+    # must be specified before mouse clicks.
+
+    modifiers = 'shift', 'control', 'alt', 'meta'
+
+    #events = {
+    #        'space': K_SPACE,
+    #        'tab': K_TAB,
+    #        'backspace': K_BACKSPACE, 'bksp': K_BACKSPACE,
+    #        'colon': K_COLON,
+    #        'exclamation': K_EXCLAMATION, 'bang': K_EXCLAMATION,
+    #        'period': K_PERIOD, 'dot': K_DOT}
+
+    # The concept of modifier keys seems like it might be a little difficult to 
+    # implement on top of the `Keychain' class.  As far as I can tell, lenses 
+    # are explicit mappings between all modified and unmodified keys.  This 
+    # doesn't lend itself naturally to the concept of modifiers. 
+
+    def register_hotkey(self, hotkey, callback, *args, **kwargs):
+        chain = []
+
+        for event in hotkey.split():
+            if event in self.events:
+                chain.append(self.events[event])
+            else:
+                for subevent in event:
+                    chain.append(self.events[event])
+
+        self.register_chain(self, chain, callback, *args, **kwargs)
 
 class Keychain:
 
@@ -470,11 +513,11 @@ for key in key_to_string:
 #######################################################################
 
 event_to_string = {                          ##  event variables  ##
-    QUIT : 'QUIT',	     	            #   none
-    ACTIVEEVENT : 'ACTIVEEVENT',	    #   gain, state
-    KEYDOWN : 'KEYDOWN',	     	    #   unicode, key, mod
-    KEYUP : 'KEYUP',	     	            #   key, mod
-    MOUSEMOTION : 'MOUSEMOTION',	    #   pos, rel, buttons
+    QUIT : 'QUIT',                          #   none
+    ACTIVEEVENT : 'ACTIVEEVENT',            #   gain, state
+    KEYDOWN : 'KEYDOWN',                    #   unicode, key, mod
+    KEYUP : 'KEYUP',                        #   key, mod
+    MOUSEMOTION : 'MOUSEMOTION',            #   pos, rel, buttons
     MOUSEBUTTONUP : 'MOUSEBUTTONUP',        #   pos, button
     MOUSEBUTTONDOWN : 'MOUSEBUTTONDOWN',    #   pos, button
     JOYAXISMOTION : 'JOYAXISMOTION',        #   joy, axis, value
@@ -509,11 +552,10 @@ for mouse in mouse_to_string:
     string = mouse_to_string[mouse]
     string_to_mouse[string] = mouse
 
-def module_test():
 
-    class Obj:
-        pass
+if __name__ == '__main__':
 
+    class Obj: pass
 
     t = 't'
     f = 'f'
@@ -523,6 +565,7 @@ def module_test():
     seq2b = t,f,f
     seq2c = t
     seq3  = f,o
+
 
     def printer (args):
         print ('Fu: ', end='')
@@ -560,13 +603,5 @@ def module_test():
         except EOFError:
             break
 
-    #input = t,t,f,f,t,t,t,t
-    #for i in input:
-    #    chain.handle(i)
-    
     print('')
-    return chain
-
-if __name__ == '__main__':
-    chain = module_test()
 
