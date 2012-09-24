@@ -196,7 +196,7 @@ class SinglePlayerGameStage (GameStage):
         mailbox = LocalMailbox()
         actors = [referee]
 
-        if isinstance(actors, dict):
+        if isinstance(remaining_actors, dict):
             for actor, greeting in remaining_actors.items():
                 actor.send_message(greeting)
                 actors.append(actor)
@@ -544,6 +544,10 @@ class World (Token):
         Token.__init__(self, 0)
         self._tokens = {}
         self._registered = True
+
+    def __iter__(self):
+        for token in self._tokens.values():
+            yield token
 
     def __contains__(self, token):
         return token.get_id() in self._tokens
