@@ -7,6 +7,9 @@ import functools
 # ============
 # 1. Allow each Actor to specify its own frame rate.  
 # 2. Write comments, maybe create a sphinx page.
+# 3. Have message.check() return None if successful and something else 
+# otherwise.  Then pass the value returned by check() into reject(), so the 
+# game can handle errors appropriately.
 
 class MainLoop (object):
     """ Manage whichever stage is currently active.  This involves both
