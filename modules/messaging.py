@@ -1,7 +1,6 @@
+import tools
 import network
 import Queue as queue
-
-from utilities.infinity import *
 
 class Forum:
     """ Manages a messaging system that allows messages to be published for any
@@ -23,7 +22,7 @@ class Forum:
 
         safety_flag = options.get("safe", True)
 
-        self.incoming_limit = 1 if safety_flag else infinity
+        self.incoming_limit = 1 if safety_flag else tools.infinity
         self.incoming_publications = []
 
         class Publisher:
@@ -171,7 +170,6 @@ class Forum:
 
     def get_subscriber(self):
         return self.subscriber
-
 
 
 class Conversation:
@@ -386,6 +384,7 @@ class FullResponse(Conversation):
     def get_request(self):
         assert self.finished()
         return self.request
+
 
 
 # The classes beyond this point are primarily intended for use within the

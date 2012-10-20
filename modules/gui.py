@@ -4,7 +4,8 @@ import sys
 
 from pygame.locals import *
 
-# Things to do:
+# Things To Do (fold)
+# ============
 # 1.  Add a universal reset key (i.e. ESC). Or other universal trigger
 #     keys.  NOTE: a reset key is pointless... Just never register the
 #     key and it will always fail, thereby resetting the chain.
@@ -13,22 +14,26 @@ from pygame.locals import *
 #     sequences. Each sequence would remove themselves when they
 #     execute or fail. When the list is empty, the keychain starts
 #     over.
+#
 # 3.  Add exceptions for nodes. When a node is active, if a key that
-#       would normally fail is entered, the node just ignores it.
-#       May be useful to prevent accidental input, such as mouse
-#       clicks.
+#     would normally fail is entered, the node just ignores it.
+#     May be useful to prevent accidental input, such as mouse
+#     clicks.
+#
 # 4.  Add ghost chains. When a node activates a ghost chain, somehow
-#       also activate the root. If a ghost chain fails, it does so 
-#       quietly. If it executes, then reset the whole keychain?
-#       Intended for use with optional information for a sequence.
-#       Issue: Can create really confusing situations with different
-#       chains executing simultaneously.
+#     also activate the root. If a ghost chain fails, it does so quietly. If it 
+#     executes, then reset the whole keychain?
+#     Intended for use with optional information for a sequence.
+#     Issue: Can create really confusing situations with different
+#     chains executing simultaneously.
+#
 # 5.  Add background chains. Similar to ghost chains and exceptions.
-#       They will ignore unrelated input, but will not prevent other
-#       hotkey branches from running or executing.
-# 6.  Add chains with optional args. After each major key (a,b,c in
-#       example), the user can enter an argument hotkey or the next
-#       major key.
+#     They will ignore unrelated input, but will not prevent other
+#     hotkey branches from running or executing.
+#
+# 6.  Add chains with optional arguments. After each major key (a,b,c in
+#     example), the user can enter an argument hotkey or the next
+#     major key.
 #       
 #       a ----------> b ----------> c------------> execute()
 #        \        ^    \        ^    \        ^
@@ -39,11 +44,12 @@ from pygame.locals import *
 #            arg3 ^        arg3 ^        arg3 ^
 #
 # 7.  Add infinite argument keys. Used for entering whole words? (for in game 
-      # messaging?)
+#     messaging?)
 #
 # 8.  Let the user look at the currently active chain.  This would be useful 
-# if, for example, the GUI wants to change which buttons are highlighted as 
-# buttons are pressed.
+#     if, for example, the GUI wants to change which buttons are highlighted as
+#     key are being pressed.
+
 
 class TextKeychain:
     
@@ -73,7 +79,7 @@ class TextKeychain:
     # are explicit mappings between all modified and unmodified keys.  This 
     # doesn't lend itself naturally to the concept of modifiers. 
 
-    def register_hotkey(self, hotkey, callback, *args, **kwargs):
+    def register_hotkey(self, hotkey, callback, *arguments, **kwargs):
         chain = []
 
         for event in hotkey.split():
@@ -83,7 +89,8 @@ class TextKeychain:
                 for subevent in event:
                     chain.append(self.events[event])
 
-        self.register_chain(self, chain, callback, *args, **kwargs)
+        self.register_chain(self, chain, callback, *arguments, **kwargs)
+
 
 class Keychain:
 
@@ -118,37 +125,28 @@ class Keychain:
         new_lens = Lens (self, name, lens)
         self.lenses[name] = new_lens
 
-    def register_chain_key (self, sequence, callback, args):
+    def register_chain_key (self, raw_sequence, callback, *arguments):
         # This event assumes all sequence members are pygame keys.
+        sequence = [key_to_string[x] for x in raw_sequence]
+        self.register_chain(sequence, callback, *arguments)
 
-        k2s = key_to_string
-        new_sequence = []
-
-        for member in sequence:
-            new_sequence.append (k2s[member])
-
-        self.register_chain (new_sequence, callback, args)
-
-    def register_chain_mouse (self, sequence, callback, args):
+    def register_chain_mouse (self, raw_sequence, callback, *arguments):
         
         # This function assumes sequence members with even indices are
         # pygame event types and the odd members are pygame mouse 
         # button numbers.
 
-        e2s = event_to_string
-        m2s = mouse_to_string
-
-        new_sequence = []
+        sequence = []
         even = True
 
-        for member in sequence:
-            if even:    new_sequence.append (e2s[member])
-            else:       new_sequence.append (m2s[member])
+        for member in raw_sequence:
+            if even:    sequence.append(event_to_string[member])
+            else:       sequence.append(mouse_to_string[member])
             even = not even
 
-        self.register_chain (new_sequence, callback, args)
+        self.register_chain(sequence, callback, *arguments)
 
-    def register_chain (self, sequence, callback, args):
+    def register_chain (self, sequence, callback, *arguments):
         # All objects have a built in node.select() callback. The user
         # inputted callback is added to the node's list of callbacks
         
@@ -162,11 +160,12 @@ class Keychain:
         for key in sequence[:-1]:
             node = self.place_node(node, key, None, None)
         else:
-            last = self.place_node (node, sequence[-1], callback, args)
+            last = self.place_node(node, sequence[-1], callback, arguments)
 
-        if self.verbose: print ()
+        if self.verbose:
+            print ()
 
-    def place_node (self, parent, key, callback, args):
+    def place_node (self, parent, key, callback, arguments):
         if self.verbose: 
             print ('~ Attempting Key "%s"' %(key))
 
@@ -178,7 +177,7 @@ class Keychain:
             if callback != None:
                 # This is a terminal node.
                 if self.verbose: print ('    Link is terminal ')
-                node.add_callback(callback, args)
+                node.add_callback(callback, arguments)
 
             return node
 
@@ -190,7 +189,7 @@ class Keychain:
 
             if self.verbose: 
                 print ('    Making node "%s"' %(key))
-            node.setup (self, key, callback, args)
+            node.setup (self, key, callback, arguments)
 
             parent.add_link (key, node)
             return node
@@ -259,14 +258,14 @@ class Lens (dict):
 
 class Node:
 
-    def __init__ (self):
+    def __init__(self):
         self.manager = None
         self.key = None
         self.callbacks = []
         self.links = {}
         self.verbose = False
 
-    def __str__ (self):
+    def __str__(self):
         key_str = ""
         if self.key == None:
             key_str = "No Key"
@@ -282,28 +281,24 @@ class Node:
 
         return key_str + "->{" + links_str + "}"
 
-    def __repr__ (self):
         return self.__str__()
 
-    def __eq__ (self, other):
+    def __eq__(self, other):
         if isinstance (other, Node):
             return self.key == other.key
         else:
             try: return self.key == other
             except: return False
 
-    def __ne__ (self, other):
-        return not self.__eq__(other)
 
-
-    def setup (self, manager, key, callback, args):
+    def setup (self, manager, key, callback, arguments):
         self.manager = manager
         self.key = key
-        self.add_callback(callback, args)
+        self.add_callback(callback, arguments)
 
-    def add_callback(self, callback, args):
+    def add_callback(self, callback, arguments):
         if callback != None:
-            self.callbacks.append ((callback, args))
+            self.callbacks.append ((callback, arguments))
 
             if self.verbose: 
                 print ('    Node callbacks:')
@@ -337,9 +332,9 @@ class Node:
                 print ('    Now calling:')
 
         for callback in self.callbacks:
-            if self.verbose: print('      %s' %callback[0])
-            args = callback[1]
-            callback[0](args)
+            if self.verbose: print('      %s' % callback[0])
+            arguments = callback[1]
+            callback[0](*arguments)
 
     def select (self):
         self.manager.activate(self)
@@ -369,7 +364,8 @@ class Node:
 #
 #######################################################################
 
-key_to_string = {
+
+key_to_string = {                       # (fold)
     K_BACKSPACE : 'K_BACKSPACE',        #   \b      backspace
     K_TAB : 'K_TAB',                    #   \t      tab
     K_CLEAR : 'K_CLEAR',                #           clear
@@ -510,9 +506,7 @@ for key in key_to_string:
     string = key_to_string[key]
     string_to_key[string] = key
 
-#######################################################################
-
-event_to_string = {                          ##  event variables  ##
+event_to_string = {                         # (fold)
     QUIT : 'QUIT',                          #   none
     ACTIVEEVENT : 'ACTIVEEVENT',            #   gain, state
     KEYDOWN : 'KEYDOWN',                    #   unicode, key, mod
@@ -535,9 +529,7 @@ for event in event_to_string:
     string = event_to_string[event]
     string_to_event[string] = event
 
-#######################################################################
-
-mouse_to_string = {
+mouse_to_string = {                         # (fold)
     1 : 'LEFTBUTTON',
     2 : 'MIDDLEBUTTON',
     3 : 'RIGHTBUTTON',
@@ -567,22 +559,22 @@ if __name__ == '__main__':
     seq3  = f,o
 
 
-    def printer (args):
+    def printer (arguments):
         print ('Fu: ', end='')
-        for arg in args:
+        for arg in arguments:
             print ('%s' %arg, end='')
         print ()
 
-    def tf (args):
+    def tf (arguments):
         print ('T F')
 
-    def tff (args):
+    def tff (arguments):
         print ('T F F')
 
-    def t (args):
+    def t (arguments):
         print ('T')
 
-    def fo (args):
+    def fo (arguments):
         print ('F O')
 
 

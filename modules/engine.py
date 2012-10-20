@@ -489,7 +489,7 @@ class Token (object):
     _actor = None
 
     def __init__(self, id):
-        self._id = id
+        self._id = id if isinstance(self, World) else id.next()
         self._registered = False
         self._extensions = {
                 actor : extension_class(self)
@@ -552,6 +552,9 @@ class World (Token):
         for token in self._tokens.values():
             yield token
 
+    def __len__(self):
+        return len(self._tokens)
+
     def __contains__(self, token):
         return token.get_id() in self._tokens
 
@@ -560,8 +563,11 @@ class World (Token):
 
     @check_for_safety
     def add_token(self, token):
+        id = token.get_id()
+        assert isinstance(id, int)
+
         token._registered = True
-        self._tokens[token.get_id()] = token
+        self._tokens[id] = token
 
     def setup(self):
         raise NotImplementedError

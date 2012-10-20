@@ -1,3 +1,5 @@
+inf = infinity = float('inf')
+
 class Timer:
 
     def __init__(self, duration, *callbacks):
@@ -20,14 +22,12 @@ class Timer:
         self.pause = False
 
     def update(self, time):
-
         if self.elapsed > self.duration:
             return
 
         self.elapsed += time
 
         if self.elapsed > self.duration:
-
             for callback in self.callbacks:
                 callback()
 
