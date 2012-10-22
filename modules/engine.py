@@ -472,15 +472,28 @@ class IdFactory (object):
 
 
 def check_for_safety(method):
-    # I don't understand exactly how this works, but wrapping the decorator
-    # function with the `functools' method allows pickle to understand the
-    # decorator.
     @functools.wraps(method)
     def decorator(self, *args, **kwargs):
+        # I don't understand exactly how this works, but wrapping the decorator 
+        # function with the `functools' method allows pickle to understand the 
+        # decorator.
         self.check_for_safety()
         return method(self, *args, **kwargs)
     return decorator
 
+def check_for_prototype(method):
+    @functools.wraps(method)
+    def decorator(self, *args, **kwargs):
+        self.check_for_prototype()
+        return method(self, *args, **kwargs)
+    return decorator
+
+def check_for_instance(method):
+    @functools.wraps(method)
+    def decorator(self, *args, **kwargs):
+        self.check_for_instance()
+        return method(self, *args, **kwargs)
+    return decorator
 
 
 class Token (object):
@@ -489,7 +502,7 @@ class Token (object):
     _actor = None
 
     def __init__(self, id):
-        self._id = id if isinstance(self, World) else id.next()
+        self._id = id.next() if isinstance(id, IdFactory) else id
         self._registered = False
         self._extensions = {
                 actor : extension_class(self)
@@ -517,6 +530,17 @@ class Token (object):
     def __extend__(self):
         return {}
 
+
+    def setup(self, world):
+        pass
+
+    def update(self, time):
+        pass
+
+    def teardown(self):
+        pass
+
+
     def get_id(self):
         return self._id
 
@@ -528,17 +552,30 @@ class Token (object):
         else: raise AttributeError
 
     def check_for_safety(self):
+        assert self._id is not None, "Token has a null id."
         assert self._access == 'unprotected', "Don't have permission to modify token."
-        assert self._registered == True, "Token not added to world."
+        assert self._registered == True, "Token never added to world."
 
-    def setup(self, world):
-        pass
 
-    def update(self, time):
-        pass
+class Prototype (Token):
 
-    def teardown(self):
-        pass
+    def __init__(self, id):
+        Token.__init__(self, id)
+        self._instantiated = False
+
+    @check_for_prototype
+    def instantiate(self, id):
+        from copy import deepcopy
+        instance = deepcopy(self)
+        Token.__init__(instance, id)
+        instance._instantiated = True
+        return instance
+
+    def check_for_prototype(self):
+        assert not self._instantiated
+
+    def check_for_instance(self):
+        assert self._instantiated
 
 
 class World (Token):
@@ -564,6 +601,7 @@ class World (Token):
     @check_for_safety
     def add_token(self, token):
         id = token.get_id()
+        assert id is not None, "Can't register a token with a null id."
         assert isinstance(id, int)
 
         token._registered = True
