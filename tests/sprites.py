@@ -3,7 +3,6 @@
 import path, testing
 from sprites import *
 
-# Slow Movement {{{1
 @testing.test
 def test_slow_movement(helper):
     sprite = Sprite()
@@ -22,7 +21,6 @@ def test_slow_movement(helper):
     assert sprite.get_velocity() == v
     assert sprite.get_position() == r
 
-# Fast Movement {{{1
 @testing.test
 def test_fast_movement(helper):
     sprite = Sprite()
@@ -43,7 +41,6 @@ def test_fast_movement(helper):
     assert sprite.get_velocity() == v
     assert sprite.get_position() == r
 
-# }}}1
 
 testing.title("Testing the sprites...")
 testing.run()
