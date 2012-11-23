@@ -9,89 +9,433 @@ golden_ratio = 1/2 + math.sqrt(5) / 2
 
 # Private Helper Functions
 
-def _cast_vector_type(input):
-    if isinstance(input, Vector): return input
-    try: return Vector(*input)
-    except: raise VectorCastError(input)
+def _cast_anything_to_vector(input):
+    if isinstance(input, Vector):
+        return input
+    try:
+        return Vector(*input)
+    except:
+        raise VectorCastError(input)
 
-def _cast_vector_or_scalar_type(input):
-    if isinstance(input, Vector): return input
-    try: return Vector(*input)
-    except: return Vector(input, input)
+def _cast_anything_to_rectangle(input):
 
-def _accept_vector_type(function):
+    # If the input object implements the shape interface, use that information 
+    # to directly return a rectangle object.
+    
+    try: return _cast_shape_to_rectangle(input)
+    except: pass
+
+    # If the input object can be cast to a vector, try to represent that vector 
+    # as a rectangle.  Such a rectangle is located where the vector points and 
+    # has no area (i.e. width = height = 0).
+
+    try: return Rectangle.from_vector(input)
+    except: pass
+
+    # If the function has returned by now, the input object could not be cast 
+    # to a rectangle.  Throw an exception.
+
+    raise RectangleCastError(input)
+
+def _cast_shape_to_rectangle(input):
+
+    if isinstance(input, Rectangle):
+        return input
+
+    # If the input object implements the shape interface (i.e. has top, left, 
+    # width, and height attributes), use that information to construct a bona 
+    # fide rectangle object.
+
+    try: return Rectangle.from_shape(input)
+    except: pass
+
+    raise RectangleCastError(input)
+
+def _accept_anything_as_vector(function):
     def decorator(self, input):
-        vector = cast_vector_type(input)
-        return function(vector)
+        vector = _cast_anything_to_vector(input)
+        return function(self, vector)
     return decorator
 
-def _accept_vector_or_scalar_type(function):
+def _accept_anything_as_rectangle(function):
     def decorator(self, input):
-        vector = cast_vector_or_scalar_type(input)
-        return function(vector)
+        rect = _cast_anything_to_rectangle(input)
+        return function(self, rect)
     return decorator
 
-def _overload_left_side(f):
-    def operator(a, b):
-        try: return Vector(f(a.x, b.x), f(a.y, b.y))
-        except: pass
+def _accept_shape_as_rectangle(function):
+    def decorator(self, input):
+        rect = _cast_shape_to_rectangle(input)
+        return function(self, rect)
+    return decorator
 
-        try: return Vector(f(a.x, b[0]), f(a.y, b[1]))
+def _overload_left_side(f, scalar_ok=False):
+    def operator(self, other):
+        try: x, y = other.x, other.y
         except: pass
+        else: return Vector(f(self.x, x), f(self.y, y))
 
-        try: return Vector(f(a.x, b), f(a.y, b))
+        try: x, y = other
         except: pass
+        else: return Vector(f(self.x, x), f(self.y, y))
 
-        raise VectorCastError(b)
+        # Zero is treated as a special case, because the built-in sum() 
+        # function expects to be able to add zero to things.
+        
+        if (other is 0) or (scalar_ok):
+            return Vector(f(self.x, other), f(self.y, other))
+        else:
+            raise VectorCastError(other)
 
     return operator
 
-def _overload_right_side(f):
-    def operator(a, b):
-        try: return Vector(f(b.x, a.x), f(b.y, a.y))
+def _overload_right_side(f, scalar_ok=False):
+    def operator(self, other):
+        try: x, y = other
         except: pass
+        else: return Vector(f(x, self.x), f(y, self.y))
 
-        try: return Vector(f(b[0], a.x), f(b[1], a.y))
+        # This block is intended mostly for other vectors.  However, if the 
+        # right-side operator is being invoked, then the operand is more likely 
+        # to be a tuple than some other object with x and y attributes.  So it 
+        # makes sense to check for a tuple first.  
+        
+        try: x, y = other.x, other.y
         except: pass
+        else: return Vector(f(x, self.x), f(y, self.y))
 
-        try: return Vector(f(b, a.x), f(b, a.y))
-        except: pass
-
-        raise VectorCastError(b)
+        if (other is 0) or (scalar_ok):
+            return Vector(f(other, self.x), f(other, self.y))
+        else:
+            raise VectorCastError(other)
 
     return operator
 
-def _overload_in_place(f):
-    def operator(a, b):
-        try: a.x, a.y = f(a.x, b.x), f(a.y, b.y)
+def _overload_in_place(f, scalar_ok=False):
+    def operator(self, other):
+        try: x, y = other.x, other.y
         except: pass
+        else: self.x, self.y = f(self.x, x), f(self.y, y); return self
 
-        try: a.x, a.y = f(a.x, b[0]), f(a.y, b[1])
+        try: x, y = other
         except: pass
+        else: self.x, self.y = f(self.x, x), f(self.y, y); return self
 
-        try: a.x, a.y = f(a.x, b), f(a.y, b)
-        except: pass
-
-        raise VectorCastError(b)
+        if (other is 0) or (scalar_ok):
+            self.x, self.y = f(self.x, other), f(self.y, other)
+            return self
+        else:
+            raise VectorCastError(other)
 
     return operator
 
 
-# Shape Classes
+# Vector and Rectangle Classes
 
 class Shape (object):
-
-    def get_left(self):
-        raise NotImplementedError
-
-    def get_right(self):
-        raise NotImplementedError
 
     def get_top(self):
         raise NotImplementedError
 
-    def get_bottom(self):
+    def get_left(self):
         raise NotImplementedError
+
+    def get_width(self):
+        raise NotImplementedError
+
+    def get_height(self):
+        raise NotImplementedError
+
+
+    # Properties (fold)
+    top = property(get_top)
+    left = property(get_left)
+    width = property(get_width)
+    height = property(get_height)
+
+
+class Vector (object):
+    """ Represents a two-dimensional vector.  In particular, this class
+    features a number of factory methods to create vectors from angles and
+    other input and a number of overloaded operators to facilitate vector
+    math. """
+
+    @staticmethod
+    def null():
+        """ Return a null vector. """
+        return Vector(0, 0)
+
+    @staticmethod
+    def random(magnitude=1):
+        """ Create a unit vector pointing in a random direction. """
+        theta = random.uniform(0, 2 * math.pi)
+        return magnitude * Vector(math.cos(theta), math.sin(theta))
+
+    @staticmethod
+    def from_radians(angle):
+        """ Create a vector that makes the given angle with the x-axis. """
+        return Vector(math.cos(angle), math.sin(angle))
+
+    @staticmethod
+    def from_degrees(angle):
+        """ Create a vector that makes the given angle with the x-axis. """
+        return Vector.from_radians(angle * math.pi / 180)
+
+    @staticmethod
+    def from_tuple(coordinates):
+        """ Create a vector from a two element tuple. """
+        return Vector(*coordinates)
+
+    @staticmethod
+    def from_scalar(scalar):
+        """ Create a vector from a single scalar value. """
+        return Vector(scalar, scalar)
+
+    @staticmethod
+    def from_rectangle(box):
+        """ Create a vector randomly within the given rectangle. """
+        x = box.left + box.width * random.uniform(0, 1)
+        y = box.top + box.height * random.uniform(0, 1)
+        return Vector(x, y)
+
+
+    def copy(self):
+        """ Return a copy of this vector. """
+        from copy import deepcopy
+        return deepcopy(self)
+
+    def normalize(self):
+        """ Set the magnitude of this vector to unity, in place. """
+        try:
+            self /= self.magnitude
+        except ZeroDivisionError:
+            raise NullVectorError
+
+    def interpolate(self, target, extent):
+        """ Move this vector towards the given towards the target by the given 
+        extent.  The extent should be between 0 and 1. """
+        target = _cast_anything_to_vector(target)
+        self += extent * (target - self)
+
+    @_accept_anything_as_vector
+    def dot_product(self, other):
+        """ Return the dot product of the given vectors. """
+        return self.x * other.x + self.y * other.y
+
+    @_accept_anything_as_vector
+    def perp_product(self, other):
+        """ Return the perp product of the given vectors.  The perp product is
+        just a cross product where the third dimension is taken to be zero and
+        the result is returned as a scalar. """
+
+        return self.x * other.y - self.y * other.x
+
+
+    def __init__(self, x, y):
+        """ Construct a vector using the given coordinates. """
+        self.x = x
+        self.y = y
+
+    def __repr__(self):
+        """ Return a string representation of this vector. """
+        return "Vector(%f, %f)" % self.get_tuple()
+
+    def __str__(self):
+        """ Return a string representation of this vector. """
+        return "<%.2f, %.2f>" % self.get_tuple()
+
+    def __iter__(self):
+        """ Iterate over this vectors coordinates. """
+        yield self.x; yield self.y
+
+    def __nonzero__(self):
+        """ Return true is the vector is not degenerate. """
+        return self.x != 0 or self.y != 0
+
+    def __getitem__(self, i):
+        """ Return the specified coordinate. """
+        return self.tuple[i]
+
+    def __neg__(self):
+        """ Return a copy of this vector with the signs flipped. """
+        return Vector(-self.x, -self.y)
+
+    def __abs__(self):
+        """ Return the absolute value of this vector. """
+        return Vector(abs(self.x), abs(self.y))
+    
+
+    # Binary Operators (fold)
+    __eq__ = _overload_left_side(operator.eq)
+    __ne__ = _overload_left_side(operator.ne)
+
+    __add__ = _overload_left_side(operator.add)
+    __radd__ = _overload_right_side(operator.add)
+    __iadd__ = _overload_in_place(operator.add)
+
+    __sub__ = _overload_left_side(operator.sub)
+    __rsub__ = _overload_right_side(operator.sub)
+    __isub__ = _overload_in_place(operator.sub)
+
+    __mul__ = _overload_left_side(operator.mul, scalar_ok=True)
+    __rmul__ = _overload_right_side(operator.mul, scalar_ok=True)
+    __imul__ = _overload_in_place(operator.mul, scalar_ok=True)
+
+    __div__ = _overload_left_side(operator.div, scalar_ok=True)
+    __rdiv__ = _overload_right_side(operator.div, scalar_ok=True)
+    __idiv__ = _overload_in_place(operator.div, scalar_ok=True)
+
+    __floordiv__ = _overload_left_side(operator.floordiv, scalar_ok=True)
+    __rfloordiv__ = _overload_right_side(operator.floordiv, scalar_ok=True)
+    __ifloordiv__ = _overload_in_place(operator.floordiv, scalar_ok=True)
+
+    __truediv__ = _overload_left_side(operator.truediv, scalar_ok=True)
+    __rtruediv__ = _overload_right_side(operator.truediv, scalar_ok=True)
+    __itruediv__ = _overload_in_place(operator.truediv, scalar_ok=True)
+    
+    __mod__ = _overload_left_side(operator.mod, scalar_ok=True)
+    __rmod__ = _overload_right_side(operator.mod, scalar_ok=True)
+    __imod__ = _overload_in_place(operator.mod, scalar_ok=True)
+
+    __pow__  = _overload_left_side(operator.pow, scalar_ok=True)
+    __rpow__  = _overload_right_side(operator.pow, scalar_ok=True)
+    __ipow__  = _overload_in_place(operator.pow, scalar_ok=True)
+
+
+    def get_x(self):
+        """ Get the x coordinate of this vector. """
+        return self.x
+
+    def get_y(self):
+        """ Get the y coordinate of this vector. """
+        return self.y
+
+    def get_tuple(self):
+        """ Return the vector as a tuple. """
+        return self.x, self.y
+
+    def get_pygame(self):
+        """ Return the vector as a tuple of integers.  This is the format
+        Pygame expects to receive coordinates in. """
+        return int(self.x), int(self.y)
+
+    def get_magnitude(self):
+        """ Calculate the length of this vector. """
+        return math.sqrt(self.magnitude_squared)
+
+    def get_magnitude_squared(self):
+        """ Calculate the square of the length of this vector.  This is
+        slightly more efficient that finding the real length. """
+        return self.x**2 + self.y**2
+
+    @_accept_anything_as_vector
+    def get_distance(self, other):
+        """ Return the Euclidean distance between the two input vectors. """
+        return (other - self).magnitude
+
+    @_accept_anything_as_vector
+    def get_manhattan(self, other):
+        """ Return the Manhattan distance between the two input vectors. """
+        return sum(abs(other - self))
+
+    def get_normal(self):
+        """ Return a unit vector parallel to this one. """
+        result = self.copy()
+        result.normalize()
+        return result
+
+    def get_orthogonal(self):
+        """ Return a vector that is orthogonal to this one.  The resulting
+        vector is not normalized. """
+        return Vector(-self.y, self.x)
+
+    def get_orthonormal(self):
+        """ Return a vector that is orthogonal to this one and that has been 
+        normalized. """
+        return self.orthogonal.normal
+
+    def get_interpolated(self, target, extent):
+        """ Return a new vector that has been moved towards the given target by 
+        the given extent.  The extent should be between 0 and 1. """
+        result = self.copy()
+        result.interpolate(target, extent)
+        return result
+
+    @_accept_anything_as_vector
+    def get_components(self, other):
+        """ Break this vector into one vector that is perpendicular to the 
+        given vector and another that is parallel to it. """
+        tangent = other * self.dot(other)
+        normal = self - tangent
+        return normal, tangent
+
+    def get_radians(self):
+        """ Return the angle between this vector and the positive x-axis 
+        measured in radians. """
+        if not self: raise NullVectorError()
+        return math.atan2(self.y, self.x)
+
+    def get_degrees(self):
+        """ Return the angle between this vector and the positive x-axis 
+        measured in degrees. """
+        return self.radians * 180 / math.pi
+
+    @_accept_anything_as_vector
+    def get_radians_to(self, other):
+        """ Return the angle between the two given vectors in radians.  If
+        either of the inputs are null vectors, an exception is thrown. """
+        return other.radians - self.radians
+
+    @_accept_anything_as_vector
+    def get_degrees_to(self, other):
+        """ Return the angle between the two given vectors in degrees.  If
+        either of the inputs are null vectors, an exception is thrown. """
+        return other.degrees - self.degrees
+
+
+    def set_x(self, x):
+        """ Set the x coordinate of this vector. """
+        self.x = x
+
+    def set_y(self, y):
+        """ Set the y coordinate of this vector. """
+        self.y = y
+
+    def set_radians(self, angle):
+        """ Set the angle that this vector makes with the x-axis. """
+        self.x, self.y = math.cos(angle), math.sin(angle)
+
+    def set_degrees(self, angle):
+        """ Set the angle that this vector makes with the x-axis. """
+        self.set_radians(angle * math.pi / 180)
+
+    def set_tuple(self, coordinates):
+        """ Set the x and y coordinates of this vector. """
+        self.x, self.y = coordinates
+    
+    def set_magnitude(self, magnitude):
+        """ Set the magnitude of this vector in place. """
+        self.normalize()
+        self *= magnitude
+
+
+    # Aliases (fold)
+    dot = dot_product
+    perp = perp_product
+
+    # Properties (fold)
+    tuple = property(get_tuple, set_tuple)
+    pygame = property(get_pygame)
+
+    magnitude = property(get_magnitude, set_magnitude)
+    magnitude_squared = property(get_magnitude_squared)
+
+    normal = property(get_normal)
+    orthogonal = property(get_orthogonal)
+    orthonormal = property(get_orthonormal)
+
+    radians = property(get_radians, set_radians)
+    degrees = property(get_degrees, set_degrees)
 
 
 class Rectangle (Shape):
@@ -113,6 +457,28 @@ class Rectangle (Shape):
                  self.__left == other.__left and
                  self.__width == other.__width and
                  self.__height == other.__height )
+
+    @_accept_anything_as_vector
+    def __add__(self, vector):
+        result = self.copy()
+        result.displace(vector)
+        return result
+
+    @_accept_anything_as_vector
+    def __iadd__(self, vector):
+        self.displace(vector)
+        return self
+
+    @_accept_anything_as_vector
+    def __sub__(self, vector):
+        result = self.copy()
+        result.displace(-vector)
+        return result
+
+    @_accept_anything_as_vector
+    def __isub__(self, vector):
+        self.displace(-vector)
+        return self
 
     def __contains__(self, other):
         return self.contains(other)
@@ -140,12 +506,29 @@ class Rectangle (Shape):
 
     @staticmethod
     def from_sides(left, top, right, bottom):
-        width = right - left; height = bottom - right
-        return Rectangle.from_dimensions(left, right, width, height)
+        width = right - left; height = bottom - top
+        return Rectangle.from_dimensions(left, top, width, height)
+
+    @staticmethod
+    def from_top_left(position, width, height):
+        position = _cast_anything_to_vector(position)
+        return Rectangle(position.x, position.y, width, height)
 
     @staticmethod
     def from_center(position, width, height):
+        position = _cast_anything_to_vector(position) - (width/2, height/2)
         return Rectangle(position.x, position.y, width, height)
+
+    @staticmethod
+    def from_vector(position):
+        position = _cast_anything_to_vector(position)
+        return Rectangle(position.x, position.y, 0, 0)
+
+    @staticmethod
+    def from_shape(shape):
+        top, left = shape.top, shape.left
+        width, height = shape.width, shape.height
+        return Rectangle(left, top, width, height)
 
     @staticmethod
     def from_surface(surface):
@@ -153,82 +536,103 @@ class Rectangle (Shape):
         return Rectangle.from_size(width, height)
     
     @staticmethod
-    def from_union(*rectangles):
+    def from_union(*inputs):
+        rectangles = [_cast_shape_to_rectangle(x) for x in inputs]
         left = min(x.left for x in rectangles)
         top = min(x.top for x in rectangles)
         right = max(x.right for x in rectangles)
         bottom = max(x.bottom for x in rectangles)
-
         return Rectangle.from_sides(left, top, right, bottom)
 
     @staticmethod
-    def from_intersection(*rectangles):
+    def from_intersection(*inputs):
+        rectangles = [_cast_shape_to_rectangle(x) for x in inputs]
         left = max(x.left for x in rectangles)
         top = max(x.top for x in rectangles)
         right = min(x.right for x in rectangles)
         bottom = min(x.bottom for x in rectangles)
-
         return Rectangle.from_sides(left, top, right, bottom)
 
 
     def grow(self, padding):
-        self.__top += padding
-        self.__left += padding
+        """ Grow this rectangle by the given padding on all sides. """
+        self.__top -= padding
+        self.__left -= padding
         self.__width += 2 * padding
         self.__height += 2 * padding
 
     def shrink(self, padding):
-        self.__top -= padding
-        self.__left -= padding
-        self.__width -= 2 * padding
-        self.__height -= 2 * padding
+        """ Shrink this rectangle by the given padding on all sides. """
+        self.grow(-padding)
 
-    def displace(self, displacement):
-        self.top += displacement[0]
-        self.left += displacement[1]
+    @_accept_anything_as_vector
+    def displace(self, vector):
+        """ Displace this rectangle by the given vector. """
+        self.__top += vector.y
+        self.__left += vector.x
 
-    def clone(self):
+    def copy(self):
+        """ Return a copy of this rectangle. """
         from copy import deepcopy
         return deepcopy(self)
 
 
+    @_accept_shape_as_rectangle
+    def inside(self, other):
+        """ Return true if this rectangle is inside the given shape. """
+        return ( self.left >= other.left and
+                 self.right <= other.right and
+                 self.top >= other.top and
+                 self.bottom <= other.bottom )
+
+    @_accept_anything_as_rectangle
+    def outside(self, other):
+        """ Return true if this rectangle is outside the given shape. """
+        return not self.touching(other)
+
+    @_accept_anything_as_rectangle
+    def touching(self, other):
+        """ Return true if this rectangle is touching the given shape. """
+        if self.top > other.bottom: return False
+        if self.bottom < other.top: return False
+
+        if self.left > other.right: return False
+        if self.right < other.left: return False
+
+        return True
+
+    @_accept_anything_as_rectangle
+    def contains(self, other):
+        """ Return true if the given shape is inside this rectangle. """
+        return ( self.left <= other.left and
+                 self.right >= other.right and
+                 self.top <= other.top and
+                 self.bottom >= other.bottom )
+
+
+    @_accept_anything_as_rectangle
     def align_left(self, target):
         self.left = target.left
 
+    @_accept_anything_as_rectangle
     def align_center_x(self, target):
         self.center_x = target.center_x
 
+    @_accept_anything_as_rectangle
     def align_right(self, target):
         self.right = target.right
 
+    @_accept_anything_as_rectangle
     def align_top(self, target):
         self.top = target.top
 
+    @_accept_anything_as_rectangle
     def align_center_y(self, target):
         self.center_y = target.center_y
 
+    @_accept_anything_as_rectangle
     def align_bottom(self, target):
         self.bottom = target.bottom
-
-
-    def inside(self, other):
-        """ Return true if this rectangle is inside the given shape. """
-        return ( self.left < other.left and
-                 self.right > other.right and
-                 self.top < other.top and
-                 self.bottom > other.bottom )
-
-    def outside(self, other):
-        """ Return if this rectangle is outside the given shape. """
-        raise NotImplementedError
-
-    def touching(self, other):
-        """ Return true if this rectangle is touching the given shape. """
-        raise NotImplementedError
-
-    def contains(self, other):
-        """ Return true if the given shape is inside this rectangle. """
-        raise NotImplementedError
 
 
     def get_left(self):
@@ -244,7 +648,7 @@ class Rectangle (Shape):
         return self.__top
 
     def get_center_y(self):
-        return self.__top + self.__bottom / 2
+        return self.__top + self.__height / 2
 
     def get_bottom(self):
         return self.__top + self.__height
@@ -298,10 +702,20 @@ class Rectangle (Shape):
         return Rect(self.left, self.top, self.width, self.height)
 
     def get_union(self, *rectangles):
-        raise NotImplementedError
+        return Rectangle.from_union(self, *rectangles)
 
     def get_intersection(self, *rectangles):
-        raise NotImplementedError
+        return Rectangle.from_intersection(self, *rectangles)
+
+    def get_grown(self, padding):
+        result = self.copy()
+        result.grow(padding)
+        return result
+
+    def get_shrunk(self, padding):
+        result = self.copy()
+        result.shrink(padding)
+        return result
 
 
     def set_left(self, x):
@@ -333,38 +747,47 @@ class Rectangle (Shape):
         self.__height = height
 
 
+    @_accept_anything_as_vector
     def set_top_left(self, point):
         self.top = point[1]
         self.left = point[0]
 
+    @_accept_anything_as_vector
     def set_top_center(self, point):
         self.top = point[1]
         self.center_x = point[0]
 
+    @_accept_anything_as_vector
     def set_top_right(self, point):
         self.top = point[1]
         self.right = point[0]
 
+    @_accept_anything_as_vector
     def set_center_left(self, point):
         self.center_y = point[1]
         self.left = point[0]
 
+    @_accept_anything_as_vector
     def set_center(self, point):
         self.center_y = point[1]
         self.center_x = point[0]
 
+    @_accept_anything_as_vector
     def set_center_right(self, point):
         self.center_y = point[1]
         self.right = point[0]
 
+    @_accept_anything_as_vector
     def set_bottom_left(self, point):
         self.bottom = point[1]
         self.left = point[0]
 
+    @_accept_anything_as_vector
     def set_bottom_center(self, point):
         self.bottom = point[1]
         self.center_x = point[0]
 
+    @_accept_anything_as_vector
     def set_bottom_right(self, point):
         self.bottom = point[1]
         self.right = point[0]
@@ -396,309 +819,6 @@ class Rectangle (Shape):
     pygame = property(get_pygame)
 
 
-class Vector (Shape):
-    """ Represents a two-dimensional vector.  In particular, this class
-    features a number of factory methods to create vectors from angles and
-    other input and a number of overloaded operators to facilitate vector
-    math. """
-
-    @staticmethod
-    def null():
-        """ Return a null vector. """
-        return Vector(0, 0)
-
-    @staticmethod
-    def random(magnitude=1):
-        """ Create a unit vector pointing in a random direction. """
-        theta = random.uniform(0, 2 * math.pi)
-        return magnitude * Vector(math.cos(theta), math.sin(theta))
-
-    @staticmethod
-    def from_radians(angle):
-        """ Create a vector that makes the given angle with the x-axis. """
-        return Vector(math.cos(angle), math.sin(angle))
-
-    @staticmethod
-    def from_degrees(angle):
-        """ Create a vector that makes the given angle with the x-axis. """
-        return Vector.from_radians(angle * math.pi / 180)
-
-    @staticmethod
-    def from_tuple(coordinates):
-        """ Create a vector from a two element tuple. """
-        return Vector(*coordinates)
-
-    @staticmethod
-    def from_scalar(scalar):
-        """ Create a vector from a single scalar value. """
-        return Vector(scalar, scalar)
-
-    @staticmethod
-    def from_rectangle(box):
-        """ Create a vector randomly within the given rectangle. """
-        x = box.left + box.width * random.uniform(0, 1)
-        y = box.top + box.height * random.uniform(0, 1)
-        return Vector(x, y)
-
-
-    def normalize(self):
-        """ Set the magnitude of this vector to unity, in place. """
-        try:
-            self /= self.magnitude
-        except ZeroDivisionError:
-            raise NullVectorError
-
-    def interpolate(self, target, extent):
-        """ Move this vector towards the given towards the target by the given 
-        extent.  The extent should be between 0 and 1. """
-        result = self.get_interpolated(target, extent)
-        self.x, self.y = result.x, result.y
-
-    @_accept_vector_type
-    def dot_product(self, other):
-        """ Return the dot product of the given vectors. """
-        return self.x * other.x + self.y * other.y
-
-    @_accept_vector_type
-    def perp_product(self, other):
-        """ Return the perp product of the given vectors.  The perp product is
-        just a cross product where the third dimension is taken to be zero and
-        the result is returned as a scalar. """
-
-        return self.x * other.y - self.y * other.x
-
-
-    def __init__(self, x, y):
-        """ Construct a vector using the given coordinates. """
-        self.x = x
-        self.y = y
-
-    def __repr__(self):
-        """ Return a string representation of this vector. """
-        return "Vector(%f, %f)" % self.get_tuple()
-
-    def __str__(self):
-        """ Return a string representation of this vector. """
-        return "<%f, %f>" % self.get_tuple()
-
-    def __iter__(self):
-        """ Iterate over this vectors coordinates. """
-        yield self.x; yield self.y
-
-    def __nonzero__(self):
-        """ Return true is the vector is not degenerate. """
-        return self.x != 0 or self.y != 0
-
-    def __getitem__(self, i):
-        """ Return the specified coordinate. """
-        return self.tuple[i]
-
-    def __neg__(self):
-        """ Return a copy of this vector with the signs flipped. """
-        return Vector(-self.x, -self.y)
-
-    def __abs__(self):
-        """ Return the absolute value of this vector. """
-        return Vector(abs(self.x), abs(self.y))
-    
-
-    # Binary Operators (fold)
-    __eq__ = _overload_left_side(operator.eq)
-    __ne__ = _overload_left_side(operator.ne)
-
-    __add__ = _overload_left_side(operator.add)
-    __radd__ = _overload_right_side(operator.add)
-    __iadd__ = _overload_in_place(operator.add)
-
-    __sub__ = _overload_left_side(operator.sub)
-    __rsub__ = _overload_right_side(operator.sub)
-    __isub__ = _overload_in_place(operator.sub)
-
-    __mul__ = _overload_left_side(operator.mul)
-    __rmul__ = _overload_right_side(operator.mul)
-    __imul__ = _overload_in_place(operator.mul)
-
-    __div__ = _overload_left_side(operator.div)
-    __rdiv__ = _overload_right_side(operator.div)
-    __idiv__ = _overload_in_place(operator.div)
-
-    __floordiv__ = _overload_left_side(operator.floordiv)
-    __rfloordiv__ = _overload_right_side(operator.floordiv)
-    __ifloordiv__ = _overload_in_place(operator.floordiv)
-
-    __truediv__ = _overload_left_side(operator.truediv)
-    __rtruediv__ = _overload_right_side(operator.truediv)
-    __itruediv__ = _overload_in_place(operator.truediv)
-    
-    __mod__ = _overload_left_side(operator.mod)
-    __rmod__ = _overload_right_side(operator.mod)
-    __imod__ = _overload_in_place(operator.mod)
-
-    __pow__  = _overload_left_side(operator.pow)
-    __rpow__  = _overload_right_side(operator.pow)
-    __ipow__  = _overload_in_place(operator.pow)
-
-
-    def get_left(self):
-        """ Get the x coordinate of this vector. """
-        return self.x
-
-    def get_right(self):
-        """ Get the x coordinate of this vector. """
-        return self.x
-
-    def get_top(self):
-        """ Get the y coordinate of this vector. """
-        return self.y
-
-    def get_bottom(self):
-        """ Get the y coordinate of this vector. """
-        return self.y
-
-    def get_tuple(self):
-        """ Return the vector as a tuple. """
-        return self.x, self.y
-
-    def get_pygame(self):
-        """ Return the vector as a tuple of integers.  This is the format
-        Pygame expects to receive coordinates in. """
-        return int(self.x), int(self.y)
-
-    def get_magnitude(self):
-        """ Calculate the length of this vector. """
-        return math.sqrt(self.magnitude_squared)
-
-    def get_magnitude_squared(self):
-        """ Calculate the square of the length of this vector.  This is
-        slightly more efficient that finding the real length. """
-        return self.x**2 + self.y**2
-
-    @_accept_vector_type
-    def get_distance(self, other):
-        """ Return the Euclidean distance between the two input vectors. """
-        return (other - self).magnitude
-
-    @_accept_vector_type
-    def get_manhattan(self, other):
-        """ Return the Manhattan distance between the two input vectors. """
-        return sum(abs(other - self))
-
-    def get_normal(self):
-        """ Return a unit vector parallel to this one. """
-        try:
-            return self / self.magnitude
-        except ZeroDivisionError:
-            raise NullVectorError()
-
-    def get_orthogonal(self):
-        """ Return a vector that is orthogonal to this one.  The resulting
-        vector is not normalized. """
-        return Vector(-self.y, self.x)
-
-    def get_orthonormal(self):
-        """ Return a vector that is both normalized and orthogonal to this
-        one. """
-        return self.orthogonal.normal
-
-    def get_interpolated(self, target, extent):
-        """ Return a new vector that has been moved towards the given target by 
-        the given extent.  The extent should be between 0 and 1. """
-        target = _cast_vector_type(target)
-        return self + extent * (target - self)
-
-    @_accept_vector_type
-    def get_components(self, other):
-        """ Break this vector into one vector that is parallel to the given
-        vector and another that is perpendicular to it. """
-
-        tangent = other * Vector.dot(self, other)
-        normal = self - tangent
-        return normal, tangent
-
-    def get_radians(self):
-        raise NotImplementedError
-
-    def get_degrees(self):
-        raise NotImplementedError
-
-    @_accept_vector_type
-    def get_radians_to(self, other):
-        """ Return the angle between the two given vectors in degrees.  If
-        either of the inputs are null vectors, an exception is thrown. """
-
-        try:
-            temp = self.magnitude * other.magnitude
-            temp = self.dot(other) / temp
-            return math.acos(temp)
-
-        # Floating point error will confuse the trig functions occasionally.
-        except ValueError:
-            return 0 if temp > 0 else pi
-
-        # It doesn't make sense to find the angle of a null vector. 
-        except ZeroDivisionError:
-            raise NullVectorError()
-
-    @_accept_vector_type
-    def get_degrees_to(self, other):
-        """ Return the angle between the two given vectors in degrees.  If
-        either of the inputs are null vectors, an exception is thrown. """
-        return self.get_radians_to(other) * 180 / math.pi
-
-
-    def set_left(self, x):
-        """ Set the x coordinate of this vector. """
-        self.x = x
-
-    def set_right(self, x):
-        """ Set the x coordinate of this vector. """
-        self.x = x
-
-    def set_top(self, y):
-        """ Set the y coordinate of this vector. """
-        self.y = y
-
-    def set_bottom(self, y):
-        """ Set the y coordinate of this vector. """
-        self.y = y
-
-    def set_radians(self, angle):
-        """ Set the angle that this vector makes with the x-axis. """
-        self.x, self.y = math.cos(angle), math.sin(angle)
-
-    def set_degrees(self, angle):
-        """ Set the angle that this vector makes with the x-axis. """
-        self.set_radians(angle * math.pi / 180)
-
-    def set_tuple(self, coordinates):
-        """ Set the x and y coordinates of this vector. """
-        self.x, self.y = coordinates
-    
-    def set_magnitude(self, magnitude):
-        """ Set the magnitude of this vector in place. """
-        self.normalize()
-        self *= magnitude
-
-
-    # Aliases (fold)
-    dot = dot_product
-    perp = perp_product
-
-    # Properties (fold)
-    tuple = property(get_tuple, set_tuple)
-    pygame = property(get_pygame)
-
-    magnitude = property(get_magnitude, set_magnitude)
-    magnitude_squared = property(get_magnitude_squared)
-
-    normal = property(get_normal)
-    orthogonal = property(get_orthogonal)
-    orthonormal = property(get_orthonormal)
-
-    radians = property(get_radians, set_radians)
-    degrees = property(get_degrees, set_degrees)
-
-
 
 # Exception Classes
 
@@ -707,10 +827,17 @@ class NullVectorError (Exception):
     pass
 
 class VectorCastError (Exception):
-    """ Thrown an inappropriate object is used as a vector. """
+    """ Thrown when an inappropriate object is used as a vector. """
 
     def __init__(self, object):
-        Exception.__init__("Could not cast %s to vector." % type(object))
+        Exception.__init__(self, "Could not cast %s to vector." % type(object))
+
+
+class RectangleCastError (Exception):
+    """ Thrown when an inappropriate object is used as a rectangle. """
+
+    def __init__(self, object):
+        Exception.__init__(self, "Could not cast %s to rectangle." % type(object))
 
 
 
