@@ -247,6 +247,14 @@ def vector_math_methods(helper):
     try: Vector.null().normalize()
     except NullVectorError: pass
 
+    r = Vector(3, 4)
+
+    s = r.get_scaled(10)
+    r.scale(10)
+
+    assert r == Vector(6, 8)
+    assert s == Vector(6, 8)
+
     q = Vector(1, 2)
     r = Vector(1, 2)
     s = Vector(1, 4)

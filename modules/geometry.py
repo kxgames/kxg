@@ -211,6 +211,11 @@ class Vector (object):
         except ZeroDivisionError:
             raise NullVectorError
 
+    def scale(self, magnitude):
+        """ Set the magnitude of this vector in place. """
+        self.normalize()
+        self *= magnitude
+
     def interpolate(self, target, extent):
         """ Move this vector towards the given towards the target by the given 
         extent.  The extent should be between 0 and 1. """
@@ -354,6 +359,12 @@ class Vector (object):
         normalized. """
         return self.orthogonal.normal
 
+    def get_scaled(self, magnitude):
+        """ Return a unit vector parallel to this one. """
+        result = self.copy()
+        result.scale(magnitude)
+        return result
+
     def get_interpolated(self, target, extent):
         """ Return a new vector that has been moved towards the given target by 
         the given extent.  The extent should be between 0 and 1. """
@@ -413,11 +424,6 @@ class Vector (object):
         """ Set the x and y coordinates of this vector. """
         self.x, self.y = coordinates
     
-    def set_magnitude(self, magnitude):
-        """ Set the magnitude of this vector in place. """
-        self.normalize()
-        self *= magnitude
-
 
     # Aliases (fold)
     dot = dot_product
@@ -427,7 +433,7 @@ class Vector (object):
     tuple = property(get_tuple, set_tuple)
     pygame = property(get_pygame)
 
-    magnitude = property(get_magnitude, set_magnitude)
+    magnitude = property(get_magnitude, scale)
     magnitude_squared = property(get_magnitude_squared)
 
     normal = property(get_normal)
