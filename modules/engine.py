@@ -11,6 +11,14 @@ import functools
 # otherwise.  Then pass the value returned by check() into reject(), so the 
 # game can handle errors appropriately.
 
+# It's annoying that game objects can't send messages.  Often the referee 
+# update function ends up looking like something that should be inside the 
+# update function for a specific token.  It's also a little annoying that the 
+# referee has to be able to receive messages, because it never reacts to them.  
+# (That's kinda what the message.execute callback is for.)  I have a feeling 
+# that both these problems could be solved in one change, which would basically 
+# involve removing the referee, although I haven't put much thought into it.
+
 class MainLoop (object):
     """ Manage whichever stage is currently active.  This involves both
     updating the current stage and handling transitions between stages. """
