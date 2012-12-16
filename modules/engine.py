@@ -596,6 +596,7 @@ class World (Token):
         Token.__init__(self)
         self._tokens = {}
         self._registered = True
+        self._id = 1
 
     def __iter__(self):
         for token in self._tokens.values():
