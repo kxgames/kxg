@@ -19,6 +19,14 @@ import functools
 # that both these problems could be solved in one change, which would basically 
 # involve removing the referee, although I haven't put much thought into it.
 
+# I believe that messages are not capable of packing nested tokens.  This is 
+# inconvenient.  For example, image a case where I want to create a battle 
+# object.  I immediately know which armies to place into that object.  However, 
+# if I do so in message.__init__, the message will create copies of the army 
+# object when copied over the network.  I need to make the message packer smart 
+# enough to recognize this scenario and replace the game token references with 
+# id numbers.
+
 class MainLoop (object):
     """ Manage whichever stage is currently active.  This involves both
     updating the current stage and handling transitions between stages. """
@@ -615,10 +623,20 @@ class World (Token):
     def add_token(self, token):
         id = token.get_id()
         assert id is not None, "Can't register a token with a null id."
+        assert id not in self._tokens
         assert isinstance(id, int)
 
         token._registered = True
         self._tokens[id] = token
+
+    @check_for_safety
+    def remove_token(self, token):
+        id = token.get_id()
+        assert id is not None, "Can't remove a token with a null id."
+        assert isinstance(id, int)
+
+        token._registered = False
+        del self._tokens[id]
 
     def setup(self):
         raise NotImplementedError
