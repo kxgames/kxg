@@ -501,8 +501,8 @@ class Token (object):
     _access = 'protected'
     _actor = None
 
-    def __init__(self, id):
-        self._id = id.next() if isinstance(id, IdFactory) else id
+    def __init__(self):
+        self._id = None
         self._registered = False
         self._extensions = {
                 actor : extension_class(self)
@@ -530,6 +530,10 @@ class Token (object):
     def __extend__(self):
         return {}
 
+
+    def register(self, id):
+        assert self._id is None
+        self._id = id.next() if isinstance(id, IdFactory) else id
 
     def setup(self, world):
         pass
@@ -581,7 +585,7 @@ class Prototype (Token):
 class World (Token):
 
     def __init__(self):
-        Token.__init__(self, 0)
+        Token.__init__(self)
         self._tokens = {}
         self._registered = True
 
