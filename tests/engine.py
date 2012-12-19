@@ -44,7 +44,6 @@ def read_only_test(world, actor):
         print ( building.get_production(),
                 building.get_health(),
                 building.get_menu() )
-
         try:
             units[0].fight(units[1])
             units[1].fight(units[0])
@@ -96,7 +95,6 @@ class World (engine.World):
         building = Building(id, production, health)
         self.buildings.append(building)
 
-    # }}}1
 
 
 class Unit (engine.Token):
@@ -164,6 +162,8 @@ class GuiBuildingExtension (engine.TokenExtension):
 
     def get_menu(self):
         return self.menu
+
+
 
 if __name__ == '__main__':
 

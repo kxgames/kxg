@@ -1,15 +1,5 @@
 import errno, socket, struct, pickle
 
-# Closing Sockets
-# ===============
-# I think it would be useful to carefully go through and compare this code to
-# that in the asyncore module, since it does a good job of handling errors.  In
-# particular, I noticed that my code doesn't notice when socket.recv() returns
-# 0 bytes.  When this happens, the socket is actually trying to communicate
-# the fact that the connection has been closed.  If I handle this more
-# gracefully, I might manage to avoid the shutdown problems that have been
-# plaguing the code.
-
 # Server Documentation
 # ====================
 # I had a hard time figuring out how to use the Server class.  It's not enough
@@ -17,7 +7,7 @@ import errno, socket, struct, pickle
 # class.  This is something that the documentation should make more clear.
 
 class Host:
-    """ Accepts any number of incoming network connections.  For each
+    """ Accept any number of incoming network connections.  For each
     connection, a new pipe is created.  The pipe can be used for communication,
     but by itself the host cannot. """
 
@@ -54,7 +44,7 @@ class Host:
             # Continue looping until accept() throws an exception.
             try:
                 connection, address = self.socket.accept()
-                pipe = self.instantiate(connection)
+                pipe = Pipe(connection)
 
                 self.callback(pipe)
 
@@ -76,8 +66,8 @@ class Host:
         self.closed = True
 
 
-class Server(Host):
-    """ Accepts a preset number of incoming network connections.  Once that
+class Server (Host):
+    """ Accept a preset number of incoming network connections.  Once that
     many clients have connected, a callback will be executed to inform the
     calling code.  After that point, the server no longer does anything and can
     be safely destroyed. 
@@ -116,7 +106,7 @@ class Server(Host):
 
 
 class Client:
-    """ Establishes a connection to a remote machine.  Clients can connect to
+    """ Establish a connection to a remote machine.  Clients can connect to
     both hosts and servers.  Once the connection is established, a pipe object
     is created and the client itself can be destroyed.  All communication is
     mediated by the pipe. """
@@ -139,7 +129,7 @@ class Client:
         error = self.socket.connect_ex(self.address)
 
         if error == 0:
-            self.pipe = self.instantiate(self.socket)
+            self.pipe = Pipe(self.socket)
             self.callback(self.pipe)
 
         return error
@@ -149,9 +139,65 @@ class Client:
 
 
 class Pipe:
-    """ Allows nonblocking communication across a network connection.  Pipes
-    are often not used directly, but are instead passed to higher level
+    """ Facilitate nonblocking communication across a network connection.  
+    Pipes are often not used directly, but are instead passed to higher level
     communication frameworks like forums or conversations. """
+
+    class Header:
+        """ Pack and unpack the header information that gets attached to 
+        every message.  This is meant purely for internal use within pipes. """
+
+        format = '!BI'
+        length = struct.calcsize(format)
+
+        message = 0
+
+        @classmethod
+        def pack(cls, data):
+            header = struct.pack(cls.format, cls.message, len(data))
+            return header + data
+
+        @classmethod
+        def unpack(cls, header_stream):
+            header_type, data_length = struct.unpack(cls.format, header_stream)
+            return header_type, cls.length + data_length
+        
+
+    class Serializer:
+        """ Define a interface for the serialization of outgoing messages 
+        and the corresponding deserialization of incoming packets. """
+
+        def pack(self, message):
+            raise NotImplementedError
+
+        def unpack(self, packet):
+            raise NotImplementedError
+
+    class PickleSerializer (Serializer):
+        """ Prepare message objects to be sent over the network using the 
+        pickle module.  This is a very general solution, but it will often use 
+        more bandwidth than an optimized client. """
+
+        def pack(self, message):
+            # The second parameter to dumps() tells pickle which protocol (i.e.
+            # file format) to use.  I use protocol 2 since it is optimized for
+            # new-style classes, and message classes tend to be new-style.
+            return pickle.dumps(message, 2)
+
+        def unpack(self, packet):
+            return pickle.loads(packet)
+
+    class NullSerializer (Serializer):
+        """ Send raw objects over the network without serialization.  This is 
+        an efficient approach, but it only works for strings. """
+        
+        def pack(self, message):
+            assert isinstance(message, basestring)
+            return message
+
+        def unpack(self, packet):
+            return packet
+
 
     def __init__(self, socket):
         self.socket = socket
@@ -163,22 +209,13 @@ class Pipe:
         self.locked = False
         self.closed = False
 
+        self.serializer = Pipe.PickleSerializer()
+        self.serializer_stack = []
+
     def close(self):
         self.socket.close()
         self.closed = True
         self.unlock()
-
-    def pack(self, message):
-        """ Convert a message object into a string suitable for sending across
-        the network.  This method must be reimplemented in subclasses and
-        should return a data string. """
-        raise NotImplementedError
-
-    def unpack(self, packet):
-        """ Rebuild a message object from a packet that came over the network.
-        This method must be reimplemented in subclasses and should return a
-        data string. """
-        raise NotImplementedError
 
     def lock(self):
         assert not self.locked
@@ -200,8 +237,8 @@ class Pipe:
     def send(self, message, receipt=None):
         assert self.locked
 
-        data = self.pack(message)
-        stream = Header.pack(data)
+        data = self.serializer.pack(message)
+        stream = Pipe.Header.pack(data)
 
         # The receipt argument allows you to provide a value that will returned
         # back to you by deliver() once this message is actually sent.  By
@@ -214,7 +251,6 @@ class Pipe:
         receipts = []
 
         while self.outgoing:
-
             try:
                 stream, receipt = self.outgoing[0]
 
@@ -266,7 +302,7 @@ class Pipe:
 
         while True:
             stream_length = len(self.incoming)
-            header_length = Header.length
+            header_length = Pipe.Header.length
 
             # Make sure the complete header is present, then determine the size
             # of the rest of the packet.
@@ -275,7 +311,7 @@ class Pipe:
                 break
 
             header_stream = self.incoming[:header_length]
-            header_type, packet_length = Header.unpack(header_stream)
+            header_type, packet_length = Pipe.Header.unpack(header_stream)
 
             # Make sure that the message data is complete.  This is especially
             # important, because trying to unpack an incomplete message can
@@ -291,8 +327,8 @@ class Pipe:
             # in the header.  There is only one kind of message right now, but
             # that may change in the future.
 
-            if header_type == Header.message:
-                message = self.unpack(data)
+            if header_type == Pipe.Header.message:
+                message = self.serializer.unpack(data)
                 messages.append(message)
 
             else:
@@ -303,59 +339,13 @@ class Pipe:
     def finished(self):
         return self.closed
 
+    def set_serializer(self, serializer):
+        self.serializer = serializer
 
-class Header:
-    """ Packs and unpacks the header information that gets attached to every
-    message.  This is meant purely for internal use within pipes. """
+    def push_serializer(self, serializer):
+        self.serializer_stack.append(self.serializer)
+        self.serializer = serializer
 
-    format = '!BI'
-    length = struct.calcsize(format)
-
-    message = 0
-
-    @classmethod
-    def pack(cls, data):
-        header = struct.pack(cls.format, cls.message, len(data))
-        return header + data
-
-    @classmethod
-    def unpack(cls, header_stream):
-        header_type, data_length = struct.unpack(cls.format, header_stream)
-        return header_type, cls.length + data_length
-    
-
-
-class PickleFactory:
-    """ Provides an instantiate() method that creates PicklePipe objects.  This
-    method needs to be redefined in the host, client, and server classes. """
-
-    def instantiate(self, socket):
-        return PicklePipe(socket)
-    
-
-class PickleHost(Host, PickleFactory):
-    pass
-
-class PickleServer(Server, PickleFactory):
-    pass
-
-class PickleClient(Client, PickleFactory):
-    pass
-
-class PicklePipe(Pipe):
-    """ Prepares message objects to be sent over the network using the pickle
-    module.  This is a very general solution, but it will often use more
-    bandwidth than an optimized client. """
-
-    def pack(self, message):
-
-        # The second parameter to dumps() tells pickle which protocol (i.e.
-        # file format) to use.  I use protocol 2 since it is optimized for
-        # new-style classes and since every message class has to be new-style.
-
-        return pickle.dumps(message, 2)
-
-    def unpack(self, packet):
-        return pickle.loads(packet)
-
+    def pop_serializer(self):
+        self.serializer = self.serializer_stack.pop()
 

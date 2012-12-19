@@ -4,9 +4,8 @@
 import os, path
 import struct
 
-from network import PickleHost, PickleServer, PickleClient
+from network import Host, Server, Client
 
-# Messages {{{1
 class Message(object):
 
     def __init__(self, bytes=8):
@@ -25,26 +24,37 @@ class Message(object):
     def __repr__(self):
         return str(hash(self))
 
-class FirstMessage(Message): pass
-class SecondMessage(Message): pass
-class ThirdMessage(Message): pass
 
-# Inbox {{{1
-class Inbox(list):
+class FirstMessage (Message):
+    pass
+
+class SecondMessage (Message):
+    pass
+
+class ThirdMessage (Message):
+    pass
+
+
+class Inbox (list):
 
     def receive(self, *arguments):
         message = arguments[-1]
         self.append(message)
 
     def check(self, outbox, shuffled=False, empty=False):
-        if empty:           assert not self, "expecting no messages."
-        if not empty:       assert self, "no messages received."
+        if empty:
+            assert not self, "expecting no messages."
+        if not empty:
+            assert self, "no messages received."
 
         error = "sent %s; received %s" % (outbox, self)
-        if shuffled:        assert set(self) == set(outbox), error
-        if not shuffled:    assert self == outbox, error
 
-# Outbox {{{1
+        if shuffled:
+            assert set(self) == set(outbox), error
+        if not shuffled:
+            assert self == outbox, error
+
+
 class Outbox(list):
 
     def __init__(self, *messages, **flavors):
@@ -75,16 +85,13 @@ class Outbox(list):
         self.append(message)
 
 
-# }}}1
 
-# Connect {{{1
 def connect(pipes=1, reverse=False, integrate=lambda x: x):
     host, port = 'localhost', 10236
 
-    # Create a web of client server connections.  The pickle family of socket
-    # wrappers are used for convenience.
-    server = PickleServer(host, port, pipes)
-    clients = [ PickleClient(host, port) for each in range(pipes) ]
+    # Create a web of client server connections.
+    server = Server(host, port, pipes)
+    clients = [ Client(host, port) for each in range(pipes) ]
 
     # Have the server start listening to the given port.  No clients should be
     # connected at this point.
@@ -121,8 +128,7 @@ def connect(pipes=1, reverse=False, integrate=lambda x: x):
     if reverse:     return servers, clients
     else:           return clients, servers
 
-# Disconnect {{{1
 def disconnect(*pipes):
     for pipe in pipes:
         pipe.close()
-# }}}1
+

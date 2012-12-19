@@ -10,7 +10,7 @@ def isolated_pipes(helper):
     machine, port = 'localhost', 10236
 
     # First, test an isolated host.
-    host = PickleHost(machine, port)
+    host = Host(machine, port)
 
     # None of these commands should fail, even though there is no client.
     host.open()
@@ -23,7 +23,7 @@ def isolated_pipes(helper):
     else: raise AssertionError
 
     # Now test an isolated client.
-    client = PickleClient(machine, port)
+    client = Client(machine, port)
 
     client.connect()
     client.connect()
@@ -41,8 +41,8 @@ def connected_pipes(helper):
         assert len(pipes) == 1
 
 
-    server = PickleServer(host, port, seats=1, callback=check_server)
-    client = PickleClient(host, port, callback=check_client)
+    server = Server(host, port, seats=1, callback=check_server)
+    client = Client(host, port, callback=check_client)
 
     server.open()
 
@@ -57,8 +57,8 @@ def connected_pipes(helper):
 def simple_messages(helper):
     host, port = 'localhost', 10236
 
-    server = PickleServer(host, port, seats=1)
-    client = PickleClient(host, port)
+    server = Server(host, port, seats=1)
+    client = Client(host, port)
 
     # Setup a network connection.
     server.open()

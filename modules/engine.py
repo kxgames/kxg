@@ -18,6 +18,11 @@ import functools
 # (That's kinda what the message.execute callback is for.)  I have a feeling 
 # that both these problems could be solved in one change, which would basically 
 # involve removing the referee, although I haven't put much thought into it.
+#
+#   Note that game objects get updated on all clients, and this is probably why 
+#   they shouldn't be sending messages.  I might be able to pass the referee 
+#   into the update function, and use polymorphism to get it to only work on 
+#   the server.
 
 # I believe that messages are not capable of packing nested tokens.  This is 
 # inconvenient.  For example, image a case where I want to create a battle 
@@ -26,6 +31,10 @@ import functools
 # object when copied over the network.  I need to make the message packer smart 
 # enough to recognize this scenario and replace the game token references with 
 # id numbers.
+
+# Monday Stopping Point
+# =====================
+# Need to write me some tests!
 
 class MainLoop (object):
     """ Manage whichever stage is currently active.  This involves both
@@ -203,6 +212,8 @@ class GameStage (Stage):
             self.exit_stage()
 
     def teardown(self):
+        self.mailbox.teardown()
+
         for actor in self.actors:
             actor.teardown()
 
@@ -328,11 +339,14 @@ class RemoteActor (Actor):
     def setup(self, world):
         self.world = world
 
+        serializer = TokenSerializer(world)
+        self.pipe.push_serializer(serializer)
+
     def update(self, time):
         self.pipe.deliver()
 
     def teardown(self):
-        pass
+        self.pipe.pop_serializer()
 
     def deliver_messages(self):
         for message in self.pipe.receive():
@@ -372,6 +386,8 @@ class Mailbox (object):
     def update(self):
         raise NotImplementedError
 
+    def teardown(self):
+        raise NotImplementedError
 
 class LocalMailbox (Mailbox):
 
@@ -416,6 +432,9 @@ class LocalMailbox (Mailbox):
                 with ProtectedTokenLock(actor):
                     actor.receive_message(private_message)
 
+    def teardown(self):
+        pass
+
 
 class RemoteMailbox (Mailbox):
 
@@ -425,9 +444,13 @@ class RemoteMailbox (Mailbox):
 
     def setup(self, world, actors):
         assert len(actors) == 1
+
         self.world = world
         self.actor = actors[0]
         self.messages = []
+
+        serializer = TokenSerializer(world)
+        self.pipe.push_serializer(serializer)
 
     def collect(self):
         self.messages += self.actor.deliver_messages()
@@ -466,6 +489,9 @@ class RemoteMailbox (Mailbox):
 
             with ProtectedTokenLock(actor):
                 actor.receive_message(message)
+
+    def teardown(self):
+        self.pipe.pop_serializer()
 
 
 class IdFactory (object):
@@ -547,10 +573,6 @@ class Token (object):
         return {}
 
 
-    def register(self, id):
-        assert self._id is None
-        self._id = id.next() if isinstance(id, IdFactory) else id
-
     def setup(self, world):
         pass
 
@@ -570,6 +592,14 @@ class Token (object):
 
         if extension: return extension
         else: raise AttributeError
+
+    def give_id(self, id):
+        assert self._id is None, "Token already has an id."
+        assert isinstance(id, IdFactory), "Must use an IdFactory instance to give an id."
+        self._id = id.next()
+
+    def is_registered(self):
+        return self._registered
 
     def check_for_safety(self):
         assert self._id is not None, "Token has a null id."
@@ -652,7 +682,43 @@ class TokenExtension (object):
     def __init__(self, token):
         pass
 
-class TokenLock:
+class TokenSerializer (object):
+
+    def __init__(self, world):
+        self.world = world
+
+    def pack(self, message):
+        from pickle import Pickler
+        from cStringIO import StringIO
+
+        buffer = StringIO()
+        delegate = Pickler(buffer)
+
+        delegate.persistent_id = self.persistent_id
+        delagate.dump(message)
+
+        return buffer.getvalue()
+
+    def unpack(self, packet):
+        from pickle import Unpickler
+        from cStringIO import StringIO
+
+        buffer = StringIO(packet)
+        delegate = Pickler(buffer)
+
+        delegate.persistent_load = self.persistent_load
+        return delegate.load()
+
+    def persistent_id(self, token):
+        if isinstance(token, Token):
+            if token.is_registered():
+                return token.get_id()
+
+    def persistent_load(self, id):
+        return world.get_token(id)
+
+
+class TokenLock (object):
 
     def __init__(self, access, actor=None):
         self.current_access = access
@@ -679,16 +745,12 @@ class TokenLock:
 
 
 class ProtectedTokenLock (TokenLock):
-
     def __init__(self, actor):
         TokenLock.__init__(self, 'protected', actor.get_name())
 
-
 class UnprotectedTokenLock (TokenLock):
-
     def __init__(self):
         TokenLock.__init__(self, 'unprotected', None)
-
 
 
 class Message (object):
