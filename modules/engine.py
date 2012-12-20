@@ -166,6 +166,13 @@ class GameStage (Stage):
         self.world = world
         self.mailbox = mailbox
         self.actors = actors
+        self.successor = None
+
+    def set_successor(self, successor):
+        self.successor = successor
+
+    def get_successor(self):
+        return self.successor
 
     def setup(self):
         """ Prepares the actors, world, and messaging system to begin playing
