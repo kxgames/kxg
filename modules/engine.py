@@ -188,7 +188,8 @@ class GameStage (Stage):
             self.world.setup()
 
         for actor in self.actors:
-            actor.setup(self.world)
+            actor.world = self.world
+            actor.setup()
 
     def update(self, time):
         """ Sequentially updates the actors, world, and messaging system.  The
@@ -259,28 +260,25 @@ class MultiplayerServerGameStage (GameStage):
 class Actor (object):
 
     def __init__(self):
-        self.ambassador = self.get_name()
         self.messages = []
-        self.finished = False
+        self.world = None
         self.greeted = False
+        self.greeter = self.get_name()
 
     def get_name(self):
         raise NotImplementedError
 
-    def setup(self, world):
-        raise NotImplementedError
+    def setup(self):
+        pass
 
     def update(self, time):
-        raise NotImplementedError
+        pass
 
     def teardown(self):
-        raise NotImplementedError
-
-    def finish(self):
-        self.finished = True
+        pass
 
     def is_finished(self):
-        return self.finished
+        return self.world.has_game_ended()
 
 
     def send_message(self, message):
@@ -314,7 +312,7 @@ class Actor (object):
             if self.greeted:
                 raise ActorGreetedTwice()
             else:
-                self.ambassador = message.get_sender()
+                self.greeter = message.get_sender()
                 self.greeted = True
 
 
@@ -334,12 +332,10 @@ class RemoteActor (Actor):
         return "remote"
 
     def is_finished(self):
-        return self.pipe.finished()
+        return self.pipe.finished() or Actor.is_finished(self)
 
-    def setup(self, world):
-        self.world = world
-
-        serializer = TokenSerializer(world)
+    def setup(self):
+        serializer = TokenSerializer(self.world)
         self.pipe.push_serializer(serializer)
 
     def update(self, time):
@@ -389,6 +385,7 @@ class Mailbox (object):
     def teardown(self):
         raise NotImplementedError
 
+
 class LocalMailbox (Mailbox):
 
     def setup(self, world, actors):
@@ -407,7 +404,7 @@ class LocalMailbox (Mailbox):
         self.packages = []
 
         for sender, message in packages:
-            status = message.check(self.world, sender.ambassador)
+            status = message.check(self.world, sender.greeter)
             message.set_status(status)
 
             if message.was_accepted():
@@ -417,7 +414,7 @@ class LocalMailbox (Mailbox):
                 continue
 
             with UnprotectedTokenLock():
-                message.setup(self.world, sender.ambassador, self.id_factory)
+                message.setup(self.world, sender.greeter, self.id_factory)
 
             for actor in self.actors:
                 private_message = message.copy()
@@ -458,10 +455,10 @@ class RemoteMailbox (Mailbox):
 
     def update(self):
         actor = self.actor
-        ambassador = actor.ambassador
+        greeter = actor.greeter
 
         for message in self.messages:
-            status = message.check(self.world, ambassador)
+            status = message.check(self.world, greeter)
 
             if status:
                 actor.accept_message(message, False)
@@ -678,6 +675,12 @@ class World (Token):
         raise NotImplementedError
 
     def teardown(self):
+        raise NotImplementedError
+
+    def has_game_started(self):
+        raise NotImplementedError
+
+    def has_game_ended(self):
         raise NotImplementedError
 
 
