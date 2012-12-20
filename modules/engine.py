@@ -586,20 +586,22 @@ class Token (object):
     def get_id(self):
         return self._id
 
+    def give_id(self, id):
+        assert self._id is None, "Token already has an id."
+        assert self._access == 'unprotected', "Don't have permission to modify token."
+        assert self._registered == False, "Token already added to world."
+        assert isinstance(id, IdFactory), "Must use an IdFactory instance to give an id."
+        self._id = id.next()
+
+    def is_registered(self):
+        return self._registered
+
     def get_extension(self):
         actor = Token._actor
         extension = self._extensions.get(actor)
 
         if extension: return extension
         else: raise AttributeError
-
-    def give_id(self, id):
-        assert self._id is None, "Token already has an id."
-        assert isinstance(id, IdFactory), "Must use an IdFactory instance to give an id."
-        self._id = id.next()
-
-    def is_registered(self):
-        return self._registered
 
     def check_for_safety(self):
         assert self._id is not None, "Token has a null id."
@@ -632,9 +634,9 @@ class World (Token):
 
     def __init__(self):
         Token.__init__(self)
-        self._tokens = {}
-        self._registered = True
         self._id = 1
+        self._registered = True
+        self._tokens = {1: self}
 
     def __iter__(self):
         for token in self._tokens.values():
@@ -695,7 +697,7 @@ class TokenSerializer (object):
         delegate = Pickler(buffer)
 
         delegate.persistent_id = self.persistent_id
-        delagate.dump(message)
+        delegate.dump(message)
 
         return buffer.getvalue()
 
@@ -704,7 +706,7 @@ class TokenSerializer (object):
         from cStringIO import StringIO
 
         buffer = StringIO(packet)
-        delegate = Pickler(buffer)
+        delegate = Unpickler(buffer)
 
         delegate.persistent_load = self.persistent_load
         return delegate.load()
@@ -715,7 +717,7 @@ class TokenSerializer (object):
                 return token.get_id()
 
     def persistent_load(self, id):
-        return world.get_token(id)
+        return self.world.get_token(int(id))
 
 
 class TokenLock (object):

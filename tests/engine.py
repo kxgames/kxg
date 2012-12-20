@@ -2,176 +2,125 @@
 
 import path
 import engine
-import pickle
-
-# Don't use __getattr__ in Token classes.  These attributes will not be
-# accessible to proxies.
-#
-# Don't add getters to the token class after it has been instantiated.  The
-# proxies won't find them.
-
-# Only methods can be made accessible through proxies, not attributes.
-
-def setup_tests(world):
-    with engine.UnprotectedTokenLock():
-        world.create_unit(1)
-        world.create_unit(2)
-
-        world.create_building(3)
-        world.create_building(4)
-
-def read_only_test(world, actor):
-
-    print "Frame %d" % read_only_test.counter
-    print "========"
-
-    read_only_test.counter += 1
-
-    with engine.ProtectedTokenLock(actor):
-        units = world.get_units()
-        buildings = world.get_buildings()
-
-        pickled_unit = pickle.dumps(units[0], 2)
-        pickled_building = pickle.dumps(buildings[0], 2)
-
-        unit = pickle.loads(pickled_unit)
-        building = pickle.loads(pickled_building)
-
-        print ( unit.get_attack(),
-                unit.get_health(),
-                unit.get_animation() )
-
-        print ( building.get_production(),
-                building.get_health(),
-                building.get_menu() )
-        try:
-            units[0].fight(units[1])
-            units[1].fight(units[0])
-        except AssertionError: pass
-        else: raise AssertionError
-
-    print
-
-def full_access_test(world):
-    with engine.UnprotectedTokenLock():
-        units = world.get_units()
-        buildings = world.get_buildings()
-
-        units[0].fight(units[1])
-        units[1].fight(units[0])
-
-        units[0].fight(units[1])
-        units[1].fight(buildings[0])
-
-
-read_only_test.counter = 1
+import testing
 
 class World (engine.World):
 
-    def __init__(self, map=(500, 500)):
+    def __init__(self):
         engine.World.__init__(self)
-        print 
+        self.nations = []
 
-        self.map = map
-        self.units = []
-        self.buildings = []
+    def add_nation(self, nation):
+        self.add_token(nation)
+        self.nations.append(nation)
 
-    def get_map(self):
-        return self.map
+    def add_city(self, city):
+        self.add_token(city)
+        city.nation.cities.append(city)
 
-    def get_units(self):
-        return self.units
-
-    def get_buildings(self):
-        return self.buildings
-
-    @engine.check_for_safety
-    def create_unit(self, attack=15, health=100):
-        unit = Unit(id, attack, health)
-        self.units.append(unit)
-
-    @engine.check_for_safety
-    def create_building(self, production=10, health=500):
-        building = Building(id, production, health)
-        self.buildings.append(building)
+    def add_army(self, army):
+        self.add_token(army)
+        army.nation.armies.append(army)
 
 
+class Nation (engine.Token):
 
-class Unit (engine.Token):
-
-    def __init__(self, id, attack, health):
-        engine.Token.__init__(self, id)
-
-        self.attack = attack
-        self.health = health
-
-    def __extend__(self):
-        return { 'gui' : GuiUnitExtension }
-
-    def get_attack(self):
-        return self.attack
-
-    def get_health(self):
-        return self.health
-
-    @engine.check_for_safety
-    def fight(self, unit):
-        unit.health -= self.attack
+    def __init__(self, name):
+        engine.Token.__init__(self)
+        self.name = name
+        self.cities = []
+        self.armies = []
 
 
-class Building (engine.Token):
+class City (engine.Token):
 
-    def __init__(self, id, production, health):
-        engine.Token.__init__(self, id)
+    def __init__(self, nation, resource):
+        engine.Token.__init__(self)
+        self.nation = nation
+        self.resource = resource
 
-        self.production = production
-        self.health = health
 
-    def __extend__(self):
-        return { 'gui' : GuiBuildingExtension }
+class Army (engine.Token):
 
-    def get_production(self):
-        return self.production
-
-    def get_health(self):
-        return self.health
-
-    @engine.check_for_safety
-    def develop(self):
-        self.production += 2
+    def __init__(self, nation, manpower):
+        engine.Token.__init__(self)
+        self.nation = nation
+        self.manposer = manpower
 
 
 
-class GuiActor (engine.Actor):
-    def get_name(self):
-        return 'gui'
+class CreateNation (engine.Greeting):
+    pass
 
-class GuiUnitExtension (engine.TokenExtension):
+class CreateCity (engine.Message):
+    def __init__(self, nation, resource):
+        self.city = City(nation, resource)
 
-    def __init__(self, token):
-        self.animation = [ 'frame-1', 'frame-2' ]
-
-    def get_animation(self):
-        return self.animation
+class CreateArmy (engine.Message):
+    pass
 
 
-class GuiBuildingExtension (engine.TokenExtension):
+class Referee (engine.Referee):
+    pass
 
-    def __init__(self, token):
-        self.menu = [ 'button-1', 'button-2' ]
-
-    def get_menu(self):
-        return self.menu
+class Gui (engine.Actor):
+    pass
 
 
+@testing.setup
+def setup_world(helper):
+    helper.world = World()
+    helper.nation = Nation('Bob')
+    helper.id = engine.IdFactory(helper.world)
 
-if __name__ == '__main__':
+    with engine.UnprotectedTokenLock():
+        helper.nation.give_id(helper.id)
+        helper.world.add_nation(helper.nation)
 
-    world = World()
-    actor = GuiActor()
+@testing.test
+def test_token_serialization(helper):
 
-    setup_tests(world)
-    read_only_test(world, actor)
+    serializer = engine.TokenSerializer(helper.world)
+    deserializer = engine.TokenSerializer(helper.world)
 
-    full_access_test(world)
-    read_only_test(world, actor)
+    # Test the serialization of an unregistered token.  This should result in 
+    # two cities that both point to the same nation.
+
+    original_city = City(helper.nation, 'food')
+    packed_city = serializer.pack(original_city)
+    duplicate_city = deserializer.unpack(packed_city)
+
+    assert duplicate_city is not original_city
+    assert duplicate_city.nation is original_city.nation
+    assert duplicate_city.resource == 'food'
+
+    # Test the serialization of a registered token.  This should not create a 
+    # copy of the original city object.
+
+    original_city = City(helper.nation, 'wood')
+
+    with engine.UnprotectedTokenLock():
+        original_city.give_id(helper.id)
+        helper.world.add_nation(original_city)
+
+    packed_city = serializer.pack(original_city)
+    duplicate_city = deserializer.unpack(packed_city)
+
+    assert duplicate_city is original_city
+    assert duplicate_city.nation is original_city.nation
+
+    # Test the serialization of a message object.  This should not result in 
+    # the nation object being copied.
+
+    original_message = CreateCity(helper.nation, 'ore')
+    packed_message = serializer.pack(original_message)
+    duplicate_message = deserializer.unpack(packed_message)
+
+    assert duplicate_message.city is not original_message.city
+    assert duplicate_message.city.nation is original_message.city.nation
+    assert duplicate_message.city.resource == 'ore'
+
+
+testing.title("Testing the engine module...")
+testing.run()
+
