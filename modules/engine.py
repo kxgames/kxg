@@ -400,7 +400,7 @@ class LocalMailbox (Mailbox):
     def collect(self):
         for actor in self.actors:
             messages = actor.deliver_messages()
-            self.packages += [ (actor, message) for message in messages ]
+            self.packages += [(actor, message) for message in messages]
 
     def update(self):
         packages = self.packages
@@ -416,7 +416,8 @@ class LocalMailbox (Mailbox):
                 sender.reject_message(message)
                 continue
 
-            message.setup(self.world, sender.ambassador, self.id_factory)
+            with UnprotectedTokenLock():
+                message.setup(self.world, sender.ambassador, self.id_factory)
 
             for actor in self.actors:
                 private_message = message.copy()
