@@ -826,6 +826,12 @@ class Rectangle (Shape):
 
 
 
+# Mathematical Helper Functions
+
+def clamp(x, low, high):
+    return max(min(x, high), low)
+
+
 # Exception Classes
 
 class NullVectorError (Exception):
