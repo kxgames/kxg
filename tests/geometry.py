@@ -276,14 +276,28 @@ def vector_math_methods(helper):
     assert r.perp_product(s) == r.perp(s) == 1
 
     r = Vector(2, 2)
-    s = Vector(1, 0)
-    t = (1, 0)
+    s = Vector(5, 0)
+    t = (5, 0)
 
+    u = r.get_projection(s)
+    v = r.get_projection(t)
     x, y = r.get_components(s)
-    u, w = r.get_components(t)
+    w, z = r.get_components(t)
 
+    assert u == Vector(2, 0) and v == Vector(2, 0)
     assert x == Vector(0, 2) and y == Vector(2, 0)
-    assert u == Vector(0, 2) and w == Vector(2, 0)
+    assert w == Vector(0, 2) and z == Vector(2, 0)
+
+    q = Vector(2, 2)
+    r = Vector(2, 2)
+    s = Vector(5, 0)
+    t = (5, 0)
+
+    q.project(s)
+    r.project(t)
+
+    assert q == Vector(2, 0)
+    assert r == Vector(2, 0)
 
     r = Vector(1, 0)
     s = Vector(0, 1)
@@ -306,6 +320,16 @@ def vector_factory_methods(helper):
     assert Vector.from_tuple((3, 4)) == Vector(3, 4)
     assert Vector.from_scalar(2) == Vector(2, 2)
 
+    v = Vector(3, 4)
+    r = v.copy()
+    s = Vector.null()
+    s.assign(v)
+
+    assert v == r
+    assert v == s
+    assert v is not r
+    assert v is not s
+
     # Angle-based factories
 
     degrees = [0, 90, 180, 270]
@@ -327,14 +351,16 @@ def vector_factory_methods(helper):
     circle_deviation = sum(circle_vectors).magnitude
     rectangle_deviation = sum(rectangle_vectors).magnitude
 
-    if (circle_deviation > tolerance) or (rectangle_deviation > tolerance):
+    try:
+        assert circle_deviation < tolerance
+        assert rectangle_deviation < tolerance
+
+    except AssertionError:
         print "The random vector factory test are not deterministic, and will "
         print "spuriously fail roughly 0.01% of the time.  This could be the "
         print "cause of the current failure, especially if the factory code "
         print "has not been changed recently.  Try running the test again."
-
-    assert circle_deviation < tolerance
-    assert rectangle_deviation < tolerance
+        raise
 
 
 @testing.test

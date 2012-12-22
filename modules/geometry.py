@@ -156,9 +156,8 @@ class Shape (object):
 
 class Vector (object):
     """ Represents a two-dimensional vector.  In particular, this class
-    features a number of factory methods to create vectors from angles and
-    other input and a number of overloaded operators to facilitate vector
-    math. """
+    features a number of factory methods to create vectors from various inputs
+    and a number of overloaded operators to facilitate vector arithmetic. """
 
     @staticmethod
     def null():
@@ -204,6 +203,11 @@ class Vector (object):
         from copy import deepcopy
         return deepcopy(self)
 
+    @_accept_anything_as_vector
+    def assign(self, other):
+        """ Copy the given vector into this one. """
+        self.x, self.y = other.tuple
+
     def normalize(self):
         """ Set the magnitude of this vector to unity, in place. """
         try:
@@ -221,6 +225,12 @@ class Vector (object):
         extent.  The extent should be between 0 and 1. """
         target = _cast_anything_to_vector(target)
         self += extent * (target - self)
+
+    @_accept_anything_as_vector
+    def project(self, axis):
+        """ Project this vector onto the given axis. """
+        projection = self.get_projection(axis)
+        self.assign(projection)
 
     @_accept_anything_as_vector
     def dot_product(self, other):
@@ -373,10 +383,17 @@ class Vector (object):
         return result
 
     @_accept_anything_as_vector
+    def get_projection(self, axis):
+        """ Return the projection of this vector onto the given axis.  The 
+        axis does not need to be normalized. """
+        scale = axis.dot(self) / axis.dot(axis)
+        return axis * scale
+
+    @_accept_anything_as_vector
     def get_components(self, other):
         """ Break this vector into one vector that is perpendicular to the 
         given vector and another that is parallel to it. """
-        tangent = other * self.dot(other)
+        tangent = self.get_projection(other)
         normal = self - tangent
         return normal, tangent
 
@@ -824,6 +841,34 @@ class Rectangle (Shape):
     tuple = property(get_tuple)
     pygame = property(get_pygame)
 
+
+
+# Collision Functions
+
+def circle_touching_line(center, radius, start, end):
+    C, R = center, radius
+    A, B = start, end
+
+    a = (B.x - A.x)**2 + (B.y - A.y)**2
+    b = 2 * (B.x - A.x) * (A.x - C.x)       \
+            + 2 * (B.y - A.y) * (A.y - C.y)
+    c = C.x**2 + C.y**2 + A.x**2 + A.y**2   \
+            - 2 * (C.x * A.x + C.y * A.y) - R**2
+
+    discriminant = b**2 - 4 * a * c
+
+    if discriminant < 0:
+        return False
+    elif discriminant == 0:
+        u = v = -b / float(2 * a)
+    else:
+        u = (-b + math.sqrt(discriminant)) / float(2 * a)
+        v = (-b - math.sqrt(discriminant)) / float(2 * a)
+
+    if u < 0 and v < 0: return False
+    if u > 1 and v > 1: return False
+
+    return True
 
 
 # Mathematical Helper Functions
