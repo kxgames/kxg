@@ -23,18 +23,23 @@ import functools
 #   they shouldn't be sending messages.  I might be able to pass the referee 
 #   into the update function, and use polymorphism to get it to only work on 
 #   the server.
+#
+#   Actually, an elegant way to solve this problem is to give tokens a signal() 
+#   method that is invoked by the referee.  An object capable of sending 
+#   messages would be provided as an argument.  Right now, this object would 
+#   have to be the referee itself, but it wouldn't be hard to move the message 
+#   sending capabilities of the actors into a separate object.  Interestingly, 
+#   this solution doesn't really involve the game engine much at all.
 
-# I believe that messages are not capable of packing nested tokens.  This is 
-# inconvenient.  For example, image a case where I want to create a battle 
-# object.  I immediately know which armies to place into that object.  However, 
-# if I do so in message.__init__, the message will create copies of the army 
-# object when copied over the network.  I need to make the message packer smart 
-# enough to recognize this scenario and replace the game token references with 
-# id numbers.
-
-# Monday Stopping Point
-# =====================
-# Need to write me some tests!
+# Token Extension System:
+# 1. Have the extensions get instantiated when the token is registered with the 
+#    the world.  This allows me to avoid instantiating GUI extensions on the 
+#    server, for example.  It also guarantees that the tokens are fully 
+#    instantiated before they are passed into the extension.  
+# 2. Give tokens the ability to call extension methods.  This would make it 
+#    easier to get extensions to respond to changes in the tokens.  For 
+#    example, if a unit levels up, the token could alert its extensions without 
+#    the extensions having to poll.
 
 class MainLoop (object):
     """ Manage whichever stage is currently active.  This involves both
