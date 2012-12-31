@@ -7,39 +7,6 @@ import functools
 # ============
 # 1. Allow each Actor to specify its own frame rate.  
 # 2. Write comments, maybe create a sphinx page.
-# 3. Have message.check() return None if successful and something else 
-# otherwise.  Then pass the value returned by check() into reject(), so the 
-# game can handle errors appropriately.
-
-# It's annoying that game objects can't send messages.  Often the referee 
-# update function ends up looking like something that should be inside the 
-# update function for a specific token.  It's also a little annoying that the 
-# referee has to be able to receive messages, because it never reacts to them.  
-# (That's kinda what the message.execute callback is for.)  I have a feeling 
-# that both these problems could be solved in one change, which would basically 
-# involve removing the referee, although I haven't put much thought into it.
-#
-#   Note that game objects get updated on all clients, and this is probably why 
-#   they shouldn't be sending messages.  I might be able to pass the referee 
-#   into the update function, and use polymorphism to get it to only work on 
-#   the server.
-#
-#   Actually, an elegant way to solve this problem is to give tokens a signal() 
-#   method that is invoked by the referee.  An object capable of sending 
-#   messages would be provided as an argument.  Right now, this object would 
-#   have to be the referee itself, but it wouldn't be hard to move the message 
-#   sending capabilities of the actors into a separate object.  Interestingly, 
-#   this solution doesn't really involve the game engine much at all.
-
-# Token Extension System:
-# 1. Have the extensions get instantiated when the token is registered with the 
-#    the world.  This allows me to avoid instantiating GUI extensions on the 
-#    server, for example.  It also guarantees that the tokens are fully 
-#    instantiated before they are passed into the extension.  
-# 2. Give tokens the ability to call extension methods.  This would make it 
-#    easier to get extensions to respond to changes in the tokens.  For 
-#    example, if a unit levels up, the token could alert its extensions without 
-#    the extensions having to poll.
 
 class MainLoop (object):
     """ Manage whichever stage is currently active.  This involves both
@@ -196,6 +163,9 @@ class GameStage (Stage):
         # feel free to read information out of the world when building
         # themselves.
 
+        names = set(actor.get_name() for actor in self.actors)
+        self.world.define_actors(names)
+
         with UnprotectedTokenLock():
             self.world.setup()
 
@@ -271,9 +241,21 @@ class MultiplayerServerGameStage (GameStage):
 
 class Actor (object):
 
+    class Messenger:
+
+        def __init__(self, actor):
+            self._actor = actor
+
+        def send_message(self, message):
+            self._actor.send_message(message)
+
+
     def __init__(self):
-        self.messages = []
         self.world = None
+
+        self.messages = []
+        self.messenger = Actor.Messenger(self)
+
         self.greeted = False
         self.greeter = self.get_name()
 
@@ -380,8 +362,14 @@ class RemoteActor (Actor):
 
 
 class Referee (Actor):
+
     def __init__(self):
         Actor.__init__(self)
+
+    def update(self, time):
+        for token in self.world:
+            token.report(self.messenger)
+
 
 class Mailbox (object):
 
@@ -556,39 +544,24 @@ class Token (object):
     def __init__(self):
         self._id = None
         self._registered = False
-        self._extensions = {
-                actor : extension_class(self)
-                for actor, extension_class in self.__extend__().items() }
-
-    def __getattr__(self, key):
-        # Don't recursively look for the '_extensions' attribute.  When the
-        # token is being unpickled, this method is called before that attribute
-        # is defined. 
-
-        if key == '_extensions':
-            return {}
-
-        # Search for the extension that correspond to the currently active
-        # actor and defer any unknown attribute accesses onto it.
-
-        actor = Token._actor
-        extension = self._extensions.get(actor)
-
-        if extension and hasattr(extension, key):
-            return getattr(extension, key)
-        else:
-            raise AttributeError(key)
+        self._extensions = {}
 
     def __extend__(self):
         return {}
 
 
-    def setup(self, world):
+    @check_for_safety
+    def setup(self):
         pass
 
+    @check_for_safety
     def update(self, time):
         pass
 
+    def report(self, messenger):
+        pass
+
+    @check_for_safety
     def teardown(self):
         pass
 
@@ -612,6 +585,9 @@ class Token (object):
 
         if extension: return extension
         else: raise AttributeError
+
+    def get_extensions(self):
+        return self._extensions.values()
 
     def check_for_safety(self):
         assert self._id is not None, "Token has a null id."
@@ -647,6 +623,7 @@ class World (Token):
         self._id = 1
         self._registered = True
         self._tokens = {1: self}
+        self._actors = []
 
     def __iter__(self):
         for token in self._tokens.values():
@@ -658,8 +635,15 @@ class World (Token):
     def __contains__(self, token):
         return token.get_id() in self._tokens
 
-    def get_token(self, id):
-        return self._tokens[id]
+
+    @check_for_safety
+    def update(self, time):
+        for token in self:
+            if token is not self:
+                token.update(time)
+
+    def define_actors(self, names):
+        self.actors = names
 
     @check_for_safety
     def add_token(self, token):
@@ -668,8 +652,13 @@ class World (Token):
         assert id not in self._tokens
         assert isinstance(id, int)
 
-        token._registered = True
         self._tokens[id] = token
+
+        token._registered = True
+        token._extensions = {
+                actor : extension_class(token)
+                for actor, extension_class in token.__extend__().items()
+                if actor in self.actors }
 
     @check_for_safety
     def remove_token(self, token):
@@ -680,14 +669,9 @@ class World (Token):
         token._registered = False
         del self._tokens[id]
 
-    def setup(self):
-        raise NotImplementedError
 
-    def update(self, time):
-        raise NotImplementedError
-
-    def teardown(self):
-        raise NotImplementedError
+    def get_token(self, id):
+        return self._tokens[id]
 
     def has_game_started(self):
         raise NotImplementedError
