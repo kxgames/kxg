@@ -317,11 +317,6 @@ class RemoteActor (Actor):
         self.pipe = pipe
         self.pipe.lock()
 
-        # This is a little hacky, but it allows the server to exit once the
-        # referee is finished.  This works because the game stage won't stop
-        # executing until all of the actors report that they are finished.
-        #self.finish()
-
     def get_name(self):
         return "remote"
 
@@ -340,7 +335,6 @@ class RemoteActor (Actor):
 
     def deliver_messages(self):
         for message in self.pipe.receive():
-            message.unpack(self.world)
             self.send_message(message)
 
         return Actor.deliver_messages(self)
@@ -350,11 +344,9 @@ class RemoteActor (Actor):
 
     def reject_message(self, message):
         message.set_origin(True)
-        message.pack(self.world)
         self.pipe.send(message)
 
     def dispatch_message(self, message):
-        message.pack(self.world)
         self.pipe.send(message)
 
     def receive_message(self, message):
@@ -466,14 +458,12 @@ class RemoteMailbox (Mailbox):
                 actor.reject_message(message)
                 continue
 
-            message.pack(self.world)
             self.pipe.send(message)
 
         self.pipe.deliver()
         self.messages = []
 
         for message in self.pipe.receive():
-            message.unpack(self.world)
 
             if message.was_sent_from_here():
                 if message.was_accepted():
@@ -595,27 +585,6 @@ class Token (object):
         assert self._registered == True, "Token never added to world."
 
 
-class Prototype (Token):
-
-    def __init__(self, id):
-        Token.__init__(self, id)
-        self._instantiated = False
-
-    @check_for_prototype
-    def instantiate(self, id):
-        from copy import deepcopy
-        instance = deepcopy(self)
-        Token.__init__(instance, id)
-        instance._instantiated = True
-        return instance
-
-    def check_for_prototype(self):
-        assert not self._instantiated
-
-    def check_for_instance(self):
-        assert self._instantiated
-
-
 class World (Token):
 
     def __init__(self):
@@ -678,6 +647,27 @@ class World (Token):
 
     def has_game_ended(self):
         raise NotImplementedError
+
+
+class Prototype (Token):
+
+    def __init__(self, id):
+        Token.__init__(self, id)
+        self._instantiated = False
+
+    @check_for_prototype
+    def instantiate(self, id):
+        from copy import deepcopy
+        instance = deepcopy(self)
+        Token.__init__(instance, id)
+        instance._instantiated = True
+        return instance
+
+    def check_for_prototype(self):
+        assert not self._instantiated
+
+    def check_for_instance(self):
+        assert self._instantiated
 
 
 class TokenExtension (object):
@@ -790,43 +780,12 @@ class Message (object):
         notified, but the actor representing that player on a client will. """
         pass
 
-
     def copy(self):
         """ Returns a shallow copy of the message object.  This is called by
         the game engine just before the message is delivered to the actors, so
         that the game can provide information specific to certain actors. """
         import copy
         return copy.copy(self)
-
-    def pack(self, world):
-        """ Modifies the message such that it can be faithfully pickled and
-        sent over the network.  This primarily involves sending token ID
-        numbers rather than tokens themselves. """
-
-        packing_list = {}
-
-        for name in dir(self):
-            attribute = getattr(self, name)
-            if isinstance(attribute, Token):
-                if attribute in world:
-                    packing_list[name] = attribute.get_id()
-                    delattr(self, name)
-        
-        assert not hasattr(self, '_packing_list')
-        self._packing_list = packing_list
-
-    def unpack(self, world):
-        """ Rebuild a messages that was just sent across the network and
-        unpickled.  This primarily involves converting token ID numbers back
-        into real token objects. """
-
-        assert hasattr(self, '_packing_list')
-        packed_tokens = self._packing_list.items()
-        del self._packing_list
-
-        for name, id in packed_tokens:
-            token = world.get_token(id)
-            setattr(self, name, token)
 
     def set_status(self, status):
         self._status = status
