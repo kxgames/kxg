@@ -1,3 +1,9 @@
 [submodule "tests/testing"]
 	path = tests/testing
 	url = git@github.com:kalekundert/TestSuite.git
+[submodule "docs"]
+	path = docs
+	url = ./docs
+[submodule "ideas"]
+	path = ideas
+	url = ./ideas
