@@ -850,6 +850,16 @@ class Rectangle (Shape):
 # Collision Functions
 
 def circle_touching_line(center, radius, start, end):
+    """ Return true if the given circle intersects the given segment.  Note 
+    that this checks for intersection with a line segment, and not an actual 
+    line.
+
+    :param center: Center of the circle.
+    :param radius: Radius of the circle.
+    :param start: The first end of the line segment.
+    :param start: The second end of the line segment.
+    """
+
     C, R = center, radius
     A, B = start, end
 
@@ -878,6 +888,9 @@ def circle_touching_line(center, radius, start, end):
 # Mathematical Helper Functions
 
 def clamp(x, low, high):
+    """ Forces *x* into the range between *low* and *high*.  In other words, 
+    returns *low* if *x* < *low*, returns *high* if *x* > *high*, and returns 
+    *x* otherwise. """
     return max(min(x, high), low)
 
 
