@@ -133,6 +133,10 @@ def _overload_in_place(f, scalar_ok=False):
 # Vector and Rectangle Classes
 
 class Shape (object):
+    """ Provide an interface for custom shape classes to interact with the 
+    rectangle class.  For example, rectangles can be instantiated from shapes
+    and can test for collisions against shapes.  The interface is very simple:
+    it only requires four methods to be defined. """
 
     def get_top(self):
         raise NotImplementedError
