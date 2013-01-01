@@ -855,9 +855,13 @@ def circle_touching_line(center, radius, start, end):
     line.
 
     :param center: Center of the circle.
+    :type center: Vector
     :param radius: Radius of the circle.
+    :type radius: float
     :param start: The first end of the line segment.
-    :param start: The second end of the line segment.
+    :type start: Vector
+    :param end: The second end of the line segment.
+    :type end: Vector
     """
 
     C, R = center, radius
