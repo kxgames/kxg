@@ -5,7 +5,6 @@ class Sprite:
     position data and handles basic physics, but it is not meant to be
     directly instantiated. """
 
-    # Constructor {{{1
     def __init__(self):
         self.position = Vector.null()
         self.velocity = Vector.null()
@@ -14,12 +13,12 @@ class Sprite:
         self.max_acceleration = infinity
         self.max_velocity = infinity
 
+
     def setup(self, p=Vector.null(), max_a=infinity, max_v=infinity):
         self.position = p
         self.max_acceleration = max_a
         self.max_velocity = max_v
 
-    # Updates {{{1
     def update(self, time):
         self.check_acceleration()
         self.check_velocity()
@@ -32,16 +31,8 @@ class Sprite:
         self.position += self.velocity * time
         self.velocity += self.acceleration * (time / 2); self.check_velocity()
         
-    def check_acceleration(self):
-        a = self.acceleration
-        if a.magnitude > self.max_acceleration:
-            self.acceleration = a.normal * self.max_acceleration
 
-    def check_velocity(self):
-        if self.velocity.magnitude > self.max_velocity:
-            self.velocity = self.velocity.normal * self.max_velocity
 
-    # Attributes {{{1
     def get_position(self):
         return self.position
 
@@ -52,10 +43,11 @@ class Sprite:
         return self.acceleration
 
     def get_max_velocity(self):
-        return self.max_acceleration
+        return self.max_velocity
 
     def get_max_acceleration(self):
         return self.max_acceleration
+
 
     def set_position(self, position):
         self.position = position
@@ -68,20 +60,32 @@ class Sprite:
         self.acceleration = acceleration
         self.check_acceleration()
 
-    def get_max_velocity(self):
-        return self.max_acceleration
+    def set_max_velocity(self, max_velocity):
+        self.max_velocity = max_velocity
 
-    def get_max_acceleration(self):
-        return self.max_acceleration
+    def set_max_acceleration(self, max_acceleration):
+        self.max_acceleration = max_acceleration
 
     # }}}1
+
+
+    def wrap_around(self, boundary):
+        self.position %= boundary.size
+
+    def check_acceleration(self):
+        a = self.acceleration
+        if a.magnitude > self.max_acceleration:
+            self.acceleration = a.normal * self.max_acceleration
+
+    def check_velocity(self):
+        if self.velocity.magnitude > self.max_velocity:
+            self.velocity = self.velocity.normal * self.max_velocity
+
 
 class Vehicle (Sprite):
     """ An application of the Sprite class with flocking capabilities. 
     Note: Non-behavior (ie: external) accelerations are ignored; However you
     can write your own behavior and its acceleration will be included. """
-
-    # Constructor {{{1
 
     def __init__(self):
         Sprite.__init__ (self)
@@ -92,23 +96,24 @@ class Vehicle (Sprite):
         self.mass = 1
         self.behavior_acceleration = Vector.null()
 
+
     def setup(self, 
             position=Vector.null(),
             maximum_acceleration=inf,
             maximum_velocity=inf,
             mass=1, 
             facing=Vector.null()):
+
         Sprite.setup(self, position, maximum_acceleration, maximum_velocity)
         self.mass = mass
         if not facing == Vector.null():
             self.facing = facing.normal
 
-    # Updates {{{1
     def update(self, time):
         """ Update acceleration. Accounts for the importance and
         priority (order) of multiple behaviors. """
         
-        # .... I feel this stuff could be done alot better.
+        # .... I feel this stuff could be done a lot better.
         total_acceleration = Vector.null()
         max_jerk = self.max_acceleration
 
@@ -136,22 +141,21 @@ class Vehicle (Sprite):
         if self.velocity.magnitude > 0.0:
             self.facing = self.velocity.normal
 
-    # Methods {{{1
+
     def add_behavior(self, behavior):
         self.behaviors.append(behavior)
 
-    # Attributes {{{1
     def get_behaviors(self):
         return self.behaviors
 
     def get_facing(self):
         return self.facing
 
-    # }}}1
+
 
 class BaseBehavior:
     """ The base class for all behavior classes. """
-    # BaseBehavior {{{1
+
     def __init__ (self, sprite, power):
         self.sprite = sprite
         self.power = power
@@ -164,8 +168,9 @@ class BaseBehavior:
         return self.last_delta_velocity
     # }}}1
 
+
 class Friction (BaseBehavior):
-    # Fiction {{{1
+
     def __init__ (self, sprite, power, friction_coefficient):
         BaseBehavior.__init__(self, sprite, power)
         self.friction = friction_coefficient
@@ -179,8 +184,9 @@ class Friction (BaseBehavior):
         return acceleration, self.power
     # }}}1
 
+
 class Seek(BaseBehavior):
-    # Seek {{{1
+
     def __init__ (self, sprite, power, target, los=0.0):
         BaseBehavior.__init__(self, sprite, power)
         self.target = target
@@ -198,15 +204,16 @@ class Seek(BaseBehavior):
 
         if 0.0 == self.los or desired_direction.magnitude <= self.los:
             desired_normal = desired_direction.normal
-            desired_velocity = desired_normal * self.sprite.get_max_speed()
+            desired_velocity = desired_normal * self.sprite.get_max_velocity()
             delta_velocity = desired_velocity - self.sprite.get_velocity()
 
         self.last_delta_velocity = delta_velocity
         return delta_velocity, self.power
     # }}}1
 
+
 class Flee(BaseBehavior):
-    # Flee {{{1
+
     def __init__ (self, sprite, power, target, los=0.0):
         BaseBehavior.__init__(self, sprite, power)
         self.target = target
@@ -234,8 +241,9 @@ class Flee(BaseBehavior):
         return delta_velocity, self.power
     # }}}1
 
+
 class Wander(BaseBehavior):
-    # Wander {{{1
+
     def __init__ (self, sprite, power, wander_radius, distance, jitter):
         BaseBehavior.__init__(self, sprite, power)
 
@@ -253,7 +261,7 @@ class Wander(BaseBehavior):
 
         jitter = Vector.random() * self.j
         jittered_position = position + jitter
-        new_target_position = wander_position.normal * self.r
+        new_target_position = jittered_position.normal * self.r
 
         self.target.set_position(new_target_position)
 
@@ -261,7 +269,8 @@ class Wander(BaseBehavior):
         desired_position = new_target_position + facing_offset
         
         desired_velocity = desired_position
-        delta_velocity = desired_velocity.normal * self.sprite.get_max_speed()
+        delta_velocity = desired_velocity.normal *      \
+                            self.sprite.get_max_velocity()
 
         # Try to reduce slowing down effect when multiple behaviors are 
         # in effect? Dont know if this is actually a problem.

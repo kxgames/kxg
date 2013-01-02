@@ -11,7 +11,7 @@ import random
 import pygame
 from pygame.locals import *
 
-from shapes import *
+from geometry import *
 from sprites import *
 
 # Setup pygame {{{1
@@ -43,7 +43,8 @@ for i in range(population):
     sprite_y = boundary.height * random.random()
     sprite_position = Vector(sprite_x,sprite_y)
     sprites.append(Vehicle())
-    sprites[i].setup(sprite_position, sprite_radius, sprite_force, sprite_speed)
+    sprites[i].setup(
+            sprite_position, sprite_force, sprite_speed)
 
 # Add behaviors to sprites
 for i in range(population):
@@ -95,14 +96,14 @@ while True:
     # Draw leader target in the center.
     for sprite in sprites:
         leader_position = leader_target.get_position()
-        leader_radius = leader_target.get_radius()
+        leader_radius = sprite_radius
 
         pygame.draw.circle(screen, red, leader_position.pygame, leader_radius)
 
     # Draw the other sprites.
     for sprite in sprites:
         position = sprite.get_position()
-        radius = sprite.get_radius()
+        radius = sprite_radius
 
         if sprite == sprites[0]:
             pygame.draw.circle(screen, blue, position.pygame, radius, 3)
