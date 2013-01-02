@@ -748,25 +748,66 @@ class UnprotectedTokenLock (TokenLock):
 class Message (object):
 
     def check(self, world, sender):
-        """ Returns true if the message is consistent with the state of the
-        game world.  This method may be called several times on different
-        hosts, and for that reason it is not able to modify the game world. """
+        """ Return true if the message is consistent with the state of the game 
+        world.  This is one of the most important message callbacks and should 
+        be reimplemented every subclass.  It first invoked on the client side 
+        to prevent bad requests from using up network bandwidth.  It is then 
+        invoked again on the server, to prevent out-of-sync errors or hacked 
+        messages.
+
+        Since the role of this callback is simply to report on the validity of 
+        the message, it should not make any changes to anything.  Any changes 
+        made to the game world, for example, will lead to bugs because this 
+        method is only called on one of the clients.  The game engine makes 
+        some effort to prevent these kinds of errors, but it isn't bulletproof.
+
+        :argument world: The game world.
+        :argument sender: The actor that sent this message.
+        :returns:  Boolean indicating if the message is valid. """
+
         pass
 
-    def reject(self, actor):
+    def reject(self, sender):
+        """ Inform *sender* that the message was rejected.  This means that 
+        :meth:`check` returned false, either locally or on the server.  In many 
+        cases, this happens because the player requests some sort of illegal 
+        action, like building a unit without having enough resource.  This 
+        callback should be overwritten to provide the player feedback about 
+        what they did wrong.  By default, this method will raise an 
+        :exc:`UnhandledMessageRejection` so that rejected messages don't go 
+        unnoticed.
+
+        :argument sender: The actor that sent this message.
+        :returns: None """
+
         raise UnhandledMessageRejection(self)
 
-    def accept(self, actor, pending):
+    def accept(self, sender, verified):
+        """ Inform *sender* that the message was accepted.  This means that 
+        :meth:`check` returned true, either locally or on the server.  If the 
+        message was accepted locally, it could still be rejected by the server 
+        and so the *verified* parameter is set to false.  Otherwise, if the 
+        server has accepted the message, *verified* is set to true.  This 
+        callback can be overwritten to provide instantaneous feedback to 
+        players while the message is traveling to and from the server.
+
+        :arguments sender: The actor that sent this message.
+        :arguments verified: A boolean indicating who accepted this message.
+        :returns: None """
+
         pass
 
     def setup(self, world, sender, id_factory):
-        """ Allows the message to claim unique ID numbers for new objects being
+        """ Setup the Allow the message to claim unique ID numbers for new objects being
         created.  In multiplayer games, this method is only called on the
         server to guarantee that the given ID numbers are unique. """
         pass
 
+    def recheck(self, world):
+        return True
+
     def execute(self, world):
-        """ Allows the message to make modifications to the game world.  This
+        """ Allow the message to make modifications to the game world.  This
         will be called exactly once on each host, but may be called more than
         once on a single message object.  (This is because message objects may
         be pickled and sent over the network.)  So one call to this method
@@ -774,14 +815,14 @@ class Message (object):
         pass
 
     def notify(self, actor):
-        """ Informs an actor that this message has occurred.  This will only
-        happen on the machine that is hosting the actor in question.  For
-        example, the actor representing a player on the server will not be
+        """ Inform the given actor that this message has occurred.  This will 
+        only happen on the machine that is hosting the actor in question.  For 
+        example, the actor representing a player on the server will not be 
         notified, but the actor representing that player on a client will. """
         pass
 
     def copy(self):
-        """ Returns a shallow copy of the message object.  This is called by
+        """ Return a shallow copy of the message object.  This is called by
         the game engine just before the message is delivered to the actors, so
         that the game can provide information specific to certain actors. """
         import copy
