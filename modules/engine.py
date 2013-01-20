@@ -625,7 +625,7 @@ class World (Token):
 
         token._registered = True
         token._extensions = {
-                actor : extension_class(token)
+                actor : extension_class(actor, token)
                 for actor, extension_class in token.__extend__().items()
                 if actor in self.actors }
 
