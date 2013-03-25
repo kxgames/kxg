@@ -537,6 +537,16 @@ class Rectangle (Shape):
         return Rectangle.from_dimensions(left, top, width, height)
 
     @staticmethod
+    def from_corners(first, second):
+        first = _cast_anything_to_vector(first)
+        second = _cast_anything_to_vector(second)
+
+        left = min(first.x, second.x);  top = min(first.y, second.y)
+        right = max(first.x, second.x); bottom = max(first.y, second.y)
+
+        return Rectangle.from_sides(left, top, right, bottom)
+
+    @staticmethod
     def from_top_left(position, width, height):
         position = _cast_anything_to_vector(position)
         return Rectangle(position.x, position.y, width, height)

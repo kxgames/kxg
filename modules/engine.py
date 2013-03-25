@@ -1,18 +1,42 @@
 from __future__ import division
 
-import pygame
 import functools
 
-# Things to Do
-# ============
-# 1. Allow each Actor to specify its own frame rate.  
-# 2. Write comments, maybe create a sphinx page.
+# Add a Publisher/Subscriber system.  Signals are given to the publisher (with 
+# arguments) and are expected to be strings.  The publisher passes the signal 
+# along to any connected subscribers.  The subscribers maintain a list of 
+# callbacks for each signal type and execute them.  Callbacks can either be 
+# registered one by one, as key/value pairs, or can be extracted intelligently 
+# from the method names of an object.
+#
+# This would be useful in several instances.  First is the notify() method in 
+# messages.  I could probably get rid of this method and have the game engine 
+# publish the notification itself.  The message could optionally specify a name 
+# to use for the signal.  
+#
+# Another case is the interaction between tokens and token_extensions.  The 
+# token extension basically wants to know everything that happens to the token, 
+# but it's annoying for the token to have to explicitly loop through all of its 
+# extensions.  This system would make that easier, especially since it can be 
+# setup automatically by the game engine.
+#
+# I don't know how something analogous to this could be implemented in c++, 
+# without using member function pointers.  But I could probably work it out 
+# using boost.
 
-class MainLoop (object):
+# Think about the relationship between the player and the referee.  There are 
+# several related issues with the game engine as is.  One is that it is awkward 
+# to associate players with referees.  Another is that rejections from messages 
+# sent by game objects (via notify) are passed to the referee, which is not 
+# equipped to handle them. 
+
+class PygameLoop (object):
     """ Manage whichever stage is currently active.  This involves both
     updating the current stage and handling transitions between stages. """
 
     def play(self, frequency=50):
+        import pygame
+
         try:
             clock = pygame.time.Clock()
             self.stop_flag = False
@@ -49,6 +73,46 @@ class MainLoop (object):
 
     def is_finished(self):
         return self.stop_flag
+
+
+class PygletLoop (object):
+
+    def play(self, frames_per_sec=50):
+        import pyglet
+
+        self.window = pyglet.window.Window()
+
+        self.stage = self.get_initial_stage()
+        self.stage.set_master(self)
+        self.stage.setup()
+
+        pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
+        pyglet.app.run()
+
+    def update(self, time):
+        self.stage.update(time)
+
+        if self.stage.is_finished():
+            self.stage.teardown()
+            self.stage = self.stage.get_successor()
+
+            if self.stage:
+                self.stage.set_master(self)
+                self.stage.setup()
+            else:
+                self.exit()
+
+    def exit(self):
+        import pyglet
+        if self.stage: self.stage.teardown()
+        pyglet.app.exit()
+
+
+    def get_window(self):
+        return self.window
+
+    def get_initial_stage(self):
+        raise NotImplementedError
 
 
 class MultiplayerDebugger (object):
@@ -163,8 +227,7 @@ class GameStage (Stage):
         # feel free to read information out of the world when building
         # themselves.
 
-        names = set(actor.get_name() for actor in self.actors)
-        self.world.define_actors(names)
+        self.world.define_actors(self.actors)
 
         with UnprotectedTokenLock():
             self.world.setup()
@@ -533,7 +596,7 @@ class Token (object):
 
     def __init__(self):
         self._id = None
-        self._registered = False
+        self._status = 'built'
         self._extensions = {}
 
     def __extend__(self):
@@ -561,13 +624,16 @@ class Token (object):
 
     def give_id(self, id):
         assert self._id is None, "Token already has an id."
+        assert self._status == 'built', "Token already registered with the world."
         assert self._access == 'unprotected', "Don't have permission to modify token."
-        assert self._registered == False, "Token already added to world."
         assert isinstance(id, IdFactory), "Must use an IdFactory instance to give an id."
         self._id = id.next()
 
     def is_registered(self):
-        return self._registered
+        return self._status == 'registered'
+
+    def is_destroyed(self):
+        return self._status == 'destroyed'
 
     def get_extension(self):
         actor = Token._actor
@@ -584,8 +650,8 @@ class Token (object):
 
     def check_for_safety(self):
         assert self._id is not None, "Token has a null id."
+        assert self._status == 'registered', "Token not registered with the world."
         assert self._access == 'unprotected', "Don't have permission to modify token."
-        assert self._registered == True, "Token never added to world."
 
 
 class World (Token):
@@ -593,7 +659,7 @@ class World (Token):
     def __init__(self):
         Token.__init__(self)
         self._id = 1
-        self._registered = True
+        self._status = 'registered'
         self._tokens = {1: self}
         self._actors = []
 
@@ -614,31 +680,42 @@ class World (Token):
             if token is not self:
                 token.update(time)
 
-    def define_actors(self, names):
-        self.actors = names
+    def define_actors(self, actors):
+        self.actors = actors
 
     @check_for_safety
     def add_token(self, token):
         id = token.get_id()
         assert id is not None, "Can't register a token with a null id."
-        assert id not in self._tokens
-        assert isinstance(id, int)
+        assert id not in self._tokens, "Can't reuse %d as an id number." % id
+        assert isinstance(id, int), "Token has non-integer id number."
 
         self._tokens[id] = token
 
-        token._registered = True
-        token._extensions = {
-                actor : extension_class(token)
-                for actor, extension_class in token.__extend__().items()
-                if actor in self.actors }
+        token._status = 'registered'
+        token._extensions = {}
+        extension_classes = token.__extend__()
+
+        # The extensions dictionary should really map between actor objects 
+        # (not strings) and extension objects.  However, this could be a 
+        # somewhat significant change.  I'm leaving the code as-is for now.
+
+        for actor in self.actors:
+            name = actor.get_name()
+            extension_class = extension_classes.get(name)
+
+            if extension_class:
+                extension = extension_class(actor, token)
+                token._extensions[name] = extension
 
     @check_for_safety
     def remove_token(self, token):
         id = token.get_id()
         assert id is not None, "Can't remove a token with a null id."
-        assert isinstance(id, int)
+        assert isinstance(id, int), "Token has non-integer id number."
+        assert token.is_registered(), "Can't remove an unregistered token."
 
-        token._registered = False
+        token._status = 'destroyed'
         del self._tokens[id]
 
 
@@ -674,7 +751,7 @@ class Prototype (Token):
 
 
 class TokenExtension (object):
-    def __init__(self, token):
+    def __init__(self, actor, token):
         pass
 
 class TokenSerializer (object):
@@ -708,6 +785,8 @@ class TokenSerializer (object):
         if isinstance(token, Token):
             if token.is_registered():
                 return token.get_id()
+            if token.is_destroyed():
+                raise UsingDestroyedToken(token)
 
     def persistent_load(self, id):
         return self.world.get_token(int(id))

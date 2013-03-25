@@ -527,6 +527,7 @@ def rectangle_factory_methods(helper):
     assert Rectangle.from_square(9) == Rectangle(0, 0, 9, 9)
     assert Rectangle.from_dimensions(1, 2, 3, 4) == Rectangle(1, 2, 3, 4)
     assert Rectangle.from_sides(5, 6, 8, 7) == Rectangle(5, 6, 3, 1)
+    assert Rectangle.from_corners((8, 4), (3, 1)) == Rectangle(3, 1, 5, 3)
     assert Rectangle.from_top_left(v, 1, 2) == Rectangle(5, 6, 1, 2)
     assert Rectangle.from_top_left(t, 3, 4) == Rectangle(7, 8, 3, 4)
     assert Rectangle.from_center(v, 8, 6) == Rectangle(1, 3, 8, 6)
