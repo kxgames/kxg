@@ -7,8 +7,7 @@ from pygame.locals import *
 # Things To Do (fold)
 # ============
 # 1.  Add a universal reset key (i.e. ESC). Or other universal trigger
-#     keys.  NOTE: a reset key is pointless... Just never register the
-#     key and it will always fail, thereby resetting the chain.
+#     keys. Need one to reset lenses.
 #
 # 2.  Add sequence objects? The Key chain would update a list of
 #     sequences. Each sequence would remove themselves when they
