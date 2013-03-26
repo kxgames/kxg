@@ -643,7 +643,10 @@ class Token (object):
         extension = self._extensions.get(actor)
 
         if extension: return extension
-        else: raise AttributeError
+        else: 
+            print self._extensions
+            print actor
+            raise AttributeError
 
     def get_extensions(self):
         return self._extensions.values()
