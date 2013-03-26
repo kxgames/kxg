@@ -249,7 +249,7 @@ class GameStage (Stage):
         still_playing = False
 
         for actor in self.actors:
-            with ProtectedTokenLock(actor):
+            with actor.lock():
                 actor.update(time)
             if not actor.is_finished():
                 still_playing = True
@@ -333,6 +333,9 @@ class Actor (object):
 
     def teardown(self):
         pass
+
+    def lock(self):
+        return ProtectedTokenLock(self)
 
     def is_finished(self):
         return self.world.has_game_ended()
