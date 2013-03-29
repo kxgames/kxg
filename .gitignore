@@ -2,4 +2,5 @@
 .*
 
 tests/coverage/html
+docs/build
 sandbox
