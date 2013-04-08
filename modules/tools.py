@@ -10,18 +10,6 @@ class Timer:
         self.expired = False
         self.paused = False
 
-    def register(self, callback):
-        self.callbacks.append(callback)
-
-    def unregister(self, callback):
-        self.callbacks.remove(callback)
-
-    def pause(self):
-        self.paused = True
-
-    def unpause(self):
-        self.pause = False
-
     def update(self, time):
         if self.expired:
             return
@@ -35,6 +23,22 @@ class Timer:
             self.expired = True
             for callback in self.callbacks:
                 callback()
+
+    def restart(self):
+        self.expired = False
+        self.elapsed = 0
+
+    def pause(self):
+        self.paused = True
+
+    def unpause(self):
+        self.pause = False
+
+    def register(self, callback):
+        self.callbacks.append(callback)
+
+    def unregister(self, callback):
+        self.callbacks.remove(callback)
 
     def has_expired(self):
         return self.expired
