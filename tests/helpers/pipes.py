@@ -4,7 +4,10 @@
 import os, path
 import struct
 
-from network import Host, Server, Client
+try:
+    from network import Host, Server, Client
+except ImportError:
+    from kxg.network import Host, Server, Client
 
 class Message(object):
 
@@ -87,7 +90,7 @@ class Outbox(list):
 
 
 def connect(pipes=1, reverse=False, integrate=lambda x: x):
-    host, port = 'localhost', 10236
+    host, port = 'localhost', 53351
 
     # Create a web of client server connections.
     server = Server(host, port, pipes)

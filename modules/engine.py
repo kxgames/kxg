@@ -228,8 +228,9 @@ class GameStage (Stage):
         # themselves.
 
         self.world.define_actors(self.actors)
+        self.world._status = Token._registered
 
-        with UnprotectedTokenLock():
+        with UnrestrictedTokenAccess():
             self.world.setup()
 
         for actor in self.actors:
@@ -243,14 +244,13 @@ class GameStage (Stage):
         self.mailbox.collect()
         self.mailbox.update()
 
-        with UnprotectedTokenLock():
+        with UnrestrictedTokenAccess():
             self.world.update(time)
 
         still_playing = False
 
         for actor in self.actors:
-            with actor.lock():
-                actor.update(time)
+            actor.update(time)
             if not actor.is_finished():
                 still_playing = True
 
@@ -263,7 +263,7 @@ class GameStage (Stage):
         for actor in self.actors:
             actor.teardown()
 
-        with UnprotectedTokenLock():
+        with UnrestrictedTokenAccess():
             self.world.teardown()
 
 
@@ -333,9 +333,6 @@ class Actor (object):
 
     def teardown(self):
         pass
-
-    def lock(self):
-        return ProtectedTokenLock(self)
 
     def is_finished(self):
         return self.world.has_game_ended()
@@ -471,7 +468,7 @@ class LocalMailbox (Mailbox):
                 sender.reject_message(message)
                 continue
 
-            with UnprotectedTokenLock():
+            with UnrestrictedTokenAccess():
                 message.setup(self.world, sender.greeter, self.id_factory)
 
             for actor in self.actors:
@@ -479,14 +476,13 @@ class LocalMailbox (Mailbox):
                 private_message.set_origin(actor is sender)
                 actor.dispatch_message(private_message)
 
-            with UnprotectedTokenLock():
+            with UnrestrictedTokenAccess():
                 message.execute(self.world)
 
             for actor in self.actors:
                 private_message = message.copy()
                 private_message.set_origin(actor is sender)
-                with ProtectedTokenLock(actor):
-                    actor.receive_message(private_message)
+                actor.receive_message(private_message)
 
     def teardown(self):
         pass
@@ -538,11 +534,10 @@ class RemoteMailbox (Mailbox):
                     actor.reject_message(message)
                     continue
 
-            with UnprotectedTokenLock():
+            with UnrestrictedTokenAccess():
                 message.execute(self.world)
 
-            with ProtectedTokenLock(actor):
-                actor.receive_message(message)
+            actor.receive_message(message)
 
     def teardown(self):
         self.pipe.pop_serializer()
@@ -567,15 +562,14 @@ class IdFactory (object):
 
 
 
-def check_for_safety(method):
-    @functools.wraps(method)
-    def decorator(self, *args, **kwargs):
-        # I don't understand exactly how this works, but wrapping the decorator 
-        # function with the `functools' method allows pickle to understand the 
-        # decorator.
-        self.check_for_safety()
-        return method(self, *args, **kwargs)
-    return decorator
+def read_only(method):
+    return TokenMetaclass.read_only(method)
+
+def before_setup(method):
+    return TokenMetaclass.before_setup(method)
+
+def after_teardown(method):
+    return TokenMetaclass.after_teardown(method)
 
 def check_for_prototype(method):
     @functools.wraps(method)
@@ -592,52 +586,137 @@ def check_for_instance(method):
     return decorator
 
 
+class TokenMetaclass (type):
+
+    read_only_flag = '__read_only__'
+    before_setup_flag = '__before_setup__'
+    after_teardown_flag = '__after_teardown__'
+
+    read_only_special_cases = '__str__', '__repr__'
+    before_setup_special_cases = '__init__', '__extend__'
+
+    def __new__(meta, name, bases, members):
+        from types import FunctionType
+
+        for attribute, value in members.items():
+            is_function = (type(value) == FunctionType)
+            is_before_setup = attribute in meta.before_setup_special_cases
+            is_read_only = hasattr(value, meta.read_only_flag) or \
+                    attribute in meta.read_only_special_cases
+
+            if is_function and is_before_setup:
+                value = TokenMetaclass.before_setup(value)
+            if is_function and not is_read_only:
+                value = TokenMetaclass.check_for_safety(value)
+
+            members[attribute] = value
+
+        return type.__new__(meta, name, bases, members)
+
+    @classmethod
+    def check_for_safety(meta, method):
+        id_error = "Token has a null id."
+        access_error = "Don't have permission to modify %s."
+        setup_error = "Setup the token before calling this method."
+        teardown_error = "Call this method before tearing down the token."
+        status_error = "Token is in unknown state '%s'."
+
+        setup_method = hasattr(method, meta.before_setup_flag)
+        teardown_method = hasattr(method, meta.after_teardown_flag)
+
+        @functools.wraps(method)
+        def decorator(self, *args, **kwargs):
+            if self.is_before_setup():
+                assert setup_method, setup_error
+
+            elif self.is_registered():
+                assert self._id is not None, id_error
+                assert not Token._locked, access_error % self
+
+            elif self.is_after_teardown():
+                assert teardown_method, teardown_error
+
+            else:
+                raise AssertionError(status_error % self._status)
+
+            return method(self, *args, **kwargs)
+
+        return decorator
+
+    @classmethod
+    def read_only(meta, method):
+        setattr(method, meta.read_only_flag, True)
+        return method
+
+    @classmethod
+    def before_setup(meta, method):
+        setattr(method, meta.before_setup_flag, True)
+        return method
+
+    @classmethod
+    def after_teardown(meta, method):
+        setattr(method, meta.after_teardown_flag, True)
+        return method
+
+
 class Token (object):
 
-    _access = 'protected'
-    _actor = None
+    __metaclass__ = TokenMetaclass
+
+    _locked = True
+    _before_setup = 'before setup'
+    _registered = 'registered'
+    _after_teardown = 'after teardown'
 
     def __init__(self):
         self._id = None
-        self._status = 'built'
+        self._status = Token._before_setup
         self._extensions = {}
 
     def __extend__(self):
         return {}
 
 
-    @check_for_safety
     def setup(self):
         pass
 
-    @check_for_safety
     def update(self, time):
         pass
 
+    @read_only
     def report(self, messenger):
         pass
 
-    @check_for_safety
     def teardown(self):
         pass
 
 
+    @read_only
     def get_id(self):
         return self._id
 
+    @before_setup
     def give_id(self, id):
         assert self._id is None, "Token already has an id."
-        assert self._status == 'built', "Token already registered with the world."
-        assert self._access == 'unprotected', "Don't have permission to modify token."
-        assert isinstance(id, IdFactory), "Must use an IdFactory instance to give an id."
+        assert self.is_before_setup(), "Token already registered with the world."
+        assert isinstance(id, IdFactory), \
+                "Must use an IdFactory instance to give an id."
         self._id = id.next()
 
+    @read_only
+    def is_before_setup(self):
+        before_setup = Token._before_setup
+        return getattr(self, '_status', before_setup) == before_setup
+
+    @read_only
     def is_registered(self):
-        return self._status == 'registered'
+        return getattr(self, '_status', None) == Token._registered
 
-    def is_destroyed(self):
-        return self._status == 'destroyed'
+    @read_only
+    def is_after_teardown(self):
+        return getattr(self, '_status', None) == Token._after_teardown
 
+    @read_only
     def get_extension(self):
         actor = Token._actor
         extension = self._extensions.get(actor)
@@ -648,13 +727,9 @@ class Token (object):
             print actor
             raise AttributeError
 
+    @read_only
     def get_extensions(self):
         return self._extensions.values()
-
-    def check_for_safety(self):
-        assert self._id is not None, "Token has a null id."
-        assert self._status == 'registered', "Token not registered with the world."
-        assert self._access == 'unprotected', "Don't have permission to modify token."
 
 
 class World (Token):
@@ -662,48 +737,55 @@ class World (Token):
     def __init__(self):
         Token.__init__(self)
         self._id = 1
-        self._status = 'registered'
+        self._status = Token._before_setup
         self._tokens = {1: self}
         self._actors = []
 
+    @read_only
+    def __str__(self):
+        return '<World len=%d>' % len(self)
+
+    @read_only
     def __iter__(self):
         for token in self._tokens.values():
             yield token
 
+    @read_only
     def __len__(self):
         return len(self._tokens)
 
+    @read_only
     def __contains__(self, token):
         return token.get_id() in self._tokens
 
 
-    @check_for_safety
     def update(self, time):
         for token in self:
             if token is not self:
                 token.update(time)
 
+    @before_setup
     def define_actors(self, actors):
-        self.actors = actors
+        self._actors = actors
 
-    @check_for_safety
-    def add_token(self, token):
+    def add_token(self, token, list=None):
         id = token.get_id()
         assert id is not None, "Can't register a token with a null id."
         assert id not in self._tokens, "Can't reuse %d as an id number." % id
         assert isinstance(id, int), "Token has non-integer id number."
 
         self._tokens[id] = token
+        if list is not None:
+            list.append(token)
 
-        token._status = 'registered'
         token._extensions = {}
         extension_classes = token.__extend__()
 
-        # The extensions dictionary should really map between actor objects 
+        # The extensions dictionary should really map between actor classes 
         # (not strings) and extension objects.  However, this could be a 
         # somewhat significant change.  I'm leaving the code as-is for now.
 
-        for actor in self.actors:
+        for actor in self._actors:
             name = actor.get_name()
             extension_class = extension_classes.get(name)
 
@@ -711,17 +793,24 @@ class World (Token):
                 extension = extension_class(actor, token)
                 token._extensions[name] = extension
 
-    @check_for_safety
-    def remove_token(self, token):
+        token._status = Token._registered
+        token.setup()
+
+    def remove_token(self, token, list=None):
         id = token.get_id()
         assert id is not None, "Can't remove a token with a null id."
         assert isinstance(id, int), "Token has non-integer id number."
         assert token.is_registered(), "Can't remove an unregistered token."
 
-        token._status = 'destroyed'
         del self._tokens[id]
+        if list is not None:
+            list.remove(token)
+
+        token.teardown()
+        token._status = Token._after_teardown
 
 
+    @read_only
     def get_token(self, id):
         return self._tokens[id]
 
@@ -788,46 +877,21 @@ class TokenSerializer (object):
         if isinstance(token, Token):
             if token.is_registered():
                 return token.get_id()
-            if token.is_destroyed():
+            if token.is_after_teardown():
                 raise UsingDestroyedToken(token)
 
     def persistent_load(self, id):
         return self.world.get_token(int(id))
 
 
-class TokenLock (object):
-
-    def __init__(self, access, actor=None):
-        self.current_access = access
-        self.current_actor = actor
+class UnrestrictedTokenAccess (object):
 
     def __enter__(self):
-        self.previous_access = Token._access
-        self.previous_actor = Token._actor
-
-        Token._access = self.current_access
-        Token._actor = self.current_actor
+        Token._locked = False
 
     def __exit__(self, *args, **kwargs):
-        Token._access = self.previous_access
-        Token._actor = self.previous_actor
+        Token._locked = True
 
-    @staticmethod
-    def restrict_default_access():
-        Token._access = 'protected'
-
-    @staticmethod
-    def allow_default_access():
-        Token._access = 'unprotected'
-
-
-class ProtectedTokenLock (TokenLock):
-    def __init__(self, actor):
-        TokenLock.__init__(self, 'protected', actor.get_name())
-
-class UnprotectedTokenLock (TokenLock):
-    def __init__(self):
-        TokenLock.__init__(self, 'unprotected', None)
 
 
 class Message (object):
@@ -850,7 +914,7 @@ class Message (object):
         :argument sender: The actor that sent this message.
         :returns:  Boolean indicating if the message is valid. """
 
-        pass
+        raise NotImplementedError
 
     def reject(self, sender):
         """ Inform *sender* that the message was rejected.  This means that 
@@ -897,9 +961,10 @@ class Message (object):
         once on a single message object.  (This is because message objects may
         be pickled and sent over the network.)  So one call to this method
         should not affect a second call. """
-        pass
 
-    def notify(self, actor):
+        raise NotImplementedError
+
+    def notify(self, actor, was_sent_from_here):
         """ Inform the given actor that this message has occurred.  This will 
         only happen on the machine that is hosting the actor in question.  For 
         example, the actor representing a player on the server will not be 
@@ -920,10 +985,10 @@ class Message (object):
         self._origin = sent_from_here
     
     def was_accepted(self):
-        return self._status == True
+        return self._status is True
 
     def was_rejected(self):
-        return self._status == False
+        return self._status is False
 
     def was_sent_from_here(self):
         return self._origin

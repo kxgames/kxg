@@ -22,4 +22,4 @@ import network, messaging
 from engine import *
 
 del RemoteActor, Mailbox, LocalMailbox, RemoteMailbox, IdFactory
-del TokenLock, ProtectedTokenLock, UnprotectedTokenLock
+del UnrestrictedTokenAccess
