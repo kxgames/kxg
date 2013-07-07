@@ -229,7 +229,7 @@ class Pipe:
     __exit__ = unlock
 
     def busy(self):
-        return self.incoming or self.outgoing
+        return not self.idle()
 
     def idle(self):
         return self.incoming == "" and self.outgoing == []
@@ -246,6 +246,10 @@ class Pipe:
 
         receipt = message if receipt is None else receipt
         self.outgoing.append((stream, receipt))
+
+    def send_now(self, message, receipt=None):
+        self.send(message, receipt)
+        return self.deliver()
 
     def deliver(self):
         receipts = []
@@ -265,7 +269,8 @@ class Pipe:
                 
                 # This exception is triggered when no bytes at all can be sent.
                 # Even though this usually indicates a serious problem, it is
-                # silently ignored.
+                # silently ignored in hope that the problem will be resolved 
+                # before the next call to this method.
                 if message.errno == errno.EAGAIN: break
 
                 # Any other flavor of exception is taken to be a fatal error.

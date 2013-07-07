@@ -2,92 +2,128 @@ from __future__ import division
 
 import functools
 
-# Add a Publisher/Subscriber system.  Signals are given to the publisher (with 
-# arguments) and are expected to be strings.  The publisher passes the signal 
-# along to any connected subscribers.  The subscribers maintain a list of 
-# callbacks for each signal type and execute them.  Callbacks can either be 
-# registered one by one, as key/value pairs, or can be extracted intelligently 
-# from the method names of an object.
+# Improvements
+# ============
+# 1. Redo the initial connection system.  A MultiplayerClientConnectionStage 
+#    will be basically responsible for setting up the forum.  I can also give 
+#    it the ability to display some sort of splash screen in the future, so the 
+#    game can not appear to freeze if the network lags suddenly.
 #
-# This would be useful in several instances.  First is the notify() method in 
-# messages.  I could probably get rid of this method and have the game engine 
-# publish the notification itself.  The message could optionally specify a name 
-# to use for the signal.  
+# 2. Expand the Publisher/subscriber system.  There needs to be a centralized 
+#    manager that knows what kinds of Message classes exist and what kinds of 
+#    handlers have been defined.  It's disconcerting to not know if a spelling 
+#    mistake has been made.  To catalog the message classes, I can use a 
+#    metaclass.  To catalog the handlers, I can use a decorator.
 #
-# Another case is the interaction between tokens and token_extensions.  The 
-# token extension basically wants to know everything that happens to the token, 
-# but it's annoying for the token to have to explicitly loop through all of its 
-# extensions.  This system would make that easier, especially since it can be 
-# setup automatically by the game engine.
+# 3. Add methods to the message class to immediately react to messages, and to 
+#    undo rejected messages.  
 #
-# I don't know how something analogous to this could be implemented in c++, 
-# without using member function pointers.  But I could probably work it out 
-# using boost.
+# 4. Allow Messenger objects to be locked.  This will allow me to check that 
+#    tokens aren't saving references to the messenger and using them in stupid 
+#    places.
 
-# Think about the relationship between the player and the referee.  There are 
-# several related issues with the game engine as is.  One is that it is awkward 
-# to associate players with referees.  Another is that rejections from messages 
-# sent by game objects (via notify) are passed to the referee, which is not 
-# equipped to handle them. 
+class GameEngineError (Exception):
 
-class PygameLoop (object):
-    """ Manage whichever stage is currently active.  This involves both
-    updating the current stage and handling transitions between stages. """
+    def __init__(self):
+        self.format_args = ()
+        self.format_kwargs = {}
 
-    def play(self, frequency=50):
-        import pygame
+    def __str__(self):
+        import sys, textwrap
 
         try:
-            clock = pygame.time.Clock()
-            self.stop_flag = False
+            indent = '    '
+            format_args = self.format_args
+            format_kwargs = self.format_kwargs
 
-            stage = self.get_initial_stage()
-            stage.set_master(self)
-            stage.setup()
+            message = self.message.format(*format_args, **format_kwargs)
+            message = textwrap.dedent(message)
+            message = textwrap.fill(message,
+                    initial_indent=indent, subsequent_indent=indent)
 
-            while not self.is_finished():
-                time = clock.tick(frequency) / 1000
-                stage.update(time)
+            if self.details:
+                details = self.details.format(*format_args, **format_kwargs)
+                details = details.replace(' \n', '\n')
+                details = textwrap.dedent(details)
+                details = '\n\n' + textwrap.fill(details, 
+                        initial_indent=indent, subsequent_indent=indent)
+            else:
+                details = ''
 
-                if stage.is_finished():
-                    stage.teardown()
-                    stage = stage.get_successor()
+            return '\n' + message + details
 
-                    if stage:
-                        stage.set_master(self)
-                        stage.setup()
-                    else:
-                        self.exit()
+        except Exception as error:
+            import traceback
+            return "Error in exception class: %s" % error
 
-            if stage:
-                stage.teardown()
 
-        except KeyboardInterrupt:
-            print
+    def format_arguments(self, *args, **kwargs):
+        self.format_args = args
+        self.format_kwargs = kwargs
 
-    def exit(self):
-        self.stop_flag = True
+    def raise_if(self, condition):
+        if condition: raise self
 
-    def get_initial_stage(self):
+    def raise_if_not(self, condition):
+        if not condition: raise self
+
+    def raise_if_warranted(self):
         raise NotImplementedError
 
-    def is_finished(self):
-        return self.stop_flag
+
+class NullTokenIdError (GameEngineError):
+
+    message = "Token {0} has a null id."
+    details = """\
+            This error usually means that a token was added to the world 
+            without being assigned an id number.  To correct this, add a call 
+            to give_id() in the setup() method of the message responsible for 
+            creating the token in question.  The id_factory required by 
+            give_id() is provided as the second argument to setup()."""
+
+    def __init__(self, token):
+        self.token = token
+        self.format_arguments(token)
+
+    def raise_if_warranted(self):
+        if self.token.get_id() is None:
+            raise self
 
 
-class PygletLoop (object):
+class UnexpectedTokenIdError (GameEngineError):
 
-    def play(self, frames_per_sec=50):
-        import pyglet
+    message = "Token {0} already has an id."
+    details = "This error usually means that {0} was added to the world twice."
 
-        self.window = pyglet.window.Window()
+    def __init__(self, token):
+        self.token = token
+        self.format_arguments(token)
 
-        self.stage = self.get_initial_stage()
-        self.stage.set_master(self)
-        self.stage.setup()
+    def raise_if_warranted(self):
+        if self.token.get_id() is not None:
+            raise self
 
-        pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
-        pyglet.app.run()
+
+class UnknownTokenStatus (GameEngineError):
+
+    message = "Token has unknown status '{0}'."
+
+    def __init__(self, token):
+        self.status = token._status
+        self.format_arguments(self.status)
+
+    def raise_if_warranted(self):
+        known_statuses = (
+                Token._before_setup,
+                Token._register,
+                Token._after_teardown)
+
+        if self.status not in self.known_statuses:
+            raise self
+
+
+
+class Loop (object):
 
     def update(self, time):
         self.stage.update(time)
@@ -103,16 +139,64 @@ class PygletLoop (object):
                 self.exit()
 
     def exit(self):
+        raise NotImplementedError
+
+    def get_initial_stage(self):
+        raise NotImplementedError
+
+
+class PygameLoop (Loop):
+    """ Manage whichever stage is currently active.  This involves both
+    updating the current stage and handling transitions between stages. """
+
+    def play(self, frequency=50):
+        import pygame
+
+        try:
+            clock = pygame.time.Clock()
+            self.stop_flag = False
+
+            self.stage = self.get_initial_stage()
+            self.stage.set_master(self)
+            self.stage.setup()
+
+            while not self.is_finished():
+                time = clock.tick(frequency) / 1000
+                self.update(time)
+
+            if self.stage:
+                self.stage.teardown()
+
+        except KeyboardInterrupt:
+            print
+
+    def exit(self):
+        self.stop_flag = True
+
+    def is_finished(self):
+        return self.stop_flag
+
+
+class PygletLoop (Loop):
+
+    def play(self, frames_per_sec=50):
+        import pyglet
+
+        self.window = pyglet.window.Window()
+        self.stage = self.get_initial_stage()
+        self.stage.set_master(self)
+        self.stage.setup()
+
+        pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
+        pyglet.app.run()
+
+    def exit(self):
         import pyglet
         if self.stage: self.stage.teardown()
         pyglet.app.exit()
 
-
     def get_window(self):
         return self.window
-
-    def get_initial_stage(self):
-        raise NotImplementedError
 
 
 class MultiplayerDebugger (object):
@@ -158,6 +242,78 @@ class MultiplayerDebugger (object):
 
 
 
+class Publisher (object):
+
+    def __init__(self, *subscribers):
+        self.subscribers = list(subscribers)
+
+    def register(self, subscriber):
+        self.subscribers.append(subscriber)
+
+    def unregister(self, subscriber):
+        self.subscribers.remove(subscriber)
+
+    def publish(self, type, *args, **kwargs):
+        for subscriber in self.subscribers:
+            subscriber.receive(type, *args, **kwargs)
+
+
+class Subscriber (object):
+
+    def receive(self, type, *args, **kwargs):
+        raise NotImplementedError
+
+
+class NullSubscriber (Subscriber):
+
+    def receive(self, type, *args, **kwargs):
+        pass
+
+
+class CallbackSubscriber (Subscriber):
+
+    def __init__(self, callback):
+        self.callback = callback
+
+    def receive(self, type, *args, **kwargs):
+        self.callback(type, *args, **kwargs)
+
+
+class InspectionBasedSubscriber (Subscriber):
+
+    def __init__(self, delegate, template='{0}'):
+        self.template = template
+        self.delegate = delegate
+        self.complain_by_default()
+
+    def receive(self, type, *args, **kwargs):
+        try:
+            handler = getattr(self.delegate, self.template.format(type))
+        except AttributeError:
+            self.default(type, *args, **kwargs)
+        else:
+            handler(*args, **kwargs)
+
+    def set_delegate(self, delegate):
+        self.delegate = delegate
+
+    def set_template(self, template):
+        self.template = template
+
+    def set_default(self, handler):
+        self.default = callback
+
+    def ignore_by_default(self):
+        self.default = lambda *args, **kwargs: None
+
+    def complain_by_default(self):
+        def handle_with_complaint(type, *args, **kwargs):
+            data = self.delegate, self.template.format(type)
+            raise AssertionError("Expected %s to provide %s()." % data)
+        self.default = handle_with_complaint
+
+
+
 class Stage (object):
 
     def __init__(self):
@@ -197,34 +353,25 @@ class Stage (object):
 
 class GameStage (Stage):
 
-    def __init__(self, world, mailbox, actors):
+    def __init__(self, world, forum, actors):
         Stage.__init__(self)
         self.world = world
-        self.mailbox = mailbox
+        self.forum = forum
         self.actors = actors
         self.successor = None
-
-    def set_successor(self, successor):
-        self.successor = successor
-
-    def get_successor(self):
-        return self.successor
 
     def setup(self):
         """ Prepares the actors, world, and messaging system to begin playing
         the game.  This function is only called once, and is therefore useful
         for initialization code. """
 
-        # Setup the mailbox, then immediately collect any greeting messages
-        # that have been sent.  Doing this guarantees that the greetings are
-        # processed before any other messages.  Once the actor setup methods
-        # are called, other messages may go on the queue.
+        # Setup the forum first.  Note that on clients, this blocks until an 
+        # id number is received from the forum running on the server.
 
-        self.mailbox.setup(self.world, self.actors)
-        self.mailbox.collect()
+        self.forum.setup(self.world, self.actors)
 
-        # Setup the world before setting up the actors, so that the actors can
-        # feel free to read information out of the world when building
+        # Setup the world before setting up the actors, so that the actors can 
+        # feel free to read information out of the world when building 
         # themselves.
 
         self.world.define_actors(self.actors)
@@ -239,13 +386,7 @@ class GameStage (Stage):
 
     def update(self, time):
         """ Sequentially updates the actors, world, and messaging system.  The
-        loop terminates once all of the actors indicate that they are done.  """
-
-        self.mailbox.collect()
-        self.mailbox.update()
-
-        with UnrestrictedTokenAccess():
-            self.world.update(time)
+        loop terminates once all of the actors indicate that they are done. """
 
         still_playing = False
 
@@ -257,8 +398,13 @@ class GameStage (Stage):
         if not still_playing:
             self.exit_stage()
 
+        self.forum.update()
+
+        with UnrestrictedTokenAccess():
+            self.world.update(time)
+
     def teardown(self):
-        self.mailbox.teardown()
+        self.forum.teardown()
 
         for actor in self.actors:
             actor.teardown()
@@ -266,64 +412,83 @@ class GameStage (Stage):
         with UnrestrictedTokenAccess():
             self.world.teardown()
 
+    def get_successor(self):
+        return self.successor
+
+    def set_successor(self, successor):
+        self.successor = successor
+
 
 class SinglePlayerGameStage (GameStage):
+
     def __init__(self, world, referee, remaining_actors):
-        mailbox = LocalMailbox()
-        actors = [referee]
+        forum = Forum()
+        actors = [referee] + list(remaining_actors)
+        GameStage.__init__(self, world, forum, actors)
 
-        if isinstance(remaining_actors, dict):
-            for actor, greeting in remaining_actors.items():
-                actor.send_message(greeting)
-                actors.append(actor)
-        else:
-            actors.extend(remaining_actors)
 
-        GameStage.__init__(self, world, mailbox, actors)
+class MultiplayerClientGameStage (Stage):
 
-class MultiplayerClientGameStage (GameStage):
     def __init__(self, world, actor, pipe):
-        mailbox = RemoteMailbox(pipe)
-        GameStage.__init__(self, world, mailbox, [actor])
+        Stage.__init__(self)
+
+        self.world = world
+        self.actor = actor
+        self.forum = ClientForum(pipe)
+
+    def setup(self):
+        pass
+
+    def update(self, time):
+        if self.forum.connect():
+            self.exit_stage()
+
+    def teardown(self):
+        pass
+
+    def get_successor(self):
+        return GameStage(self.world, self.forum, [self.actor])
+
 
 class MultiplayerServerGameStage (GameStage):
-    def __init__(self, world, referee, pipes):
-        mailbox = LocalMailbox()
-        actors = [referee]
 
-        if isinstance(pipes, dict):
-            for pipe, greeting in pipes.items():
-                actor = RemoteActor(pipe)
-                actor.send_message(greeting)
-                actors.append(actor)
-        else:
-            actors += [RemoteActor(pipe) for pipe in pipes]
-            
-        GameStage.__init__(self, world, mailbox, actors)
+    def __init__(self, world, referee, pipes):
+        forum = Forum()
+        actors = [referee] + [RemoteActor(pipe) for pipe in pipes]
+        GameStage.__init__(self, world, forum, actors)
+
 
 
 class Actor (object):
 
-    class Messenger:
-
-        def __init__(self, actor):
-            self._actor = actor
-
-        def send_message(self, message):
-            self._actor.send_message(message)
-
-
     def __init__(self):
         self.world = None
+        self.id = None
 
-        self.messages = []
-        self.messenger = Actor.Messenger(self)
+        self.messenger = Messenger(self)
+        self.subscribers = {
+                'accept': InspectionBasedSubscriber(self, 'accept_{}'),
+                'reject': InspectionBasedSubscriber(self, 'reject_{}'),
+                'handle': InspectionBasedSubscriber(self, 'handle_{}') }
 
-        self.greeted = False
-        self.greeter = self.get_name()
+        self.subscribers['accept'].ignore_by_default()
+        self.subscribers['reject'].complain_by_default()
+        self.subscribers['handle'].ignore_by_default()
 
-    def get_name(self):
-        raise NotImplementedError
+    def get_id(self):
+        assert self.id is not None, "Actor does not have id."
+        return self.id
+
+    def give_id(self, id):
+        assert self.id is None, "Actor already has id."
+        self.id = id
+
+    def get_messenger(self):
+        return self.messenger
+
+    def is_finished(self):
+        return self.world.has_game_ended()
+
 
     def setup(self):
         pass
@@ -334,57 +499,42 @@ class Actor (object):
     def teardown(self):
         pass
 
-    def is_finished(self):
-        return self.world.has_game_ended()
-
 
     def send_message(self, message):
-        self.messages.append(message)
-
-    def deliver_messages(self):
-        buffer = self.messages; self.messages = []
-        return buffer
+        self.messenger.send_message(message)
 
     def accept_message(self, message, verified):
-        message.accept(self, verified)
+        type = message.type()
+        self.subscribers['accept'].receive(type, message, verified)
 
     def reject_message(self, message):
-        message.reject(self)
+        type = message.type()
+        self.subscribers['reject'].receive(type, message)
+
+    def handle_message(self, message):
+        type = message.type()
+        self.subscribers['handle'].receive(type, message)
 
     def dispatch_message(self, message):
         pass
-
-    def receive_message(self, message):
-        self.receive_greeting(message)
-        message.notify(self, message.was_sent_from_here())
-
-    def receive_greeting(self, message):
-        # A greeting is a special type of message that specifies which player
-        # is associated with this actor.  Only messages that are subclasses of
-        # the base Greeting class and that were sent by this actor will be
-        # interpreted as greetings.  It is an error for one actor to receive
-        # more than one greeting.
-        
-        if isinstance(message, Greeting) and message.was_sent_from_here():
-            if self.greeted:
-                raise ActorGreetedTwice()
-            else:
-                self.greeter = message.get_sender()
-                self.greeted = True
 
 
 class RemoteActor (Actor):
 
     def __init__(self, pipe):
         Actor.__init__(self)
+
         self.pipe = pipe
         self.pipe.lock()
 
-    def get_name(self):
-        return "remote"
+    def give_id(self, id):
+        Actor.give_id(self, id)
+        message = IdMessage(id)
+        self.pipe.send(message)
 
     def is_finished(self):
         return self.pipe.finished() or Actor.is_finished(self)
+
 
     def setup(self):
         serializer = TokenSerializer(self.world)
@@ -392,15 +542,12 @@ class RemoteActor (Actor):
 
     def update(self, time):
         self.pipe.deliver()
+        for message in self.pipe.receive():
+            self.messenger.send_message(message)
 
     def teardown(self):
         self.pipe.pop_serializer()
 
-    def deliver_messages(self):
-        for message in self.pipe.receive():
-            self.send_message(message)
-
-        return Actor.deliver_messages(self)
 
     def accept_message(self, message, verified):
         pass
@@ -409,11 +556,11 @@ class RemoteActor (Actor):
         message.set_origin(True)
         self.pipe.send(message)
 
+    def handle_message(self, message):
+        pass
+
     def dispatch_message(self, message):
         self.pipe.send(message)
-
-    def receive_message(self, message):
-        self.receive_greeting(message)
 
 
 class Referee (Actor):
@@ -426,93 +573,87 @@ class Referee (Actor):
             token.report(self.messenger)
 
 
-class Mailbox (object):
-
-    def setup(self, world, actors):
-        raise NotImplementedError
-
-    def collect(self):
-        raise NotImplementedError
-
-    def update(self):
-        raise NotImplementedError
-
-    def teardown(self):
-        raise NotImplementedError
-
-
-class LocalMailbox (Mailbox):
+class Forum (object):
 
     def setup(self, world, actors):
         self.world = world
         self.actors = actors
-        self.packages = []
         self.id_factory = IdFactory(world)
 
-    def collect(self):
-        for actor in self.actors:
-            messages = actor.deliver_messages()
-            self.packages += [(actor, message) for message in messages]
+        for id, actor in enumerate(actors):
+            actor.give_id(id)
 
     def update(self):
-        packages = self.packages
-        self.packages = []
+        world = self.world
 
-        for sender, message in packages:
-            status = message.check(self.world, sender.greeter)
-            message.set_status(status)
+        for sender in self.actors:
+            sender_id = sender.get_id()
+            messenger = sender.get_messenger()
 
-            if message.was_accepted():
-                sender.accept_message(message, True)
-            else:
-                sender.reject_message(message)
-                continue
+            for message in messenger.deliver_messages():
+                type = message.type()
+                status = message.check(world, sender_id)
+                message.set_status(status)
 
-            with UnrestrictedTokenAccess():
-                message.setup(self.world, sender.greeter, self.id_factory)
+                if message.was_accepted():
+                    sender.accept_message(message, True)
+                else:
+                    sender.reject_message(message)
+                    continue
 
-            for actor in self.actors:
-                private_message = message.copy()
-                private_message.set_origin(actor is sender)
-                actor.dispatch_message(private_message)
+                with UnrestrictedTokenAccess():
+                    message.setup(world, self.id_factory)
 
-            with UnrestrictedTokenAccess():
-                message.execute(self.world)
+                for actor in self.actors:
+                    private_message = message.copy()
+                    private_message.set_origin(actor is sender)
+                    actor.dispatch_message(private_message)
 
-            for actor in self.actors:
-                private_message = message.copy()
-                private_message.set_origin(actor is sender)
-                actor.receive_message(private_message)
+                with UnrestrictedTokenAccess():
+                    world.handle_message(message)
+
+                for actor in self.actors:
+                    private_message = message.copy()
+                    private_message.set_origin(actor is sender)
+                    actor.handle_message(private_message)
 
     def teardown(self):
         pass
 
 
-class RemoteMailbox (Mailbox):
+class ClientForum (object):
 
     def __init__(self, pipe):
+        self.actor_id = None
         self.pipe = pipe
         self.pipe.lock()
+
+    def connect(self):
+        for message in self.pipe.receive():
+            if isinstance(message, IdMessage):
+                self.actor_id = message.id
+                return True
+        return False
 
     def setup(self, world, actors):
         assert len(actors) == 1
 
         self.world = world
-        self.actor = actors[0]
         self.messages = []
+
+        self.actor = actors[0]
+        self.actor.give_id(self.actor_id)
 
         serializer = TokenSerializer(world)
         self.pipe.push_serializer(serializer)
 
-    def collect(self):
-        self.messages += self.actor.deliver_messages()
-
     def update(self):
+        world = self.world
         actor = self.actor
-        greeter = actor.greeter
+        messenger = actor.get_messenger()
 
-        for message in self.messages:
-            status = message.check(self.world, greeter)
+        for message in messenger.deliver_messages():
+            status = message.check(world, actor.id)
 
             if status:
                 actor.accept_message(message, False)
@@ -523,10 +664,8 @@ class RemoteMailbox (Mailbox):
             self.pipe.send(message)
 
         self.pipe.deliver()
-        self.messages = []
 
         for message in self.pipe.receive():
-
             if message.was_sent_from_here():
                 if message.was_accepted():
                     actor.accept_message(message, True)
@@ -535,29 +674,36 @@ class RemoteMailbox (Mailbox):
                     continue
 
             with UnrestrictedTokenAccess():
-                message.execute(self.world)
+                world.handle_message(message)
 
-            actor.receive_message(message)
+            actor.handle_message(message)
 
     def teardown(self):
         self.pipe.pop_serializer()
 
+
+class Messenger (object):
+
+    def __init__(self, actor):
+        self.actor = actor
+        self.messages = []
+
+    def send_message(self, message):
+        self.messages.append(message)
+
+    def deliver_messages(self):
+        buffer = self.messages; self.messages = []
+        return buffer
+    
 
 class IdFactory (object):
 
     def __init__(self, world):
         self.next_id = world.get_id() + 1
 
-    def next(self, count=1):
-
-        if count == 1:
-            result = self.next_id
-            self.next_id += 1
-
-        else:
-            result = tuple(( self.next_id + n for n in range(count) ))
-            self.next_id += count
-
+    def next(self):
+        result = self.next_id
+        self.next_id += 1
         return result
 
 
@@ -595,49 +741,117 @@ class TokenMetaclass (type):
     read_only_special_cases = '__str__', '__repr__'
     before_setup_special_cases = '__init__', '__extend__'
 
+    class TokenSetupError (GameEngineError):
+
+        message = "May have forgotten to add {0} to the world."
+        details = """\
+                The {0}.{1}() method was invoked on a token that had not yet 
+                been added to the game world.  This is usually a sign that the 
+                token in question was never added to the game world.  Label the 
+                {1}() method with the kxg.before_setup decorator if you do 
+                need it to setup {0} tokens."""
+
+        def __init__(self, token, method):
+            class_name = token.__class__.__name__
+            method_name = method.__name__
+
+            self.method = method
+            self.format_arguments(class_name, method_name)
+
+        def raise_if_warranted(self):
+            if not hasattr(self.method, TokenMetaclass.before_setup_flag):
+                raise self
+
+    class TokenAccessError (GameEngineError):
+
+        message = "Attempted unsafe invocation of {0}.{1}()."
+        details = """\
+                This error is meant to bring attention to situations that might 
+                cause synchronization issues in multiplayer games.  The {1}() 
+                method is not marked as read-only, but it was invoked from 
+                outside the context of a message.  This means that if {1}() 
+                makes any changes to the world, those changes will not be 
+                propagated. If {1}() is actually read-only, mark it with the 
+                @kxg.read_only decorator."""
+
+        def __init__(self, token, method):
+            class_name = token.__class__.__name__
+            method_name = method.__name__
+
+            self.method = method
+            self.format_arguments(class_name, method_name)
+
+        def raise_if_warranted(self):
+            if Token._locked:
+                raise self
+
+    class TokenTeardownError (GameEngineError):
+
+        message = "May not have completely removed {0} from the world."
+        details = """\
+                The {0}.{1}() method was invoked on a token that has already 
+                been removed from the game world.  This is usually a sign that 
+                not all references to this token were purged when it was 
+                removed.  If you simply need to invoke the {1}() method after 
+                teardown, label it with the kxg.after_teardown decorator."""
+
+        def __init__(self, token, method):
+            class_name = token.__class__.__name__
+            method_name = method.__name__
+
+            self.method = method
+            self.format_arguments(class_name, method_name)
+
+        def raise_if_warranted(self):
+            if not hasattr(self.method, TokenMetaclass.after_teardown_flag):
+                raise self
+
+
     def __new__(meta, name, bases, members):
         from types import FunctionType
 
-        for attribute, value in members.items():
-            is_function = (type(value) == FunctionType)
-            is_before_setup = attribute in meta.before_setup_special_cases
-            is_read_only = hasattr(value, meta.read_only_flag) or \
-                    attribute in meta.read_only_special_cases
+        for member_name, member_value in members.items():
+            is_function = (type(member_value) == FunctionType)
+            is_before_setup = member_name in meta.before_setup_special_cases
+            is_read_only = hasattr(member_value, meta.read_only_flag) or \
+                    member_name in meta.read_only_special_cases
 
             if is_function and is_before_setup:
-                value = TokenMetaclass.before_setup(value)
+                member_value = TokenMetaclass.before_setup(member_value)
             if is_function and not is_read_only:
-                value = TokenMetaclass.check_for_safety(value)
+                member_value = TokenMetaclass.check_for_safety(member_value)
 
-            members[attribute] = value
+            members[member_name] = member_value
 
         return type.__new__(meta, name, bases, members)
 
     @classmethod
     def check_for_safety(meta, method):
-        id_error = "Token has a null id."
-        access_error = "Don't have permission to modify %s."
-        setup_error = "Setup the token before calling this method."
-        teardown_error = "Call this method before tearing down the token."
-        status_error = "Token is in unknown state '%s'."
+        """ Decorate the given method so that it will complain if invoked in a 
+        dangerous way.  This mostly means checking to make sure that methods 
+        which alter the token are only called from messages. """
 
-        setup_method = hasattr(method, meta.before_setup_flag)
-        teardown_method = hasattr(method, meta.after_teardown_flag)
+        # Access control checks help find bugs, but they may also incur 
+        # significant computational expense.  By invoking python with 
+        # optimization enabled (i.e. passing -O) these checks are disabled.  
+
+        if not __debug__:
+            return method
 
         @functools.wraps(method)
         def decorator(self, *args, **kwargs):
             if self.is_before_setup():
-                assert setup_method, setup_error
+                meta.TokenSetupError(self, method).raise_if_warranted()
 
             elif self.is_registered():
-                assert self._id is not None, id_error
-                assert not Token._locked, access_error % self
+                NullTokenIdError(self).raise_if_warranted()
+                meta.TokenAccessError(self, method).raise_if_warranted()
 
             elif self.is_after_teardown():
-                assert teardown_method, teardown_error
+                meta.TokenTeardownError(self, method).raise_if_warranted()
 
             else:
-                raise AssertionError(status_error % self._status)
+                UnknownTokenStatus(self).raise_unconditionally()
 
             return method(self, *args, **kwargs)
 
@@ -719,13 +933,7 @@ class Token (object):
     @read_only
     def get_extension(self):
         actor = Token._actor
-        extension = self._extensions.get(actor)
-
-        if extension: return extension
-        else: 
-            print self._extensions
-            print actor
-            raise AttributeError
+        return self._extensions[actor]
 
     @read_only
     def get_extensions(self):
@@ -736,10 +944,12 @@ class World (Token):
 
     def __init__(self):
         Token.__init__(self)
+
         self._id = 1
-        self._status = Token._before_setup
         self._tokens = {1: self}
         self._actors = []
+
+        self.subscriber = InspectionBasedSubscriber(self)
 
     @read_only
     def __str__(self):
@@ -781,13 +991,9 @@ class World (Token):
         token._extensions = {}
         extension_classes = token.__extend__()
 
-        # The extensions dictionary should really map between actor classes 
-        # (not strings) and extension objects.  However, this could be a 
-        # somewhat significant change.  I'm leaving the code as-is for now.
-
         for actor in self._actors:
-            name = actor.get_name()
-            extension_class = extension_classes.get(name)
+            actor_class = type(actor)
+            extension_class = extension_classes.get(actor_class)
 
             if extension_class:
                 extension = extension_class(actor, token)
@@ -795,6 +1001,10 @@ class World (Token):
 
         token._status = Token._registered
         token.setup()
+
+    def add_tokens(self, tokens, list=None):
+        for token in tokens:
+            self.add_token(token, list)
 
     def remove_token(self, token, list=None):
         id = token.get_id()
@@ -808,6 +1018,14 @@ class World (Token):
 
         token.teardown()
         token._status = Token._after_teardown
+
+    def remove_tokens(self, tokens, list=None):
+        for token in tokens:
+            self.remove_token(token, list)
+
+    def handle_message(self, message):
+        type = message.type()
+        self.subscriber.receive(type, message)
 
 
     @read_only
@@ -916,44 +1134,11 @@ class Message (object):
 
         raise NotImplementedError
 
-    def reject(self, sender):
-        """ Inform *sender* that the message was rejected.  This means that 
-        :meth:`check` returned false, either locally or on the server.  In many 
-        cases, this happens because the player requests some sort of illegal 
-        action, like building a unit without having enough resource.  This 
-        callback should be overwritten to provide the player feedback about 
-        what they did wrong.  By default, this method will raise an 
-        :exc:`UnhandledMessageRejection` so that rejected messages don't go 
-        unnoticed.
-
-        :argument sender: The actor that sent this message.
-        :returns: None """
-
-        raise UnhandledMessageRejection(self)
-
-    def accept(self, sender, verified):
-        """ Inform *sender* that the message was accepted.  This means that 
-        :meth:`check` returned true, either locally or on the server.  If the 
-        message was accepted locally, it could still be rejected by the server 
-        and so the *verified* parameter is set to false.  Otherwise, if the 
-        server has accepted the message, *verified* is set to true.  This 
-        callback can be overwritten to provide instantaneous feedback to 
-        players while the message is traveling to and from the server.
-
-        :arguments sender: The actor that sent this message.
-        :arguments verified: A boolean indicating who accepted this message.
-        :returns: None """
-
+    def setup(self, world, id_factory):
+        """ Setup the Allow the message to claim unique ID numbers for new 
+        objects being created.  This method is only called once (e.g. on the 
+        server) to guarantee that the given ID numbers are unique. """
         pass
-
-    def setup(self, world, sender, id_factory):
-        """ Setup the Allow the message to claim unique ID numbers for new objects being
-        created.  In multiplayer games, this method is only called on the
-        server to guarantee that the given ID numbers are unique. """
-        pass
-
-    def recheck(self, world):
-        return True
 
     def execute(self, world):
         """ Allow the message to make modifications to the game world.  This
@@ -964,12 +1149,22 @@ class Message (object):
 
         raise NotImplementedError
 
-    def notify(self, actor, was_sent_from_here):
-        """ Inform the given actor that this message has occurred.  This will 
-        only happen on the machine that is hosting the actor in question.  For 
-        example, the actor representing a player on the server will not be 
-        notified, but the actor representing that player on a client will. """
-        pass
+
+    @classmethod
+    def type(cls):
+        """ Return a string indicating what type of message this is.  This is 
+        used by actors to decide which callback to invoke upon receiving this 
+        kind of message.  By default, this method returns the class name 
+        converted to box_car_case and should not need to be overridden.  If it 
+        is overridden, make sure the string it returns is always a valid python 
+        identifier. """
+        import re
+
+        camel_case_name = cls.__name__
+        lower_case_words = [word.group(0).lower()
+            for word in re.finditer('[A-Z][a-z]*', camel_case_name)]
+
+        return '_'.join(lower_case_words)
 
     def copy(self):
         """ Return a shallow copy of the message object.  This is called by
@@ -994,8 +1189,8 @@ class Message (object):
         return self._origin
 
 
-class Greeting (Message):
-    def get_sender(self):
-        raise NotImplementedError
+class IdMessage (object):
+    def __init__(self, id):
+        self.id = id
 
 

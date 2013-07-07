@@ -21,5 +21,4 @@ import network, messaging
 # Import a few of the most useful classes into the top-level namespace.
 from engine import *
 
-del RemoteActor, Mailbox, LocalMailbox, RemoteMailbox, IdFactory
-del UnrestrictedTokenAccess
+del RemoteActor, Forum, ClientForum, IdFactory, UnrestrictedTokenAccess
