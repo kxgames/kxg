@@ -30,11 +30,14 @@ import functools
 # sent by game objects (via notify) are passed to the referee, which is not 
 # equipped to handle them. 
 
+# It's not intuitive that actor.world is directly set by the GameStage.  It is 
+# more intuitive to have the world be an argument to setup().
+
 class PygameLoop (object):
     """ Manage whichever stage is currently active.  This involves both
     updating the current stage and handling transitions between stages. """
 
-    def play(self, frequency=50):
+    def play(self, frames_per_sec=50):
         import pygame
 
         try:
@@ -46,7 +49,7 @@ class PygameLoop (object):
             stage.setup()
 
             while not self.is_finished():
-                time = clock.tick(frequency) / 1000
+                time = clock.tick(frames_per_sec) / 1000
                 stage.update(time)
 
                 if stage.is_finished():
@@ -125,17 +128,55 @@ class MultiplayerDebugger (object):
     class Process(multiprocessing.Process):
 
         def __init__(self, name, loop):
-            constructor = MultiplayerDebugger.multiprocessing.Process.__init__
-            constructor(self, name=name)
+            MultiplayerDebugger.multiprocessing.Process.__init__(self, name=name)
             self.loop = loop
+            self.logger = MultiplayerDebugger.Logger(name)
 
         def __nonzero__(self):
             return self.is_alive()
 
         def run(self):
-            try: self.loop.play()
+            try:
+                with self.logger:
+                    self.loop.play(50)
             except KeyboardInterrupt:
                 pass
+
+    class Logger:
+
+        def __init__(self, name, use_file=False):
+            self.name = name.lower()
+            self.header = '%6s: ' % name
+            self.path = '%s.log' % self.name
+            self.use_file = use_file
+            self.last_char = '\n'
+
+        def __enter__(self):
+            import sys
+            sys.stdout, self.stdout = self, sys.stdout
+            if self.use_file: self.file = open(self.path, 'w')
+
+        def __exit__(self, *ignored_args):
+            import sys
+            sys.stdout = self.stdout
+            if self.use_file: self.file.close()
+
+        def write(self, line):
+            annotated_line = ''
+
+            if self.last_char == '\n':
+                annotated_line += self.header
+
+            annotated_line += line[:-1].replace('\n', '\n' + self.header)
+            annotated_line += line[-1]
+
+            self.last_char = line[-1]
+
+            self.stdout.write(annotated_line)
+            if self.use_file: self.file.write(line)
+
+        def flush(self):
+            pass
 
 
     def __init__(self):
@@ -515,6 +556,7 @@ class RemoteMailbox (Mailbox):
         actor = self.actor
         greeter = actor.greeter
 
+        # Send messages.
         for message in self.messages:
             status = message.check(self.world, greeter)
 
@@ -529,8 +571,8 @@ class RemoteMailbox (Mailbox):
         self.pipe.deliver()
         self.messages = []
 
+        # Receive messages.
         for message in self.pipe.receive():
-
             if message.was_sent_from_here():
                 if message.was_accepted():
                     actor.accept_message(message, True)
@@ -643,10 +685,7 @@ class Token (object):
         extension = self._extensions.get(actor)
 
         if extension: return extension
-        else: 
-            print self._extensions
-            print actor
-            raise AttributeError
+        else: raise AttributeError
 
     def get_extensions(self):
         return self._extensions.values()
@@ -831,6 +870,9 @@ class UnprotectedTokenLock (TokenLock):
 
 
 class Message (object):
+
+    def __repr__(self):
+        return self.__str__()
 
     def check(self, world, sender):
         """ Return true if the message is consistent with the state of the game 
