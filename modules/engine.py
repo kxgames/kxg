@@ -83,7 +83,7 @@ class PygletLoop (object):
     def play(self, frames_per_sec=50):
         import pyglet
 
-        self.window = pyglet.window.Window()
+        self.window = pyglet.window.Window(visible=False)
 
         self.stage = self.get_initial_stage()
         self.stage.set_master(self)
