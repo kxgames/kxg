@@ -5,6 +5,61 @@ import testing
 
 from helpers.pipes import *
 
+class Token (object):
+
+    def __init__(self, id, partner=None):
+        self.id = id
+        self.partner = partner
+
+    def __str__(self):
+        string = '<Token addr=0x%x id=%d' % (id(self), self.id)
+        if self.partner: string += ' partner=%d' % self.partner.id
+        string += '>'
+        return string
+
+    __repr__ = __str__
+
+    def __eq__(self, other):
+        return self.id == other.id and self.partner == other.partner
+
+
+class Serializer (object):
+
+    def __init__(self, world):
+        self.world = world
+
+    def pack(self, message):
+        from pickle import Pickler
+        from cStringIO import StringIO
+
+        buffer = StringIO()
+        delegate = Pickler(buffer)
+
+        delegate.persistent_id = self.persistent_id
+        delegate.dump(message)
+
+        return buffer.getvalue()
+
+    def unpack(self, packet):
+        from pickle import Unpickler
+        from cStringIO import StringIO
+
+        buffer = StringIO(packet)
+        delegate = Unpickler(buffer)
+
+        delegate.persistent_load = self.persistent_load
+        return delegate.load()
+
+    def persistent_id(self, token):
+        if isinstance(token, Token):
+            if token.id in self.world:
+                return token.id
+
+    def persistent_load(self, id):
+        return self.world[int(id)]
+
+
+
 @testing.test
 def isolated_pipes(helper):
     machine, port = 'localhost', 10236
@@ -79,8 +134,9 @@ def simple_messages(helper):
         sender.send(message)
 
     sent = sender.deliver()
-    received = receiver.receive()
+    received = [message for message in receiver.receive()]
 
+    print sent, received
     assert sent == received
 
     # Close the connection.
@@ -89,7 +145,7 @@ def simple_messages(helper):
     assert sender.finished()
 
     assert not receiver.finished()
-    receiver.receive()
+    received = [message for message in receiver.receive()]
     assert receiver.finished()
 
 
@@ -155,6 +211,42 @@ def test_partial_messages(helper):
     # Make sure all the messages were properly received.
     disconnect(sender, receiver)
     inbox.check(outbox)
+
+@testing.test
+def test_token_serialization(helper):
+    """ Test the situation where two messages are sent, and the second one 
+    can't be unpacked until the first one is processed.  This situation comes 
+    up fairly often in games.  It requires that pipe.receive() returns messages 
+    as an iterator, so that each message can be processed in turn. """
+
+    sender, receiver = connect()
+    sender.lock(); receiver.lock()
+
+    # Send the messages.
+    world = {}
+    sender.set_serializer(Serializer(world))
+
+    first_token = Token(1)
+    second_token = Token(2, first_token)
+
+    for token in (first_token, second_token):
+        sender.send(token)
+        world[token.id] = token
+
+    sender.deliver()
+    sender.close()
+
+    # Receive the messages.
+    world = {}
+    receiver.set_serializer(Serializer(world))
+
+    for token in receiver.receive():
+        world[token.id] = token
+
+    # Check the results.
+    assert world[1] == first_token
+    assert world[2] == second_token
+    assert world[2].partner is world[1]
 
 
 testing.title("Testing the network module...")

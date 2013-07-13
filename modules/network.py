@@ -1,17 +1,14 @@
 import errno, socket, struct, pickle
 
-# Server Documentation
-# ====================
-# I had a hard time figuring out how to use the Server class.  It's not enough
-# just to look at its methods, because most of them are defined in the Host
-# class.  This is something that the documentation should make more clear.
-
 class Host:
     """ Accept any number of incoming network connections.  For each
     connection, a new pipe is created.  The pipe can be used for communication,
     but by itself the host cannot. """
 
     def __init__(self, host, port, callback=lambda pipe: None):
+        """ Construct a host listening on the given host and port.  The host 
+        will not actually begin accepting connections until open() and accept() 
+        have been called. """
         self.callback = callback
         self.queue = 5
 
@@ -58,6 +55,8 @@ class Host:
                 else: raise
 
     def finished(self):
+        """ Return true if close() method has been called to explicitly close 
+        the host.  This method may be overwritten in subclasses. """
         return self.closed
 
     def close(self):
@@ -77,6 +76,9 @@ class Server (Host):
     the case, you need to use hosts instead. """
 
     def __init__(self, host, port, seats, callback=lambda pipes: None):
+        """ Construct a server listening on the given host and port for the 
+        given number of connections.  The server will not actually begin 
+        connections until open() and accept() have been called. """
         self.pipes = []
         self.seats = seats
 
@@ -90,18 +92,21 @@ class Server (Host):
         Host.__init__(self, host, port, callback=greet)
 
     def __iter__(self):
+        """ Return an iterator over the pipes connected to the server. """
         assert self.full()
-        for pipe in zip(self.pipes, self.identities):
-            yield pipe
+        return iter(self.pipes)
 
     def get_pipes(self):
+        """ Return the pipes connected to the server. """
         assert self.full()
         return self.pipes
 
     def empty(self):
+        """ Return true if no clients have connected yet. """
         return len(self.pipes) == 0
 
     def full(self):
+        """ Return true if all of the seats have been filled. """
         return len(self.pipes) == self.seats
 
 
@@ -112,6 +117,9 @@ class Client:
     mediated by the pipe. """
 
     def __init__(self, host, port, callback=lambda pipe: None):
+        """ Construct with a host and port to connect to.  The connect() method 
+        must be called to establish the connection to this address, because 
+        this method does not go over the network itself. """
         self.callback = callback
 
         self.pipe = None
@@ -121,9 +129,14 @@ class Client:
         self.socket.setblocking(False)
 
     def get_pipe(self):
+        """ Return a pipe that can be used for communication. """
+        assert self.finished()
         return self.pipe
 
     def connect(self):
+        """ Attempt the connect to the network address specified in the 
+        constructor.  This method does not block, so it may need to be called 
+        repeatedly until finished() returns true. """
         assert not self.finished()
 
         error = self.socket.connect_ex(self.address)
@@ -135,13 +148,14 @@ class Client:
         return error
 
     def finished(self):
+        """ Return true if a connection has been established. """
         return bool(self.pipe)
 
 
 class Pipe:
     """ Facilitate nonblocking communication across a network connection.  
-    Pipes are often not used directly, but are instead passed to higher level
-    communication frameworks like forums or conversations. """
+    Pipes are often not used directly, but are instead passed to higher-level
+    communication frameworks like the game engine. """
 
     class Header:
         """ Pack and unpack the header information that gets attached to 
@@ -200,6 +214,9 @@ class Pipe:
 
 
     def __init__(self, socket):
+        """ Internal constructor used by the Host and Client classes to create 
+        new pipes.  The given socket must already be connected.  The pipe will 
+        act as a game-friendly, non-blocking wrapper around that socket. """
         self.socket = socket
         self.socket.setblocking(False)
 
@@ -213,41 +230,54 @@ class Pipe:
         self.serializer_stack = []
 
     def close(self):
+        """ Close the network connection and unlock the pipe. """
         self.socket.close()
         self.closed = True
         self.unlock()
 
     def lock(self):
+        """ Lock the pipe so that only one higher-level framework can use it.  
+        Two frameworks can't share a pipe because it's difficult to specify 
+        which messages go to which framework. """
         assert not self.locked
         self.locked = True
 
     __enter__ = lock
 
     def unlock(self, *ignore):
+        """ Unlock the pipe so that other higher-level framework can use it.  
+        Only do this once the current framework is done with the pipe, because 
+        two frameworks shouldn't use the same pipe at the same time. """
         self.locked = False
 
     __exit__ = unlock
 
     def busy(self):
-        return self.incoming or self.outgoing
+        """ Return true if data is waiting to either be sent or received. """
+        return bool(self.incoming or self.outgoing)
 
     def idle(self):
-        return self.incoming == "" and self.outgoing == []
+        """ Return true if the pipe is not busy. """
+        return not self.busy()
 
     def send(self, message, receipt=None):
+        """ Queue a message to be sent.  The message is packed immediately, but 
+        it's not physically sent onto the network until deliver() is called.  
+        The receipt argument allows you to provide a value that will returned 
+        back to you by deliver() once this message is actually sent.  By 
+        default, the receipt will be the message itself. """
         assert self.locked
 
         data = self.serializer.pack(message)
         stream = Pipe.Header.pack(data)
-
-        # The receipt argument allows you to provide a value that will returned
-        # back to you by deliver() once this message is actually sent.  By
-        # default, this value will be the message itself.
-
         receipt = message if receipt is None else receipt
+
         self.outgoing.append((stream, receipt))
 
     def deliver(self):
+        """ Deliver any messages that were queued in the last frame.  This 
+        method does not block, which means it handles the (rare) case where it 
+        takes several tries to send a message. """
         receipts = []
 
         while self.outgoing:
@@ -274,9 +304,14 @@ class Pipe:
         return receipts
 
     def receive(self):
-        assert self.locked
+        """ Read as many messages as possible off of the network and return 
+        them.  Partial messages are stored in a buffer and will be returned as 
+        soon as they are completed.  The push_serializer() and set_serializer() 
+        methods can be used to control how messages are unpacked.  The messages 
+        are returned in an iterator, so each message can be fully processed 
+        before the next is unpacked. """
 
-        messages = []
+        assert self.locked
 
         # Begin by reading as much data as possible out of the network
         # interface and into a text stream.  If there was already data in the
@@ -323,29 +358,34 @@ class Pipe:
             data = self.incoming[header_length:packet_length]
             self.incoming = self.incoming[packet_length:]
 
-            # Interpret the unpacked data based on the message type contained
-            # in the header.  There is only one kind of message right now, but
-            # that may change in the future.
+            # The unpacked data is interpreted based on the message type 
+            # contained in the header.  There is only one kind of message right 
+            # now, but that may change in the future.
+
+            # Messages are returned using an iterator.  This gives the calling 
+            # code a chance to process each message before the next one is 
+            # unpacked.  Sometime the later messages cannot be unpacked until 
+            # all of the earlier ones have been processed.
 
             if header_type == Pipe.Header.message:
-                message = self.serializer.unpack(data)
-                messages.append(message)
-
+                yield self.serializer.unpack(data)
             else:
                 raise AssertionError
 
-        return messages
-
     def finished(self):
+        """ Return true if the pipe has been closed. """
         return self.closed
 
     def set_serializer(self, serializer):
+        """ Set the method used to pack and unpack messages. """
         self.serializer = serializer
 
     def push_serializer(self, serializer):
+        """ Push a new method to pack and unpack messages. """
         self.serializer_stack.append(self.serializer)
         self.serializer = serializer
 
     def pop_serializer(self):
+        """ Pop off the current method to pack and unpack messages. """
         self.serializer = self.serializer_stack.pop()
 
