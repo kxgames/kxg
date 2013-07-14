@@ -644,6 +644,9 @@ class Token (object):
         self._status = 'built'
         self._extensions = {}
 
+    def __repr__(self):
+        return str(self)
+
     def __extend__(self):
         return {}
 
