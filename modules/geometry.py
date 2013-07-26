@@ -562,6 +562,14 @@ class Rectangle (Shape):
         return Rectangle(position.x, position.y, 0, 0)
 
     @staticmethod
+    def from_points(*points):
+        left = min(_cast_anything_to_vector(p).x for p in points)
+        top = min(_cast_anything_to_vector(p).y for p in points)
+        right = max(_cast_anything_to_vector(p).x for p in points)
+        bottom = max(_cast_anything_to_vector(p).y for p in points)
+        return Rectangle.from_sides(left, top, right, bottom)
+
+    @staticmethod
     def from_shape(shape):
         top, left = shape.top, shape.left
         width, height = shape.width, shape.height
@@ -698,6 +706,10 @@ class Rectangle (Shape):
 
     def get_size(self):
         return self.__width, self.__height
+
+    def get_size_as_int(self):
+        from math import ceil
+        return int(ceil(self.__width)), int(ceil(self.__height))
 
 
     def get_top_left(self):
@@ -840,6 +852,7 @@ class Rectangle (Shape):
     width = property(get_width, set_width)
     height = property(get_height, set_height)
     size = property(get_size, set_size)
+    size_as_int = property(get_size_as_int)
 
     top_left = property(get_top_left, set_top_left)
     top_center = property(get_top_center, set_top_center)
