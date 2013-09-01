@@ -464,16 +464,7 @@ class Actor (object):
     def __init__(self):
         self.world = None
         self.id = None
-
         self.messenger = Messenger(self)
-        self.subscribers = {
-                'accept': InspectionBasedSubscriber(self, 'accept_{}'),
-                'reject': InspectionBasedSubscriber(self, 'reject_{}'),
-                'handle': InspectionBasedSubscriber(self, 'handle_{}') }
-
-        self.subscribers['accept'].ignore_by_default()
-        self.subscribers['reject'].complain_by_default()
-        self.subscribers['handle'].ignore_by_default()
 
     def get_id(self):
         assert self.id is not None, "Actor does not have id."
@@ -504,16 +495,13 @@ class Actor (object):
         self.messenger.send_message(message)
 
     def accept_message(self, message, verified):
-        type = message.type()
-        self.subscribers['accept'].receive(type, message, verified)
+        message.accept(self, verified)
 
     def reject_message(self, message):
-        type = message.type()
-        self.subscribers['reject'].receive(type, message)
+        message.reject(self)
 
     def handle_message(self, message):
-        type = message.type()
-        self.subscribers['handle'].receive(type, message)
+        message.notify(self, message.was_sent_from_here())
 
     def dispatch_message(self, message):
         pass
@@ -1137,9 +1125,50 @@ class Message (object):
     def setup(self, world, id_factory):
         """ Setup the Allow the message to claim unique ID numbers for new 
         objects being created.  This method is only called once (e.g. on the 
-        server) to guarantee that the given ID numbers are unique. """
+        server) to guarantee that the given ID numbers are unique.
+        
+        :argument world: The game world.
+        :argument id_factory: An object that returns id numbers for new tokens.
+        :returns: None """
+
         pass
 
+    def reject(self, sender):
+        """ Inform *sender* that the message was rejected.  This means that 
+        :meth:`check` returned false, either locally or on the server.  In many 
+        cases, this happens because the player requests some sort of illegal 
+        action, like building a unit without having enough resource.  This 
+        callback should be overwritten to provide the player feedback about 
+        what they did wrong.  By default, this method will raise an 
+        :exc:`UnhandledMessageRejection` so that rejected messages don't go 
+        unnoticed.
+
+        :argument sender: The actor that sent this message.
+        :returns: None """
+
+        def default_handler(message):
+            raise UnhandledMessageRejection(self)
+
+        callback = self._callback_helper(sender, 'reject_{}', default_handler)
+        callback(self)
+        
+
+    def accept(self, sender, verified):
+        """ Inform *sender* that the message was accepted.  This means that 
+        :meth:`check` returned true, either locally or on the server.  If the 
+        message was accepted locally, it could still be rejected by the server 
+        and so the *verified* parameter is set to false.  Otherwise, if the 
+        server has accepted the message, *verified* is set to true.  This 
+        callback can be overwritten to provide instantaneous feedback to 
+        players while the message is traveling to and from the server.
+
+        :arguments sender: The actor that sent this message.
+        :arguments verified: A boolean indicating who accepted this message.
+        :returns: None """
+
+        callback = self._callback_helper(sender, 'accept_{}')
+        callback(self, verified)
+        
     def execute(self, world):
         """ Allow the message to make modifications to the game world.  This
         will be called exactly once on each host, but may be called more than
@@ -1148,6 +1177,15 @@ class Message (object):
         should not affect a second call. """
 
         raise NotImplementedError
+
+    def notify(self, actor, was_sent_from_here):
+        """ Inform the given actor that this message has occurred.  This will 
+        only happen on the machine that is hosting the actor in question.  For 
+        example, the actor representing a player on the server will not be 
+        notified, but the actor representing that player on a client will. """
+
+        callback = self._callback_helper(actor, 'handle_{}')
+        callback(self)
 
 
     @classmethod
@@ -1187,6 +1225,17 @@ class Message (object):
 
     def was_sent_from_here(self):
         return self._origin
+
+    def _callback_helper(self, handler, 
+            callback_name, default_callback=lambda *args: None):
+
+        message_type = self.type()
+        callback_name = callback_name.format(message_type)
+
+        if hasattr(handler, callback_name):
+            return getattr(handler, callback_name)
+        else:
+            return default_callback
 
 
 class IdMessage (object):
