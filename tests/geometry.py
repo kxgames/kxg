@@ -533,10 +533,15 @@ def rectangle_factory_methods(helper):
     assert Rectangle.from_center(v, 8, 6) == Rectangle(1, 3, 8, 6)
     assert Rectangle.from_center(t, 4, 2) == Rectangle(5, 7, 4, 2)
 
-    import pygame
-    surface = pygame.Surface((600, 400))
+    points = (1, 5), (0, 3), (4, 2), (6, 3), (5, 0)
+    assert Rectangle.from_points(*points) == Rectangle(0, 0, 6, 5)
 
-    assert Rectangle.from_surface(surface) == Rectangle(0, 0, 600, 400)
+    try:
+        import pygame
+        surface = pygame.Surface((600, 400))
+        assert Rectangle.from_surface(surface) == Rectangle(0, 0, 600, 400)
+    except ImportError:
+        pass
 
     a = Rectangle(1, 1, 4, 4)
     b = Rectangle(4, 4, 4, 4)

@@ -149,7 +149,7 @@ class PygameLoop (Loop):
     """ Manage whichever stage is currently active.  This involves both
     updating the current stage and handling transitions between stages. """
 
-    def play(self, frequency=50):
+    def play(self, frames_per_sec=50):
         import pygame
 
         try:
@@ -161,8 +161,18 @@ class PygameLoop (Loop):
             self.stage.setup()
 
             while not self.is_finished():
-                time = clock.tick(frequency) / 1000
-                self.update(time)
+                time = clock.tick(frames_per_sec) / 1000
+                stage.update(time)
+
+                if stage.is_finished():
+                    stage.teardown()
+                    stage = stage.get_successor()
+
+                    if stage:
+                        stage.set_master(self)
+                        stage.setup()
+                    else:
+                        self.exit()
 
             if self.stage:
                 self.stage.teardown()
@@ -183,6 +193,7 @@ class PygletLoop (Loop):
         import pyglet
 
         self.window = pyglet.window.Window()
+
         self.stage = self.get_initial_stage()
         self.stage.set_master(self)
         self.stage.setup()
@@ -209,17 +220,55 @@ class MultiplayerDebugger (object):
     class Process(multiprocessing.Process):
 
         def __init__(self, name, loop):
-            constructor = MultiplayerDebugger.multiprocessing.Process.__init__
-            constructor(self, name=name)
+            MultiplayerDebugger.multiprocessing.Process.__init__(self, name=name)
             self.loop = loop
+            self.logger = MultiplayerDebugger.Logger(name)
 
         def __nonzero__(self):
             return self.is_alive()
 
         def run(self):
-            try: self.loop.play()
+            try:
+                with self.logger:
+                    self.loop.play(50)
             except KeyboardInterrupt:
                 pass
+
+    class Logger:
+
+        def __init__(self, name, use_file=False):
+            self.name = name.lower()
+            self.header = '%6s: ' % name
+            self.path = '%s.log' % self.name
+            self.use_file = use_file
+            self.last_char = '\n'
+
+        def __enter__(self):
+            import sys
+            sys.stdout, self.stdout = self, sys.stdout
+            if self.use_file: self.file = open(self.path, 'w')
+
+        def __exit__(self, *ignored_args):
+            import sys
+            sys.stdout = self.stdout
+            if self.use_file: self.file.close()
+
+        def write(self, line):
+            annotated_line = ''
+
+            if self.last_char == '\n':
+                annotated_line += self.header
+
+            annotated_line += line[:-1].replace('\n', '\n' + self.header)
+            annotated_line += line[-1]
+
+            self.last_char = line[-1]
+
+            self.stdout.write(annotated_line)
+            if self.use_file: self.file.write(line)
+
+        def flush(self):
+            pass
 
 
     def __init__(self):
@@ -640,6 +689,7 @@ class ClientForum (object):
         actor = self.actor
         messenger = actor.get_messenger()
 
+        # Send messages.
         for message in messenger.deliver_messages():
             status = message.check(world, actor.id)
 
@@ -653,6 +703,7 @@ class ClientForum (object):
 
         self.pipe.deliver()
 
+        # Receive messages.
         for message in self.pipe.receive():
             if message.was_sent_from_here():
                 if message.was_accepted():
@@ -874,6 +925,9 @@ class Token (object):
         self._id = None
         self._status = Token._before_setup
         self._extensions = {}
+
+    def __repr__(self):
+        return str(self)
 
     def __extend__(self):
         return {}
@@ -1101,6 +1155,9 @@ class UnrestrictedTokenAccess (object):
 
 
 class Message (object):
+
+    def __repr__(self):
+        return self.__str__()
 
     def check(self, world, sender):
         """ Return true if the message is consistent with the state of the game 
