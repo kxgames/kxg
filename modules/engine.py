@@ -162,17 +162,7 @@ class PygameLoop (Loop):
 
             while not self.is_finished():
                 time = clock.tick(frames_per_sec) / 1000
-                stage.update(time)
-
-                if stage.is_finished():
-                    stage.teardown()
-                    stage = stage.get_successor()
-
-                    if stage:
-                        stage.set_master(self)
-                        stage.setup()
-                    else:
-                        self.exit()
+                self.update(time)
 
             if self.stage:
                 self.stage.teardown()
@@ -472,7 +462,15 @@ class SinglePlayerGameStage (GameStage):
 
     def __init__(self, world, referee, remaining_actors):
         forum = Forum()
-        actors = [referee] + list(remaining_actors)
+        actors = [referee]
+
+        if isinstance(remaining_actors, dict):
+            for actor, greeting in remaining_actors.items():
+                actor.send_message(greeting)
+                actors.append(actor)
+        else:
+            actors.extend(remaining_actors)
+
         GameStage.__init__(self, world, forum, actors)
 
 
@@ -503,7 +501,16 @@ class MultiplayerServerGameStage (GameStage):
 
     def __init__(self, world, referee, pipes):
         forum = Forum()
-        actors = [referee] + [RemoteActor(pipe) for pipe in pipes]
+        actors = [referee]
+
+        if isinstance(pipes, dict):
+            for pipe, greeting in pipes.items():
+                actor = RemoteActor(pipe)
+                actor.send_message(greeting)
+                actors.append(actor)
+        else:
+            actors += [RemoteActor(pipe) for pipe in pipes]
+
         GameStage.__init__(self, world, forum, actors)
 
 
@@ -686,12 +693,12 @@ class ClientForum (object):
 
     def update(self):
         world = self.world
-        actor = self.actor
+        actor, actor_id = self.actor, self.actor.get_id()
         messenger = actor.get_messenger()
 
         # Send messages.
         for message in messenger.deliver_messages():
-            status = message.check(world, actor.id)
+            status = message.check(world, actor_id)
 
             if status:
                 actor.accept_message(message, False)
@@ -973,9 +980,8 @@ class Token (object):
         return getattr(self, '_status', None) == Token._after_teardown
 
     @read_only
-    def get_extension(self):
-        actor = Token._actor
-        return self._extensions[actor]
+    def get_extension(self, actor):
+        return self._extensions[type(actor)]
 
     @read_only
     def get_extensions(self):
@@ -990,8 +996,6 @@ class World (Token):
         self._id = 1
         self._tokens = {1: self}
         self._actors = []
-
-        self.subscriber = InspectionBasedSubscriber(self)
 
     @read_only
     def __str__(self):
@@ -1039,7 +1043,7 @@ class World (Token):
 
             if extension_class:
                 extension = extension_class(actor, token)
-                token._extensions[name] = extension
+                token._extensions[actor_class] = extension
 
         token._status = Token._registered
         token.setup()
@@ -1066,8 +1070,7 @@ class World (Token):
             self.remove_token(token, list)
 
     def handle_message(self, message):
-        type = message.type()
-        self.subscriber.receive(type, message)
+        message.execute(self)
 
 
     @read_only
@@ -1159,7 +1162,7 @@ class Message (object):
     def __repr__(self):
         return self.__str__()
 
-    def check(self, world, sender):
+    def check(self, world, sender_id):
         """ Return true if the message is consistent with the state of the game 
         world.  This is one of the most important message callbacks and should 
         be reimplemented every subclass.  It first invoked on the client side 
@@ -1174,8 +1177,12 @@ class Message (object):
         some effort to prevent these kinds of errors, but it isn't bulletproof.
 
         :argument world: The game world.
-        :argument sender: The actor that sent this message.
+        :argument sender: A number specific to the actor sending this message.
         :returns:  Boolean indicating if the message is valid. """
+
+        # At first, it may seem strange that this method is passed an id number 
+        # rather than an actor object.  The reason is that the server-side has 
+        # RemoteActor objects, which are very different from normal actors.
 
         raise NotImplementedError
 
@@ -1242,7 +1249,7 @@ class Message (object):
         notified, but the actor representing that player on a client will. """
 
         callback = self._callback_helper(actor, 'handle_{}')
-        callback(self)
+        callback(self, was_sent_from_here)
 
 
     @classmethod
@@ -1282,6 +1289,9 @@ class Message (object):
 
     def was_sent_from_here(self):
         return self._origin
+
+    def was_sent_by_referee(self, sender):
+        return sender == 0
 
     def _callback_helper(self, handler, 
             callback_name, default_callback=lambda *args: None):
