@@ -22,13 +22,15 @@ import functools
 #    tokens aren't saving references to the messenger and using them in stupid 
 #    places.
 #
-# 5.  Messages that do more than one thing might need to interleave calls to 
-#     execute() and notify().  Consider a CreatePlayer message, which might 
-#     create both a player and a city.  The notify() method really needs to be 
-#     called after the player is created, so that the GUI can be properly set 
-#     up before the city is created.  As it is, the city is instantiated and 
-#     setup before the gui knows about the player, which makes it difficult to 
-#     smartly initialize the city.
+# 5. Messages that do more than one thing might need to interleave calls to 
+#    execute() and notify().  Consider a CreatePlayer message, which might 
+#    create both a player and a city.  The notify() method really needs to be 
+#    called after the player is created, so that the GUI can be properly set up 
+#    before the city is created.  As it is, the city is instantiated and 
+#    setup before the gui knows about the player, which makes it difficult to 
+#    smartly initialize the city.
+#
+#    I wonder if I could do this with 'yield' statements.  That could be cool.
 
 class GameEngineError (Exception):
 
