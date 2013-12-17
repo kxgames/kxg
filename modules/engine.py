@@ -434,6 +434,7 @@ class GameStage (Stage):
             self.world.setup()
 
         for actor in self.actors:
+            print actor
             actor.setup(self.world)
 
     def update(self, time):
@@ -444,7 +445,7 @@ class GameStage (Stage):
 
         for actor in self.actors:
             actor.update(time)
-            if not actor.is_finished():
+            if not actor.is_finished(self.world):
                 still_playing = True
 
         if not still_playing:
@@ -545,8 +546,8 @@ class Actor (object):
     def get_messenger(self):
         return self.messenger
 
-    def is_finished(self):
-        return self.world.has_game_ended()
+    def is_finished(self, world):
+        return world.has_game_ended()
 
 
     def setup(self, world):
@@ -588,12 +589,12 @@ class RemoteActor (Actor):
         message = IdMessage(id)
         self.pipe.send(message)
 
-    def is_finished(self):
-        return self.pipe.finished() or Actor.is_finished(self)
+    def is_finished(self, world):
+        return self.pipe.finished() or Actor.is_finished(self, world)
 
 
-    def setup(self):
-        serializer = TokenSerializer(self.world)
+    def setup(self, world):
+        serializer = TokenSerializer(world)
         self.pipe.push_serializer(serializer)
 
     def update(self, time):
