@@ -2,8 +2,12 @@ from __future__ import division
 
 import functools
 
-# Improvements
-# ============
+# Things to Remember
+# ==================
+# 1. Need to use a message to create new tokens.
+
+# Things to Improve
+# =================
 # 1. Redo the initial connection system.  A MultiplayerClientConnectionStage 
 #    will be basically responsible for setting up the forum.  I can also give 
 #    it the ability to display some sort of splash screen in the future, so the 
@@ -430,8 +434,7 @@ class GameStage (Stage):
             self.world.setup()
 
         for actor in self.actors:
-            actor.world = self.world
-            actor.setup()
+            actor.setup(self.world)
 
     def update(self, time):
         """ Sequentially updates the actors, world, and messaging system.  The
@@ -528,7 +531,6 @@ class MultiplayerServerGameStage (GameStage):
 class Actor (object):
 
     def __init__(self):
-        self.world = None
         self.id = None
         self.messenger = Messenger(self)
 
@@ -547,7 +549,7 @@ class Actor (object):
         return self.world.has_game_ended()
 
 
-    def setup(self):
+    def setup(self, world):
         pass
 
     def update(self, time):
@@ -621,6 +623,9 @@ class Referee (Actor):
 
     def __init__(self):
         Actor.__init__(self)
+
+    def setup(self, world):
+        self.world = world
 
     def update(self, time):
         for token in self.world:
@@ -970,6 +975,7 @@ class Token (object):
 
     @before_setup
     def give_id(self, id):
+        assert hasattr(self, '_id'), "Forgot to call Token.__init__() in subclass constructor."
         assert self._id is None, "Token already has an id."
         assert self.is_before_setup(), "Token already registered with the world."
         assert isinstance(id, IdFactory), \
@@ -1056,7 +1062,10 @@ class World (Token):
                 token._extensions[actor_class] = extension
 
         token._status = Token._registered
-        token.setup()
+        token.setup(self)
+
+        for extension in token.get_extensions():
+            extension.setup()
 
     def add_tokens(self, tokens, list=None):
         for token in tokens:
@@ -1071,6 +1080,9 @@ class World (Token):
         del self._tokens[id]
         if list is not None:
             list.remove(token)
+
+        for extension in token.get_extensions():
+            extension.teardown()
 
         token.teardown()
         token._status = Token._after_teardown
