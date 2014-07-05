@@ -43,3 +43,9 @@ class Timer:
     def has_expired(self):
         return self.expired
 
+
+
+def echo(*args, **kwargs):
+    print args, kwargs or ''
+
+

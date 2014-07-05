@@ -35,6 +35,12 @@ import functools
 #    smartly initialize the city.
 #
 #    I wonder if I could do this with 'yield' statements.  That could be cool.
+#
+# 6. It's weird that Actor.is_finished() takes the world as an argument.  I 
+#    think it would make more sense for world.has_game_finished() to be an 
+#    implied precondition for the game stage stopping.  Also, I should think 
+#    about what happens on the server when a player loses and disconnects 
+#    before the rest of the game ends.
 
 class GameEngineError (Exception):
 
@@ -948,9 +954,6 @@ class Token (object):
         self._id = None
         self._status = Token._before_setup
         self._extensions = {}
-
-    def __repr__(self):
-        return str(self)
 
     def __extend__(self):
         return {}

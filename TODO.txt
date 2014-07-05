@@ -1,0 +1,49 @@
+engine.py: core module
+gui.py: legitimate game utilities
+map.py: legitimate game utilities
+sprites.py: legitimate game utilities
+tools: legitimate game utilities
+
+geometry.py: should extract
+network.py: should extract
+
+events.py: should remove
+hotkeys.py: should remove
+messaging.py: should remove
+
+The biggest question I have is the GUI module.  As long as its just a 
+collection of useful drawing functions, it makes perfect sense where it's at.  
+But if it grows into a full-fledged GUI API, then it will need to move into its 
+own module.  And it will probably need to take a copy of the geometry module 
+with it.  But that's something I can tackle later.
+
+The other question is how to technically do this.  I think I've got two 
+options.  One is to have an 'external' directory and to make symlinks into that 
+directory.  The other is to provide '__init__.py' files that in the root of the 
+external project directories that allows them to be imported.
+
+I looked at the requests projects, which includes its own copies of two 
+libraries (urllib3 and chardet).  However, these seems to be manually copied 
+and updated from time to time.  Not an ideal approach for simultaneously 
+developing both libraries.
+
+I'm pretty sure the external directory would get ignored by setuptools, if it 
+ever came to that.  
+
+The consensus on the web seems to be instrumenting my modules with an 
+__init__.py file and then simply including the submodule right in the package.  
+I guess that'll work.  One objection is that this won't work unless I can add 
+an init file to the external repositories, which I generally won't be able to 
+do unless I wrote the repository.  I guess I don't need to worry about this 
+right now, because I did write the geometry and network packages.  Third-party 
+package are usually more stable and can be required via setuptools.
+
+It doesn't seem like setuptools is good at managing multiple versions of the 
+same module...
+
+I think the best approach is to develop within a virtual env, and to install 
+distributions using pip.  This is more in line with the way people use python 
+in general, plus it makes it easy to include and hack on libraries like kytten.  
+It also gets around the problem that installing pyglet can be a pain, although 
+it's in yum now.
+

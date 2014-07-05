@@ -1,6 +1,3 @@
 [submodule "tests/testing"]
 	path = tests/testing
 	url = git@github.com:kalekundert/TestSuite.git
-[submodule "ideas"]
-	path = ideas
-	url = ./ideas

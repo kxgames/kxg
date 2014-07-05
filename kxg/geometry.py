@@ -581,6 +581,10 @@ class Rectangle (Shape):
         return Rectangle.from_size(width, height)
     
     @staticmethod
+    def from_pyglet(window):
+        return Rectangle.from_size(window.width, window.height)
+    
+    @staticmethod
     def from_union(*inputs):
         rectangles = [_cast_shape_to_rectangle(x) for x in inputs]
         left = min(x.left for x in rectangles)
@@ -605,16 +609,19 @@ class Rectangle (Shape):
         self.__left -= padding
         self.__width += 2 * padding
         self.__height += 2 * padding
+        return self
 
     def shrink(self, padding):
         """ Shrink this rectangle by the given padding on all sides. """
         self.grow(-padding)
+        return self
 
     @_accept_anything_as_vector
     def displace(self, vector):
         """ Displace this rectangle by the given vector. """
         self.__top += vector.y
         self.__left += vector.x
+        return self
 
     def copy(self):
         """ Return a copy of this rectangle. """
@@ -649,10 +656,10 @@ class Rectangle (Shape):
     @_accept_anything_as_rectangle
     def contains(self, other):
         """ Return true if the given shape is inside this rectangle. """
-        return ( self.left <= other.left and
-                 self.right >= other.right and
-                 self.top <= other.top and
-                 self.bottom >= other.bottom )
+        return (self.left <= other.left and
+                self.right >= other.right and
+                self.top <= other.top and
+                self.bottom >= other.bottom)
 
 
     @_accept_anything_as_rectangle
@@ -915,9 +922,9 @@ def circle_touching_line(center, radius, start, end):
 # Mathematical Helper Functions
 
 def clamp(x, low, high):
-    """ Forces *x* into the range between *low* and *high*.  In other words, 
-    returns *low* if *x* < *low*, returns *high* if *x* > *high*, and returns 
-    *x* otherwise. """
+    """ Forces x into the range between low and high.  In other words, 
+    returns low if x < low, returns high if x > high, and returns 
+    x otherwise. """
     return max(min(x, high), low)
 
 

@@ -1,11 +1,9 @@
-# This is a hack to get all the game modules on the import path.  The first
-# item in sys.path will always be the directory containing this script.  To add
-# the game modules, I just need to move that path back one directory.
+# This is a hack to get all the game modules on the import path.
 
-import os, sys
+import os, sys, subprocess
 
-tests = sys.path[0]
-repository = os.path.dirname(tests)
-modules = os.path.join(repository, "modules")
-
-sys.path.insert(0, modules)
+command = 'git', 'rev-parse', '--show-toplevel'
+stdout = subprocess.check_output(command)
+repository = stdout.strip()
+path = os.path.dirname(repository)
+sys.path.insert(0, path)
