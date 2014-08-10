@@ -1,4 +1,4 @@
-from geometry import *
+from .geometry import *
 
 class Sprite:
     """ A parent class for every game object that can move.  This class stores

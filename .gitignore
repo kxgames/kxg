@@ -1,6 +1,6 @@
+/tests/coverage/html
+/docs/build
+/sandbox
 *.pyc
-.*
-
-tests/coverage/html
-docs/build
-sandbox
+*.egg-info
+.*.sw*

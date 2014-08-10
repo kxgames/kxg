@@ -7,10 +7,11 @@ import distutils.core
 
 version = '0.0'
 distutils.core.setup(
-        name='KXG Game Libraries',
+        name='kxg',
         version=version,
         author='Kale Kundert and Alex Mitchell',
         packages=['kxg'],
+        requires=['pyglet'],
         url='https://github.com/kxgames/GameEngine',
         download_url='https://github.com/kxgames/GameEngine/tarball/'+version,
         license='LICENSE.txt',

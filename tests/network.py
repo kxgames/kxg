@@ -30,9 +30,9 @@ class Serializer (object):
 
     def pack(self, message):
         from pickle import Pickler
-        from cStringIO import StringIO
+        from io import BytesIO
 
-        buffer = StringIO()
+        buffer = BytesIO()
         delegate = Pickler(buffer)
 
         delegate.persistent_id = self.persistent_id
@@ -42,9 +42,9 @@ class Serializer (object):
 
     def unpack(self, packet):
         from pickle import Unpickler
-        from cStringIO import StringIO
+        from io import BytesIO
 
-        buffer = StringIO(packet)
+        buffer = BytesIO(packet)
         delegate = Unpickler(buffer)
 
         delegate.persistent_load = self.persistent_load
@@ -135,8 +135,6 @@ def simple_messages(helper):
 
     sent = sender.deliver()
     received = [message for message in receiver.receive()]
-
-    print sent, received
     assert sent == received
 
     # Close the connection.
@@ -196,7 +194,7 @@ def test_partial_messages(helper):
         sender.send(message)
 
     socket = sender.socket
-    stream = ''.join([ package[0] for package in sender.outgoing])
+    stream = b''.join([ package[0] for package in sender.outgoing])
 
     # Manually deliver the stream in small chunks.
     while stream:

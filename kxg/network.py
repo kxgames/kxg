@@ -1,4 +1,7 @@
-import errno, socket, struct, pickle
+import errno
+import socket
+import struct
+import pickle
 
 class Host:
     """ Accept any number of incoming network connections.  For each
@@ -45,7 +48,7 @@ class Host:
 
                 self.callback(pipe)
 
-            except socket.error, message:
+            except socket.error as message:
 
                 # This message is triggered by accept() when there are no more
                 # connections to accept.  
@@ -220,7 +223,7 @@ class Pipe:
         self.socket = socket
         self.socket.setblocking(False)
 
-        self.incoming = ""
+        self.incoming = b''
         self.outgoing = []
 
         self.locked = False
@@ -295,7 +298,7 @@ class Pipe:
                     self.outgoing.pop(0)
                     receipts.append(receipt)
 
-            except socket.error, message:
+            except socket.error as message:
                 
                 # This exception is triggered when no bytes at all can be sent.
                 # Even though this usually indicates a serious problem, it is
@@ -332,7 +335,7 @@ class Pipe:
                     self.closed = True
                     break
 
-            except socket.error, message:
+            except socket.error as message:
                 if message.errno == errno.EAGAIN: break
                 else: raise
 

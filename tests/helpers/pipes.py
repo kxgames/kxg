@@ -1,15 +1,9 @@
-# This path module tweaks sys.path and needs to be called before any module
-# from this package is imported.
-
-import os, path
+import os
 import struct
 
-try:
-    from network import Host, Server, Client
-except ImportError:
-    from kxg.network import Host, Server, Client
+from kxg.network import Host, Server, Client
 
-class Message(object):
+class Message:
 
     def __init__(self, bytes=8):
         self.data = os.urandom(bytes)
@@ -58,7 +52,7 @@ class Inbox (list):
             assert self == outbox, error
 
 
-class Outbox(list):
+class Outbox (list):
 
     def __init__(self, *messages, **flavors):
         list.__init__(self, messages)

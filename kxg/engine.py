@@ -1,12 +1,11 @@
-from __future__ import division
-
+import pyglet
 import functools
 
-# Things to Remember
+# Things to Remember (fold)
 # ==================
 # 1. Need to use a message to create new tokens.
 
-# Things to Improve
+# Things to Improve (fold)
 # =================
 # 1. Redo the initial connection system.  A MultiplayerClientConnectionStage 
 #    will be basically responsible for setting up the forum.  I can also give 
@@ -35,12 +34,32 @@ import functools
 #    smartly initialize the city.
 #
 #    I wonder if I could do this with 'yield' statements.  That could be cool.
+#    Alternatively, I could make a composite message class.  Or I could just 
+#    send several messages?
 #
 # 6. It's weird that Actor.is_finished() takes the world as an argument.  I 
 #    think it would make more sense for world.has_game_finished() to be an 
 #    implied precondition for the game stage stopping.  Also, I should think 
 #    about what happens on the server when a player loses and disconnects 
 #    before the rest of the game ends.
+#
+# 7. It's hard to keep track of all the callbacks this framework uses.  The 
+#    particular thing confusing me now is this: what Actor (Gui) methods get 
+#    called automatically by the GameStage?  But I think there's more confusion 
+#    than this.  Could I use decorators to label potential callbacks.
+#
+#    Could I use kemepo for this?  Right now the actors don't know about the 
+#    GameStage.  And let's not forget that actors like Gui interact with 
+#    multiple stages.  So the game stage could be emitting events, but I'd have 
+#    to find away to let the actor know which stage is active.
+#    
+#    Still, this whole thing is a little bit of an explicit is better than 
+#    implicit thing.  When I wrote this whole engine, I was pretty focused on 
+#    having things happen automatically to remove boilerplate.  But maybe some 
+#    boilerplate helps keep logic compartmentalized.
+#
+# 8. Maybe move MultiplayerDebugger into a new 'debug' module.
+
 
 class GameEngineError (Exception):
 
@@ -143,7 +162,19 @@ class UnknownTokenStatus (GameEngineError):
 
 
 
-class Loop (object):
+class Loop:
+    """ Manage whichever stage is currently active.  This involves both
+    updating the current stage and handling transitions between stages. """
+
+    def __init__(self, initial_stage):
+        self.stage = initial_stage
+
+    def play(self, frames_per_sec=50):
+        self.stage.set_master(self)
+        self.stage.setup()
+
+        pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
+        pyglet.app.run()
 
     def update(self, time):
         self.stage.update(time)
@@ -159,62 +190,15 @@ class Loop (object):
                 self.exit()
 
     def exit(self):
-        raise NotImplementedError
-
-    def get_initial_stage(self):
-        raise NotImplementedError
-
-
-class PygameLoop (Loop):
-    """ Manage whichever stage is currently active.  This involves both
-    updating the current stage and handling transitions between stages. """
-
-    def play(self, frames_per_sec=50):
-        import pygame
-
-        try:
-            clock = pygame.time.Clock()
-            self.stop_flag = False
-
-            self.stage = self.get_initial_stage()
-            self.stage.set_master(self)
-            self.stage.setup()
-
-            while not self.is_finished():
-                time = clock.tick(frames_per_sec) / 1000
-                self.update(time)
-
-            if self.stage:
-                self.stage.teardown()
-
-        except KeyboardInterrupt:
-            print
-
-    def exit(self):
-        self.stop_flag = True
-
-    def is_finished(self):
-        return self.stop_flag
-
-
-class PygletLoop (Loop):
-
-    def play(self, frames_per_sec=50):
-        import pyglet
-
-        self.window = pyglet.window.Window()
-
-        self.stage = self.get_initial_stage()
-        self.stage.set_master(self)
-        self.stage.setup()
-
-        pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
-        pyglet.app.run()
-
-    def exit(self):
-        import pyglet
         if self.stage: self.stage.teardown()
         pyglet.app.exit()
+
+
+class GuiLoop (Loop):
+
+    def play(self, frames_per_sec=50):
+        self.window = pyglet.window.Window()
+        Loop.play(self, frames_per_sec)
 
     def get_window(self):
         return self.window
@@ -440,7 +424,6 @@ class GameStage (Stage):
             self.world.setup()
 
         for actor in self.actors:
-            print actor
             actor.setup(self.world)
 
     def update(self, time):
@@ -1051,6 +1034,9 @@ class World (Token):
         assert isinstance(id, int), "Token has non-integer id number."
 
         self._tokens[id] = token
+        token._status = Token._registered
+
+        token.setup(self)
         if list is not None:
             list.append(token)
 
@@ -1065,15 +1051,12 @@ class World (Token):
                 extension = extension_class(actor, token)
                 token._extensions[actor_class] = extension
 
-        token._status = Token._registered
-        token.setup(self)
-
-        for extension in token.get_extensions():
-            extension.setup()
+        return token
 
     def add_tokens(self, tokens, list=None):
         for token in tokens:
             self.add_token(token, list)
+        return tokens
 
     def remove_token(self, token, list=None):
         id = token.get_id()
@@ -1142,9 +1125,9 @@ class TokenSerializer (object):
 
     def pack(self, message):
         from pickle import Pickler
-        from cStringIO import StringIO
+        from io import BytesIO
 
-        buffer = StringIO()
+        buffer = BytesIO()
         delegate = Pickler(buffer)
 
         delegate.persistent_id = self.persistent_id
@@ -1154,9 +1137,9 @@ class TokenSerializer (object):
 
     def unpack(self, packet):
         from pickle import Unpickler
-        from cStringIO import StringIO
+        from io import BytesIO
 
-        buffer = StringIO(packet)
+        buffer = BytesIO(packet)
         delegate = Unpickler(buffer)
 
         delegate.persistent_load = self.persistent_load

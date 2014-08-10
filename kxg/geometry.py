@@ -1,5 +1,3 @@
-from __future__ import division
-
 import math
 import random
 import operator
@@ -42,7 +40,7 @@ def _cast_shape_to_rectangle(input):
     if isinstance(input, Rectangle):
         return input
 
-    # If the input object implements the shape interface (i.e. has top, left, 
+    # If the input object implements the shape interface (i.e. has bottom, left, 
     # width, and height attributes), use that information to construct a bona 
     # fide rectangle object.
 
@@ -132,13 +130,13 @@ def _overload_in_place(f, scalar_ok=False):
 
 # Vector and Rectangle Classes
 
-class Shape (object):
+class Shape:
     """ Provide an interface for custom shape classes to interact with the 
     rectangle class.  For example, rectangles can be instantiated from shapes
     and can test for collisions against shapes.  The interface is very simple,
     requiring only four methods to be redefined. """
 
-    def get_top(self):
+    def get_bottom(self):
         raise NotImplementedError
 
     def get_left(self):
@@ -152,13 +150,13 @@ class Shape (object):
 
 
     # Properties (fold)
-    top = property(get_top)
+    bottom = property(get_bottom)
     left = property(get_left)
     width = property(get_width)
     height = property(get_height)
 
 
-class Vector (object):
+class Vector:
     """ Represents a two-dimensional vector.  In particular, this class
     features a number of factory methods to create vectors from various inputs
     and a number of overloaded operators to facilitate vector arithmetic. """
@@ -198,7 +196,7 @@ class Vector (object):
     def from_rectangle(box):
         """ Create a vector randomly within the given rectangle. """
         x = box.left + box.width * random.uniform(0, 1)
-        y = box.top + box.height * random.uniform(0, 1)
+        y = box.bottom + box.height * random.uniform(0, 1)
         return Vector(x, y)
 
 
@@ -299,10 +297,6 @@ class Vector (object):
     __mul__ = _overload_left_side(operator.mul, scalar_ok=True)
     __rmul__ = _overload_right_side(operator.mul, scalar_ok=True)
     __imul__ = _overload_in_place(operator.mul, scalar_ok=True)
-
-    __div__ = _overload_left_side(operator.div, scalar_ok=True)
-    __rdiv__ = _overload_right_side(operator.div, scalar_ok=True)
-    __idiv__ = _overload_in_place(operator.div, scalar_ok=True)
 
     __floordiv__ = _overload_left_side(operator.floordiv, scalar_ok=True)
     __rfloordiv__ = _overload_right_side(operator.floordiv, scalar_ok=True)
@@ -467,9 +461,9 @@ class Vector (object):
 
 class Rectangle (Shape):
 
-    def __init__(self, left, top, width, height):
+    def __init__(self, left, bottom, width, height):
         self.__left = left
-        self.__top = top
+        self.__bottom = bottom
         self.__width = width
         self.__height = height
 
@@ -477,10 +471,11 @@ class Rectangle (Shape):
         return "Rectangle(%d, %d, %d, %d)" % self.tuple
 
     def __str__(self):
-        return "Rectangle: (%d, %d), %dx%d" % self.tuple
+        return '<Rect bottom={} left={} width={} height={}>'.format(
+                self.bottom, self.left, self.width, self.height)
 
     def __eq__(self, other):
-        return ( self.__top == other.__top and
+        return ( self.__bottom == other.__bottom and
                  self.__left == other.__left and
                  self.__width == other.__width and
                  self.__height == other.__height )
@@ -528,26 +523,26 @@ class Rectangle (Shape):
         return Rectangle.from_size(size, size)
 
     @staticmethod
-    def from_dimensions(left, top, width, height):
-        return Rectangle(left, top, width, height)
+    def from_dimensions(left, bottom, width, height):
+        return Rectangle(left, bottom, width, height)
 
     @staticmethod
-    def from_sides(left, top, right, bottom):
-        width = right - left; height = bottom - top
-        return Rectangle.from_dimensions(left, top, width, height)
+    def from_sides(left, bottom, right, top):
+        width = right - left; height = top - bottom
+        return Rectangle.from_dimensions(left, bottom, width, height)
 
     @staticmethod
     def from_corners(first, second):
         first = _cast_anything_to_vector(first)
         second = _cast_anything_to_vector(second)
 
-        left = min(first.x, second.x);  top = min(first.y, second.y)
-        right = max(first.x, second.x); bottom = max(first.y, second.y)
+        left = min(first.x, second.x);  bottom = min(first.y, second.y)
+        right = max(first.x, second.x); top = max(first.y, second.y)
 
-        return Rectangle.from_sides(left, top, right, bottom)
+        return Rectangle.from_sides(left, bottom, right, top)
 
     @staticmethod
-    def from_top_left(position, width, height):
+    def from_bottom_left(position, width, height):
         position = _cast_anything_to_vector(position)
         return Rectangle(position.x, position.y, width, height)
 
@@ -564,16 +559,16 @@ class Rectangle (Shape):
     @staticmethod
     def from_points(*points):
         left = min(_cast_anything_to_vector(p).x for p in points)
-        top = min(_cast_anything_to_vector(p).y for p in points)
+        bottom = min(_cast_anything_to_vector(p).y for p in points)
         right = max(_cast_anything_to_vector(p).x for p in points)
-        bottom = max(_cast_anything_to_vector(p).y for p in points)
-        return Rectangle.from_sides(left, top, right, bottom)
+        top = max(_cast_anything_to_vector(p).y for p in points)
+        return Rectangle.from_sides(left, bottom, right, top)
 
     @staticmethod
     def from_shape(shape):
-        top, left = shape.top, shape.left
+        bottom, left = shape.bottom, shape.left
         width, height = shape.width, shape.height
-        return Rectangle(left, top, width, height)
+        return Rectangle(left, bottom, width, height)
 
     @staticmethod
     def from_surface(surface):
@@ -581,31 +576,35 @@ class Rectangle (Shape):
         return Rectangle.from_size(width, height)
     
     @staticmethod
-    def from_pyglet(window):
+    def from_pyglet_window(window):
         return Rectangle.from_size(window.width, window.height)
+    
+    @staticmethod
+    def from_pyglet_image(image):
+        return Rectangle.from_size(image.width, image.height)
     
     @staticmethod
     def from_union(*inputs):
         rectangles = [_cast_shape_to_rectangle(x) for x in inputs]
         left = min(x.left for x in rectangles)
-        top = min(x.top for x in rectangles)
+        bottom = min(x.bottom for x in rectangles)
         right = max(x.right for x in rectangles)
-        bottom = max(x.bottom for x in rectangles)
-        return Rectangle.from_sides(left, top, right, bottom)
+        top = max(x.top for x in rectangles)
+        return Rectangle.from_sides(left, bottom, right, top)
 
     @staticmethod
     def from_intersection(*inputs):
         rectangles = [_cast_shape_to_rectangle(x) for x in inputs]
         left = max(x.left for x in rectangles)
-        top = max(x.top for x in rectangles)
+        bottom = max(x.bottom for x in rectangles)
         right = min(x.right for x in rectangles)
-        bottom = min(x.bottom for x in rectangles)
-        return Rectangle.from_sides(left, top, right, bottom)
+        top = min(x.top for x in rectangles)
+        return Rectangle.from_sides(left, bottom, right, top)
 
 
     def grow(self, padding):
         """ Grow this rectangle by the given padding on all sides. """
-        self.__top -= padding
+        self.__bottom -= padding
         self.__left -= padding
         self.__width += 2 * padding
         self.__height += 2 * padding
@@ -619,7 +618,7 @@ class Rectangle (Shape):
     @_accept_anything_as_vector
     def displace(self, vector):
         """ Displace this rectangle by the given vector. """
-        self.__top += vector.y
+        self.__bottom += vector.y
         self.__left += vector.x
         return self
 
@@ -634,8 +633,8 @@ class Rectangle (Shape):
         """ Return true if this rectangle is inside the given shape. """
         return ( self.left >= other.left and
                  self.right <= other.right and
-                 self.top >= other.top and
-                 self.bottom <= other.bottom )
+                 self.bottom >= other.bottom and
+                 self.top <= other.top )
 
     @_accept_anything_as_rectangle
     def outside(self, other):
@@ -645,8 +644,8 @@ class Rectangle (Shape):
     @_accept_anything_as_rectangle
     def touching(self, other):
         """ Return true if this rectangle is touching the given shape. """
-        if self.top > other.bottom: return False
-        if self.bottom < other.top: return False
+        if self.bottom > other.top: return False
+        if self.top < other.bottom: return False
 
         if self.left > other.right: return False
         if self.right < other.left: return False
@@ -658,8 +657,8 @@ class Rectangle (Shape):
         """ Return true if the given shape is inside this rectangle. """
         return (self.left <= other.left and
                 self.right >= other.right and
-                self.top <= other.top and
-                self.bottom >= other.bottom)
+                self.bottom <= other.bottom and
+                self.top >= other.top)
 
 
     @_accept_anything_as_rectangle
@@ -675,16 +674,16 @@ class Rectangle (Shape):
         self.right = target.right
 
     @_accept_anything_as_rectangle
-    def align_top(self, target):
-        self.top = target.top
+    def align_bottom(self, target):
+        self.bottom = target.bottom
 
     @_accept_anything_as_rectangle
     def align_center_y(self, target):
         self.center_y = target.center_y
 
     @_accept_anything_as_rectangle
-    def align_bottom(self, target):
-        self.bottom = target.bottom
+    def align_top(self, target):
+        self.top = target.top
 
 
     def get_left(self):
@@ -696,14 +695,14 @@ class Rectangle (Shape):
     def get_right(self):
         return self.__left + self.__width
 
-    def get_top(self):
-        return self.__top
+    def get_bottom(self):
+        return self.__bottom
 
     def get_center_y(self):
-        return self.__top + self.__height / 2
+        return self.__bottom + self.__height / 2
 
-    def get_bottom(self):
-        return self.__top + self.__height
+    def get_top(self):
+        return self.__bottom + self.__height
 
     def get_width(self):
         return self.__width
@@ -719,14 +718,14 @@ class Rectangle (Shape):
         return int(ceil(self.__width)), int(ceil(self.__height))
 
 
-    def get_top_left(self):
-        return Vector(self.left, self.top)
+    def get_bottom_left(self):
+        return Vector(self.left, self.bottom)
 
-    def get_top_center(self):
-        return Vector(self.center_x, self.top)
+    def get_bottom_center(self):
+        return Vector(self.center_x, self.bottom)
 
-    def get_top_right(self):
-        return Vector(self.right, self.top)
+    def get_bottom_right(self):
+        return Vector(self.right, self.bottom)
 
     def get_center_left(self):
         return Vector(self.left, self.center_y)
@@ -737,25 +736,25 @@ class Rectangle (Shape):
     def get_center_right(self):
         return Vector(self.right, self.center_y)
 
-    def get_bottom_left(self):
-        return Vector(self.left, self.bottom)
+    def get_top_left(self):
+        return Vector(self.left, self.top)
 
-    def get_bottom_center(self):
-        return Vector(self.center_x, self.bottom)
+    def get_top_center(self):
+        return Vector(self.center_x, self.top)
 
-    def get_bottom_right(self):
-        return Vector(self.right, self.bottom)
+    def get_top_right(self):
+        return Vector(self.right, self.top)
 
 
     def get_dimensions(self):
-        return (self.__left, self.__top), (self.__width, self.__height)
+        return (self.__left, self.__bottom), (self.__width, self.__height)
 
     def get_tuple(self):
-        return self.__left, self.__top, self.__width, self.__height
+        return self.__left, self.__bottom, self.__width, self.__height
 
     def get_pygame(self):
         from pygame.rect import Rect
-        return Rect(self.left, self.top, self.width, self.height)
+        return Rect(self.left, self.bottom, self.width, self.height)
 
     def get_union(self, *rectangles):
         return Rectangle.from_union(self, *rectangles)
@@ -783,14 +782,14 @@ class Rectangle (Shape):
     def set_right(self, x):
         self.__left = x - self.__width
 
-    def set_top(self, y):
-        self.__top = y
+    def set_bottom(self, y):
+        self.__bottom = y
 
     def set_center_y(self, y):
-        self.__top = y - self.__height / 2
+        self.__bottom = y - self.__height / 2
 
-    def set_bottom(self, y):
-        self.__top = y - self.__height
+    def set_top(self, y):
+        self.__bottom = y - self.__height
 
     def set_width(self, width):
         self.__width = width
@@ -804,18 +803,18 @@ class Rectangle (Shape):
 
 
     @_accept_anything_as_vector
-    def set_top_left(self, point):
-        self.top = point[1]
+    def set_bottom_left(self, point):
+        self.bottom = point[1]
         self.left = point[0]
 
     @_accept_anything_as_vector
-    def set_top_center(self, point):
-        self.top = point[1]
+    def set_bottom_center(self, point):
+        self.bottom = point[1]
         self.center_x = point[0]
 
     @_accept_anything_as_vector
-    def set_top_right(self, point):
-        self.top = point[1]
+    def set_bottom_right(self, point):
+        self.bottom = point[1]
         self.right = point[0]
 
     @_accept_anything_as_vector
@@ -834,18 +833,18 @@ class Rectangle (Shape):
         self.right = point[0]
 
     @_accept_anything_as_vector
-    def set_bottom_left(self, point):
-        self.bottom = point[1]
+    def set_top_left(self, point):
+        self.top = point[1]
         self.left = point[0]
 
     @_accept_anything_as_vector
-    def set_bottom_center(self, point):
-        self.bottom = point[1]
+    def set_top_center(self, point):
+        self.top = point[1]
         self.center_x = point[0]
 
     @_accept_anything_as_vector
-    def set_bottom_right(self, point):
-        self.bottom = point[1]
+    def set_top_right(self, point):
+        self.top = point[1]
         self.right = point[0]
 
 
@@ -853,28 +852,30 @@ class Rectangle (Shape):
     left = property(get_left, set_left)
     center_x = property(get_center_x, set_center_x)
     right = property(get_right, set_right)
-    top = property(get_top, set_top)
-    center_y = property(get_center_y, set_center_y)
     bottom = property(get_bottom, set_bottom)
+    center_y = property(get_center_y, set_center_y)
+    top = property(get_top, set_top)
     width = property(get_width, set_width)
     height = property(get_height, set_height)
     size = property(get_size, set_size)
     size_as_int = property(get_size_as_int)
 
-    top_left = property(get_top_left, set_top_left)
-    top_center = property(get_top_center, set_top_center)
-    top_right = property(get_top_right, set_top_right)
-    center_left = property(get_center_left, set_center_left)
-    center = property(get_center, set_center)
-    center_right = property(get_center_right, set_center_right)
     bottom_left = property(get_bottom_left, set_bottom_left)
     bottom_center = property(get_bottom_center, set_bottom_center)
     bottom_right = property(get_bottom_right, set_bottom_right)
+    center_left = property(get_center_left, set_center_left)
+    center = property(get_center, set_center)
+    center_right = property(get_center_right, set_center_right)
+    top_left = property(get_top_left, set_top_left)
+    top_center = property(get_top_center, set_top_center)
+    top_right = property(get_top_right, set_top_right)
 
     dimensions = property(get_dimensions)
     tuple = property(get_tuple)
     pygame = property(get_pygame)
 
+
+Rect = Rectangle
 
 
 # Collision Functions
