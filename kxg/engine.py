@@ -942,7 +942,7 @@ class Token (object):
         return {}
 
 
-    def setup(self):
+    def setup(self, world):
         pass
 
     def update(self, time):
@@ -1018,6 +1018,9 @@ class World (Token):
         return token.get_id() in self._tokens
 
 
+    def setup(self):
+        pass
+
     def update(self, time):
         for token in self:
             if token is not self:
@@ -1037,6 +1040,7 @@ class World (Token):
         token._status = Token._registered
 
         token.setup(self)
+
         if list is not None:
             list.append(token)
 
