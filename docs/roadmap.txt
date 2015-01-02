@@ -1,0 +1,24 @@
+Big picture: 
+    Loop -> GameStage -> Actors -> Tokens
+
+Forum actor overview
+
+Loop overview:
+    Loop -> stage
+    GameStage vs. custom stages
+
+Messaging overview
+    Actors -> forums
+    actors -> messages
+    how a message is propagated.
+    What to inherit
+    Soft/hard fail
+    What the callbacks do.
+
+Token overview:
+    World/token/extensions
+    tokens -> actor relationship
+    error checks
+
+Devel docs:
+1. Why don't certain alternatice work.

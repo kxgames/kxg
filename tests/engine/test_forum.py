@@ -104,3 +104,27 @@ def test_multiplayer_instant_fail_message_handling():
     assert test.client_actors[1].messages_received == []
 
 
+@testing.test
+def test_stale_reporter_error():
+
+    class StaleReporterToken (kxg.Token):
+
+        def __init__(self):
+            self.reporter = None
+
+        def report(self, reporter):
+            self.reporter = reporter
+
+        def update(self, dt):
+            if self.reporter:
+                self.reporter.send_message(NormalMessage())
+
+
+    test = UniplayerTest()
+    test.add_token(StaleReporterToken())
+
+    with testing.expect(kxg.StaleReporterError):
+        test.update()
+
+
+
