@@ -1,4 +1,5 @@
-from .geometry import *
+from vecrec import *
+from nonstdlib import infinity
 
 class Sprite:
     """ A parent class for every game object that can move.  This class stores
@@ -99,8 +100,8 @@ class Vehicle (Sprite):
 
     def setup(self, 
             position=Vector.null(),
-            maximum_acceleration=inf,
-            maximum_velocity=inf,
+            maximum_acceleration=infinity,
+            maximum_velocity=infinity,
             mass=1, 
             facing=Vector.null()):
 
