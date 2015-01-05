@@ -467,16 +467,9 @@ class TokenSerializer:
         def persistent_id(token):
             if isinstance(token, Token):
                 if token.is_registered():
-                    if token in message.get_tokens_to_create():
-                        return None
-                    else:
-                        return token.get_id()
-
+                    return token.get_id()
                 if token.is_after_teardown():
-                    if token in message.get_tokens_to_destroy():
-                        return token.get_id()
-                    else:
-                        raise UsingDestroyedToken(token)
+                    raise UsingDestroyedToken(token)
 
         delegate.persistent_id = persistent_id
         delegate.dump(message)
