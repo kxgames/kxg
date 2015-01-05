@@ -1,6 +1,7 @@
 from .forum_observer import ForumObserver
 from .token_and_world import TokenSerializer, unrestricted_token_access
 from .message import CreateToken
+from .errors import *
 
 class Forum:
 
@@ -9,14 +10,13 @@ class Forum:
         self.actors = None
 
     def dispatch_message(self, message):
-        # This function encapsulates the message handling logic that's meant to 
-        # be run on every machine participating in the game.  In other words, 
-        # this code gets run more that once for each message.  For that reason, 
-        # nothing in this function should make any changes to the message.  The 
-        # lock() method enforces this to an extent, but it can be circumvented 
-        # by mutable members so you still need to be careful.
-
-        message.lock()
+        # Relay the messages to clients running on other machines, if this is a 
+        # multiplayer game.  Since the tokens referenced in the message might 
+        # be changed once the message is executed, the message has to be 
+        # relayed before then.
+        
+        for actor in self.actors:
+            actor.dispatch_message(message)
 
         # Normally, tokens can only call methods that have been decorated with 
         # @read_only.  This is a precaution to help keep the worlds in sync on 
@@ -28,7 +28,7 @@ class Forum:
 
             # First, let the message update the state of the game world.
 
-            message.on_execute(self.world)
+            message.execute(self.world)
 
             # Second, let the world react to the message.  The main effect of 
             # the message should have already been carried out above.  These 
@@ -102,6 +102,7 @@ class Actor (ForumObserver):
 
     def __init__(self):
         super().__init__()
+        self._configure_observer()
         self.world = None
         self._forum = None
         self._id_factory = None
@@ -133,14 +134,14 @@ class Actor (ForumObserver):
         message.set_sender_id(self._id_factory)
 
         if isinstance(message, CreateToken):
-            message.on_assign_token_ids(self._id_factory)
+            message.assign_token_ids(self._id_factory)
 
         # Make sure that the message isn't requesting something that can't be 
         # done.  For example, make sure the players have enough resource when 
         # they're trying to buy things.  If the message fails the check, return 
         # False immediately.
 
-        if not message.on_check(self.world, self._id_factory):
+        if not message.check(self.world, self._id_factory):
             return False
 
         # Hand the message off to the forum to be applied to the world and 
@@ -149,6 +150,9 @@ class Actor (ForumObserver):
 
         self._forum.dispatch_message(message)
         return True
+
+    def dispatch_message(self, message):
+        pass
 
     def on_start_game(self):
         pass
@@ -180,7 +184,7 @@ class Referee (Actor):
 
         def send_message(self, message):
             if self.is_finished_reporting:
-                raise errors.StaleReporterError()
+                raise StaleReporterError(message)
             else:
                 self.referee.send_message(message)
 
@@ -222,15 +226,15 @@ class RemoteForum (Forum):
         return False
 
     def dispatch_message(self, message):
-        # Have the message update the local world like usual.
-
-        super().dispatch_message(message)
-
         # Relay the message to a RemoteActor running on the server to update 
         # the world on all of the other machine playing the game as well.
 
         self.pipe.send(message)
         self.pipe.deliver()
+
+        # Have the message update the local world like usual.
+
+        super().dispatch_message(message)
 
     def dispatch_soft_sync_error(self, message):
         """
@@ -253,7 +257,7 @@ class RemoteForum (Forum):
         # Synchronize the world.
 
         with unrestricted_token_access():
-            message.on_soft_sync_error(self.world)
+            message.handle_soft_sync_error(self.world)
             self.world.react_to_soft_sync_error(message)
 
         # Synchronize the tokens.
@@ -276,7 +280,7 @@ class RemoteForum (Forum):
         # Roll back changes that the original message made to the world.
 
         with unrestricted_token_access():
-            message.on_hard_sync_error(self.world)
+            message.handle_hard_sync_error(self.world)
             self.world.react_to_hard_sync_error(message)
 
         # Give the actors a chance to react to the error.  For example, a 
@@ -343,8 +347,6 @@ class RemoteActor (Actor):
 
     def __init__(self, pipe):
         super().__init__()
-        self._disable_forum_observation()
-
         self.pipe = pipe
         self.pipe.lock()
 
@@ -358,10 +360,13 @@ class RemoteActor (Actor):
     def send_message(self):
         raise NotImplementedError
 
-    def react_to_message(self, message):
+    def dispatch_message(self, message):
         if not message.was_sent_by(self._id_factory):
             self.pipe.send(message)
             self.pipe.deliver()
+
+    def react_to_message(self, message):
+        pass
 
     def on_start_game(self):
         serializer = TokenSerializer(self.world)
@@ -381,13 +386,11 @@ class RemoteActor (Actor):
             # are not not relayed and must be somehow undone on the client that 
             # sent the message.
             
-            if not message.on_check(self.world, self._id_factory):
-                if message.on_check_for_soft_sync_error(self.world):
-                    message.flag_soft_sync_error()
-                    self.pipe.send(message)
-                else:
-                    message.flag_hard_sync_error()
-                    self.pipe.send(message)
+            if not message.check(self.world, self._id_factory):
+                message.set_error_state(self.world)
+                self.pipe.send(message)
+
+                if message.has_hard_sync_error():
                     continue
 
             # Silently reject the message if it was sent by an actor with a 
@@ -411,6 +414,9 @@ class RemoteActor (Actor):
     def on_finish_game(self):
         self.pipe.pop_serializer()
 
+    def _is_observation_allowed(self):
+        return False
+
 
 class IdFactory:
 
@@ -430,25 +436,6 @@ class IdFactory:
         self.num_ids_assigned += 1
         return next_id
 
-
-
-def handle_message(message_cls):
-    def decorator(function):
-        function._handle_message = message_cls
-        return function
-    return decorator
-
-def handle_soft_sync_error(message_cls):
-    def decorator(function):
-        function._handle_soft_sync_error = message_cls
-        return function
-    return decorator
-
-def handle_hard_sync_error(message_cls):
-    def decorator(function):
-        function._handle_hard_sync_error = message_cls
-        return function
-    return decorator
 
 
 

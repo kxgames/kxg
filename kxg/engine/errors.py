@@ -102,6 +102,13 @@ class UnknownTokenStatus (GameEngineError):
             raise self
 
 
+class TokenMessagingDisabled (GameEngineError):
+
+    message = """\
+            Tokens must be registered with the world in order to subscribe or 
+            unsubscribe from messages."""
+    details = ""
+
 
 class KxgError (Exception):
     pass
@@ -140,3 +147,4 @@ class UnhandledSyncError (KxgError):
 
 class TokenWatchingError (KxgError):
     pass
+

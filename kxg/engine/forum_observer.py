@@ -1,10 +1,42 @@
 import collections
+from .errors import *
+from pprint import pprint
 
 CallbackInfo = collections.namedtuple('CallbackInfo', 'message_cls, callback')
 
 class ForumObserver:
 
-    def __init__(self):
+    # Classes that inherit from ForumObserver must call _configure_observer() 
+    # before subscribing to any messages.
+
+    def subscribe_to_message(self, message_cls, callback):
+        self._add_callback('message', message_cls, callback)
+
+    def subscribe_to_soft_sync_error(self, message_cls, callback):
+        self._add_callback('soft_sync_error', message_cls, callback)
+
+    def subscribe_to_hard_sync_error(self, message_cls, callback):
+        self._add_callback('hard_sync_error', message_cls, callback)
+
+    def unsubscribe_from_message(self, message_cls, callback=None):
+        self._drop_callback('message', message_cls, callback)
+
+    def unsubscribe_from_soft_sync_error(self, message_cls, callback=None):
+        self._drop_callback('soft_sync_error', message_cls, callback)
+
+    def unsubscribe_from_hard_sync_error(self, message_cls, callback=None):
+        self._drop_callback('hard_sync_error', message_cls, callback)
+
+    def react_to_message(self, message):
+        self._call_callbacks('message', message)
+
+    def react_to_soft_sync_error(self, message):
+        self._call_callbacks('soft_sync_error', message)
+
+    def react_to_hard_sync_error(self, message):
+        self._call_callbacks('hard_sync_error', message)
+
+    def _configure_observer(self):
         # Create a data structure to hold all the callbacks registered with 
         # this observer.  Using a dictionary to distinguish between the regular 
         # message handlers, the soft sync error handlers, and the hard sync 
@@ -17,11 +49,6 @@ class ForumObserver:
                 'hard_sync_error': [],
         }
 
-        # Allow subclasses to easily disable all forum observation behavior by 
-        # setting this flag.
-
-        self._is_observation_allowed = True
-
         # Decorators can be used to automatically label methods that should be 
         # callbacks.  Here, we look for methods that have been labeled in this 
         # way and register them appropriately.
@@ -29,49 +56,26 @@ class ForumObserver:
         from inspect import getmembers, ismethod
 
         for method_name, method in getmembers(self, ismethod):
-            message_cls = getattr(method, '_handle_message', None)
-            if message_cls: self.handle_message(message_cls, method)
+            message_cls = getattr(method, '_subscribe_to_message', None)
+            if message_cls: self.subscribe_to_message(message_cls, method)
 
-            message_cls = getattr(method, '_handle_soft_sync_error', None)
-            if message_cls: self.handle_soft_sync_error(message_cls, method)
+            message_cls = getattr(method, '_subscribe_to_soft_sync_error', None)
+            if message_cls: self.subscribe_to_soft_sync_error(message_cls, method)
 
-            message_cls = getattr(method, '_handle_hard_sync_error', None)
-            if message_cls: self.handle_hard_sync_error(message_cls, method)
+            message_cls = getattr(method, '_subscribe_to_hard_sync_error', None)
+            if message_cls: self.subscribe_to_hard_sync_error(message_cls, method)
 
-    def handle_message(self, message_cls, callback):
-        self._add_callback('message', message_cls, callback)
-
-    def handle_soft_sync_error(self, message_cls, callback):
-        self._add_callback('soft_sync_error', message_cls, callback)
-
-    def handle_hard_sync_error(self, message_cls, callback):
-        self._add_callback('hard_sync_error', message_cls, callback)
-
-    def ignore_message(self, message_cls, callback=None):
-        self._drop_callback('message', message_cls, callback)
-
-    def ignore_soft_sync_error(self, message_cls, callback=None):
-        self._drop_callback('soft_sync_error', message_cls, callback)
-
-    def ignore_hard_sync_error(self, message_cls, callback=None):
-        self._drop_callback('hard_sync_error', message_cls, callback)
-
-    def react_to_message(self, message):
-        self._call_callbacks('message', message)
-
-    def react_to_soft_sync_error(self, message):
-        self._call_callbacks('soft_sync_error', message)
-
-    def react_to_hard_sync_error(self, message):
-        self._call_callbacks('hard_sync_error', message)
+    def _require_active_observer(self):
+        assert hasattr(self, '_callbacks'), "ForumObserver not yet configured."
+        assert self._is_observation_allowed(), "Cannot observe messages from {}".format(self)
 
     def _add_callback(self, event, message_cls, callback):
-        assert self._is_observation_allowed
+        self._require_active_observer()
         callback_info = CallbackInfo(message_cls, callback)
         self._callbacks[event].append(callback_info)
 
     def _drop_callback(self, event, message_cls, callback):
-        assert self._is_observation_allowed
+        self._require_active_observer()
 
         # The [:] syntax is important, because it causes the same list object 
         # to be refilled with the new values.  Without it a new list would be 
@@ -84,7 +88,8 @@ class ForumObserver:
         ]
         
     def _call_callbacks(self, event, message):
-        assert self._is_observation_allowed
+        print ('cc', self)
+        self._require_active_observer()
 
         # Call the callbacks stored in this observer.
 
@@ -100,7 +105,27 @@ class ForumObserver:
     def _get_nested_observers(self):
         return []
 
-    def _disable_forum_observation(self):
-        self._is_observation_allowed = False
+    def _is_observation_allowed(self):
+        return True
+
+
+
+def subscribe_to_message(message_cls):
+    def decorator(function):
+        function._subscribe_to_message = message_cls
+        return function
+    return decorator
+
+def subscribe_to_soft_sync_error(message_cls):
+    def decorator(function):
+        function._subscribe_to_soft_sync_error = message_cls
+        return function
+    return decorator
+
+def subscribe_to_hard_sync_error(message_cls):
+    def decorator(function):
+        function._subscribe_to_hard_sync_error = message_cls
+        return function
+    return decorator
 
 

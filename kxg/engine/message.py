@@ -8,35 +8,6 @@ class Message:
         HARD_SYNC_ERROR = 1
 
 
-    def __new__(cls, *args, **kwargs):
-        # There are two things about this method that are a little tricky.  The 
-        # first is that I decided to implement __new__() instead of __init__() 
-        # so that the user wouldn't have to remember to call __init__().  The 
-        # reason is that the locking system generates really weird errors if it 
-        # isn't set up properly, so I wanted to prevent that from happening.  
-        #
-        # The second tricky thing is how the locking system gets set up.  The 
-        # system revolves around a member variable named _mutable.  If _mutable 
-        # is defined, attributes can be set; otherwise they can't.  The system 
-        # works like this so that by the time the message is sent over the 
-        # network, the message has been locked and _mutable has been unset, so 
-        # the extra boolean field doesn't need to be set over the network.  
-        # However, a little trickiness is required to set the _mutable member 
-        # in the first place.  That what the __dict__ assignment below does.
-   
-        message = super().__new__(cls)
-        message.__dict__['_mutable'] = True
-        return message
-
-    def __setattr__(self, key, value):
-        if hasattr(self, '_mutable'):
-            super().__setattr__(key, value)
-        else:
-            raise errors.ImmutableMessageError(self)
-
-    def get_messages(self):
-        return [self]
-
     def set_sender_id(self, sender_id):
         self.sender_id = sender_id.get()
 
@@ -46,11 +17,11 @@ class Message:
     def was_sent_by_referee(self):
         return self.sender_id == 0
 
-    def flag_soft_sync_error(self):
-        self._error_state = Message.ErrorState.SOFT_SYNC_ERROR
-
-    def flag_hard_sync_error(self):
-        self._error_state = Message.ErrorState.HARD_SYNC_ERROR
+    def set_error_state(self, world):
+        if self.on_check_for_soft_sync_error(world):
+            self._error_state = Message.ErrorState.SOFT_SYNC_ERROR
+        else:
+            self._error_state = Message.ErrorState.HARD_SYNC_ERROR
 
     def has_soft_sync_error(self):
         return getattr(self, '_error_state', None) == Message.ErrorState.SOFT_SYNC_ERROR
@@ -58,8 +29,11 @@ class Message:
     def has_hard_sync_error(self):
         return getattr(self, '_error_state', None) == Message.ErrorState.HARD_SYNC_ERROR
 
-    def lock(self):
-        del self._mutable
+    def get_tokens_to_create(self):
+        return []
+
+    def get_tokens_to_destroy(self):
+        return []
 
     def copy(self):
         """
@@ -71,6 +45,69 @@ class Message:
         """
         import copy
         return copy.copy(self)
+
+
+    def assign_token_ids(self, id_factory):
+        # Called by Actor but not by RemoteActor, so it is guaranteed to be 
+        # called exactly once.  Not really different from the constructor, 
+        # except that the id_factory object is nicely provided.  That's useful 
+        # for CreateToken but probably nothing else.  Could be called after 
+        # check() to not waste id numbers, but that's not super important.
+
+        for token in self.get_tokens_to_create():
+            token.give_id(id_factory)
+
+    def check(self, world, id_factory):
+        # Check all the tokens to create:
+
+        for token in self.get_tokens_to_create():
+            if token in world:
+                return False
+
+            # Make sure that the token was created by the same actor that's 
+            # checking the message.
+
+            if token.get_id() not in id_factory:
+                return False
+
+        # Check all the tokens to destroy:
+        
+        for token in self.get_tokens_to_destroy():
+            if token not in world:
+                return False
+
+        # Let derived classes check themselves:
+
+        return self.on_check(world, id_factory.get())
+
+    def execute(self, world):
+        # Deal with tokens to be created or destroyed.
+
+        for token in self.get_tokens_to_create():
+            world._add_token(token)
+
+        for token in self.get_tokens_to_destroy():
+            world._remove_token(token)
+
+        # Let derived classes execute themselves.
+
+        self.on_execute(world)
+
+    def handle_soft_sync_error(self, world):
+        self.on_soft_sync_error(world)
+
+    def handle_hard_sync_error(self, world):
+        # Deal with the tokens that were created or destroyed.
+
+        for token in self.get_tokens_to_create():
+            world._remove_token(token)
+
+        for token in self.get_tokens_to_destroy():
+            world._add_token(token)
+
+        # Let derived classes execute themselves.
+
+        self.on_hard_sync_error(world)
 
 
     def on_check(self, world, sender_id):
@@ -112,37 +149,22 @@ class Message:
         raise errors.UnhandledSyncError
 
 
-class CompositeMessage(Message):
-
-    def __init__(self, *messages):
-        super().__init__()
-        self.messages = messages
-
-    def get_messages(self):
-        return self.messages
-
-
 class CreateToken (Message):
 
     def __init__(self, token):
         self.token = token
 
-    def on_assign_token_ids(self, id_factory):
-        # Called by Actor but not by RemoteActor, so it is guaranteed to be 
-        # called exactly once.  Not really different from the constructor, 
-        # except that the id_factory object is nicely provided.  That's useful 
-        # for CreateToken but probably nothing else.  Could be called after 
-        # check() to not waste id numbers, but that's not super important.
-        self.token.give_id(id_factory)
+    def get_tokens_to_create(self):
+        return [self.token]
 
-    def on_check(self, world, sender):
-        return self.token not in world and sender.is_token_from_me(self.token)
 
-    def on_execute(self, world):
-        world._add_token(self.token)
+class CreateTokens (Message):
 
-    def on_hard_sync_error(self, world):
-        world._remove_token(self.token)
+    def __init__(self, tokens):
+        self.tokens = tokens
+
+    def get_tokens_to_create(self):
+        return self.tokens
 
 
 class DestroyToken (Message):
@@ -150,14 +172,16 @@ class DestroyToken (Message):
     def __init__(self, token):
         self.token = token
 
-    def on_check(self, world, sender):
-        return self.token in world
+    def get_tokens_to_destroy(self):
+        return [self.token]
 
-    def on_execute(self, world):
-        world._remove_token(self.token)
 
-    def on_hard_sync_error(self, world):
-        world._add_token(self.token)
+class DestroyTokens (Message):
 
+    def __init__(self, tokens):
+        self.tokens = tokens
+
+    def get_tokens_to_destroy(self):
+        return self.tokens
 
 

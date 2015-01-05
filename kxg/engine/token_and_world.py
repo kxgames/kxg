@@ -1,7 +1,8 @@
 import functools
 import contextlib
-from .errors import *
 from .forum_observer import ForumObserver
+from .errors import *
+from pprint import pprint
 
 class TokenMetaclass (type):
 
@@ -193,10 +194,13 @@ class Token (ForumObserver):
 
 
     def __init__(self):
+        # Normally I would define all the members that would be used by a class 
+        # in its constructor, but in this case doing so is problematic because 
+        # tokens are often pickled and sent across the network.  So anything 
+        # defined here would needlessly use up a few bytes of bandwidth.  To 
+        # compensate for variables not being predefined in the constructor, the 
+        # rest of the class uses hasattr() check where appropriate.
         super().__init__()
-        self._id = None
-        self._status = Token._before_setup
-        self._extensions = {}
 
     def __extend__(self):
         return {}
@@ -236,10 +240,8 @@ class Token (ForumObserver):
 
     @before_setup
     def give_id(self, id):
-        assert hasattr(self, '_id'), "Forgot to call Token.__init__() in subclass constructor."
-        assert self._id is None, "Token already has an id."
+        assert not hasattr(self, '_id'), "Token already has an id."
         assert self.is_before_setup(), "Token already registered with the world."
-        assert isinstance(id, IdFactory), "Must use an IdFactory instance to give an id."
         self._id = id.next()
 
     @read_only
@@ -257,7 +259,8 @@ class Token (ForumObserver):
 
     @read_only
     def has_extension(self, actor):
-        return type(actor) in self._extensions
+        try: return type(actor) in self._extensions
+        except AttributeError: return False
 
     @read_only
     def get_extension(self, actor):
@@ -280,14 +283,25 @@ class Token (ForumObserver):
     def on_remove_from_world(self):
         pass
 
+    def _require_active_observer(self):
+        # Give a helpful error if the user attempts to use the ForumObserver 
+        # before it has been configured.  One common way this might happen is 
+        # if the user attempts to subscribe to messages in the constructor.  
+        # This is rightly forbidden, because there would be no way to copy 
+        # those subscriptions to all the other clients.
+
+        try: super()._require_active_observer()
+        except: raise TokenMessagingDisabled()
+
 
 class World (Token):
 
     def __init__(self):
-        Token.__init__(self)
+        super().__init__()
+        self._configure_observer()
 
         self._id = 0
-        self._tokens = {0: self}
+        self._tokens = {self.get_id(): self}
         self._actors = []
 
     @read_only
@@ -338,7 +352,7 @@ class World (Token):
     def on_update_game(self, dt):
         for token in self:
             if token is not self:
-                token.update(dt)
+                token.on_update_game(dt)
 
     def on_finish_game(self):
         pass
@@ -352,7 +366,11 @@ class World (Token):
         self._tokens[id] = token
         token._status = Token._registered
 
-        token.setup(self)
+        # Allow the token to subscribe and unsubscribe from messages delivered 
+        # by the forum.
+        token._configure_observer()
+
+        token.on_add_to_world(self)
 
         token._extensions = {}
         extension_classes = token.__extend__()
@@ -374,11 +392,7 @@ class World (Token):
         assert token.is_registered(), "Can't remove an unregistered token."
 
         del self._tokens[id]
-
-        for extension in token.get_extensions():
-            extension.teardown()
-
-        token.teardown()
+        token.on_remove_from_world()
         token._status = Token._after_teardown
 
     def _get_nested_observers(self):
@@ -409,6 +423,8 @@ class Prototype (Token):
 class TokenExtension (ForumObserver):
 
     def __init__(self, actor, token):
+        super().__init__()
+        self._configure_observer()
         self.actor = actor
         self.token = token
 
@@ -448,7 +464,21 @@ class TokenSerializer:
         buffer = BytesIO()
         delegate = Pickler(buffer)
 
-        delegate.persistent_id = self.persistent_id
+        def persistent_id(token):
+            if isinstance(token, Token):
+                if token.is_registered():
+                    if token in message.get_tokens_to_create():
+                        return None
+                    else:
+                        return token.get_id()
+
+                if token.is_after_teardown():
+                    if token in message.get_tokens_to_destroy():
+                        return token.get_id()
+                    else:
+                        raise UsingDestroyedToken(token)
+
+        delegate.persistent_id = persistent_id
         delegate.dump(message)
 
         return buffer.getvalue()
@@ -460,18 +490,8 @@ class TokenSerializer:
         buffer = BytesIO(packet)
         delegate = Unpickler(buffer)
 
-        delegate.persistent_load = self.persistent_load
+        delegate.persistent_load = lambda id: self.world.get_token(int(id))
         return delegate.load()
-
-    def persistent_id(self, token):
-        if isinstance(token, Token):
-            if token.is_registered():
-                return token.get_id()
-            if token.is_after_teardown():
-                raise UsingDestroyedToken(token)
-
-    def persistent_load(self, id):
-        return self.world.get_token(int(id))
 
 
 
