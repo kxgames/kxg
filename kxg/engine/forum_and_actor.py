@@ -102,7 +102,6 @@ class Actor (ForumObserver):
 
     def __init__(self):
         super().__init__()
-        self._configure_observer()
         self.world = None
         self._forum = None
         self._id_factory = None
@@ -347,6 +346,7 @@ class RemoteActor (Actor):
 
     def __init__(self, pipe):
         super().__init__()
+        self._disable_forum_observation()
         self.pipe = pipe
         self.pipe.lock()
 
@@ -413,9 +413,6 @@ class RemoteActor (Actor):
 
     def on_finish_game(self):
         self.pipe.pop_serializer()
-
-    def _is_observation_allowed(self):
-        return False
 
 
 class IdFactory:

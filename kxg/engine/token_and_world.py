@@ -194,13 +194,22 @@ class Token (ForumObserver):
 
 
     def __init__(self):
-        # Normally I would define all the members that would be used by a class 
-        # in its constructor, but in this case doing so is problematic because 
-        # tokens are often pickled and sent across the network.  So anything 
-        # defined here would needlessly use up a few bytes of bandwidth.  To 
-        # compensate for variables not being predefined in the constructor, the 
-        # rest of the class uses hasattr() check where appropriate.
         super().__init__()
+        self._id = None
+        self._world = None
+        self._status = Token._before_setup
+        self._extensions = {}
+        self._disable_forum_observation()
+
+    def __getstate__(self):
+        state = super().__getstate__()
+        del state['_status']
+        del state['_extensions']
+        return state
+
+    def __setstate__(self, state):
+        Token.__init__(self)
+        self.__dict__.update(state)
 
     def __extend__(self):
         return {}
@@ -240,9 +249,19 @@ class Token (ForumObserver):
 
     @before_setup
     def give_id(self, id):
-        assert not hasattr(self, '_id'), "Token already has an id."
+        assert hasattr(self, '_id'), "Forgot to call Token constructor in {}.".format(self.__class__.__name__)
+        assert self._id is None, "Token already has an id."
         assert self.is_before_setup(), "Token already registered with the world."
         self._id = id.next()
+
+    @property
+    @read_only
+    def world(self):
+        return self._world
+
+    @before_setup
+    def set_world(self, world):
+        self._world = world
 
     @read_only
     def is_before_setup(self):
@@ -283,14 +302,15 @@ class Token (ForumObserver):
     def on_remove_from_world(self):
         pass
 
-    def _require_active_observer(self):
-        # Give a helpful error if the user attempts to use the ForumObserver 
-        # before it has been configured.  One common way this might happen is 
-        # if the user attempts to subscribe to messages in the constructor.  
-        # This is rightly forbidden, because there would be no way to copy 
-        # those subscriptions to all the other clients.
+    def _check_if_forum_observation_enabled(self):
+        # Give a helpful error if the user attempts to subscribe or unsubscribe 
+        # from messages while the token is not registered with a world.  This 
+        # can easily happen if the user attempts to subscribe to messages in 
+        # the constructor.  However, because the constructor is only called on 
+        # one client and message handlers cannot be pickled, subscribing at 
+        # this time would create hard-to-find synchronization bugs.
 
-        try: super()._require_active_observer()
+        try: super()._check_if_forum_observation_enabled()
         except: raise TokenMessagingDisabled()
 
 
@@ -298,8 +318,7 @@ class World (Token):
 
     def __init__(self):
         super().__init__()
-        self._configure_observer()
-
+        self._enable_forum_observation()
         self._id = 0
         self._tokens = {self.get_id(): self}
         self._actors = []
@@ -363,14 +382,21 @@ class World (Token):
         assert id not in self._tokens, "Can't reuse %d as an id number." % id
         assert isinstance(id, int), "Token has non-integer id number."
 
+        # Add the token to the world.  This means adding it to the world's list 
+        # of tokens, allowing it to use methods that haven't been marked with 
+        # @before_setup (by changing its status to "registered"), and allowing 
+        # it to subscribe to messages from the forum.  Finally, the token is 
+        # given a chance to react to it's own creation.
+
         self._tokens[id] = token
         token._status = Token._registered
-
-        # Allow the token to subscribe and unsubscribe from messages delivered 
-        # by the forum.
-        token._configure_observer()
-
+        token._enable_forum_observation()
+        token.set_world(self)
         token.on_add_to_world(self)
+
+        # Initialize any extensions relevant to this token.  Which extensions 
+        # are relevant depends on which actors are being are running on the 
+        # current machine.  At most one extension will be created per actor.
 
         token._extensions = {}
         extension_classes = token.__extend__()
@@ -393,6 +419,7 @@ class World (Token):
 
         del self._tokens[id]
         token.on_remove_from_world()
+        token._disable_forum_observation()
         token._status = Token._after_teardown
 
     def _get_nested_observers(self):
@@ -424,7 +451,6 @@ class TokenExtension (ForumObserver):
 
     def __init__(self, actor, token):
         super().__init__()
-        self._configure_observer()
         self.actor = actor
         self.token = token
 
