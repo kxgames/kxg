@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
-import kxg, finalexam
-from helpers import *
+import kxg
+from dummies import *
 from pprint import pprint
 
-@finalexam.test
 def test_uniplayer_message_handling():
-    test = UniplayerTest()
+    test = DummyUniplayerGame()
     message = DummyMessage()
 
     assert test.world.messages_executed == []
@@ -25,9 +24,8 @@ def test_uniplayer_message_handling():
     assert test.actors[0].messages_received == [message]
     assert test.actors[1].messages_received == [message]
 
-@finalexam.test
 def test_uniplayer_message_rejection():
-    test = UniplayerTest()
+    test = DummyUniplayerGame()
     message = DummyMessage(False)
 
     assert not test.actors[0].send_message(message)
@@ -36,9 +34,8 @@ def test_uniplayer_message_rejection():
     assert test.actors[0].messages_received == []
     assert test.actors[1].messages_received == []
 
-@finalexam.test
 def test_multiplayer_message_handling():
-    test = MultiplayerTest()
+    test = DummyMultiplayerGame()
     message = DummyMessage()
 
     assert test.client_actors[0].send_message(message)
@@ -55,9 +52,8 @@ def test_multiplayer_message_handling():
     assert test.client_worlds[1].messages_received == [message]
     assert test.client_actors[1].messages_received == [message]
 
-@finalexam.test
 def test_multiplayer_referee_messaging():
-    test = MultiplayerTest()
+    test = DummyMultiplayerGame()
     message = DummyMessage()
 
     assert test.server_referee.send_message(message)
@@ -74,9 +70,8 @@ def test_multiplayer_referee_messaging():
     assert test.client_worlds[1].messages_received == [message]
     assert test.client_actors[1].messages_received == [message]
 
-@finalexam.test
 def test_multiplayer_message_rejection():
-    test = MultiplayerTest()
+    test = DummyMultiplayerGame()
     message = DummyMessage(False)
 
     assert not test.client_actors[0].send_message(message)
@@ -93,10 +88,9 @@ def test_multiplayer_message_rejection():
     assert test.client_worlds[1].messages_received == []
     assert test.client_actors[1].messages_received == []
 
-@finalexam.test
 def test_multiplayer_soft_sync_error_handling():
-    test = MultiplayerTest()
-    message = SoftSyncError()
+    test = DummyMultiplayerGame()
+    message = DummySoftSyncError()
 
     assert test.client_actors[0].send_message(message)
     assert test.client_worlds[0].messages_executed == [message]
@@ -118,10 +112,9 @@ def test_multiplayer_soft_sync_error_handling():
     assert test.client_worlds[1].soft_errors_handled == [message]
     assert test.client_actors[1].soft_errors_received == [message]
     
-@finalexam.test
 def test_multiplayer_hard_sync_error_handling():
-    test = MultiplayerTest()
-    message = HardSyncError()
+    test = DummyMultiplayerGame()
+    message = DummyHardSyncError()
 
     assert test.client_actors[0].send_message(message)
     assert test.client_worlds[0].messages_executed == [message]
@@ -140,27 +133,24 @@ def test_multiplayer_hard_sync_error_handling():
     assert test.client_worlds[1].messages_received == []
     assert test.client_actors[1].messages_received == []
 
-@finalexam.test
 def test_uniplayer_token_creation():
-    test = UniplayerTest()
+    test = DummyUniplayerGame()
     token = DummyToken()
     message = kxg.CreateToken(token)
 
     assert test.actors[0].send_message(message)
     assert token in test.world
 
-@finalexam.test
 def test_uniplayer_token_destruction():
-    test = UniplayerTest()
+    test = DummyUniplayerGame()
     message = kxg.DestroyToken(test.token)
 
     assert test.token in test.world
     assert test.actors[0].send_message(message)
     assert test.token not in test.world
 
-@finalexam.test
 def test_multiplayer_token_creation():
-    test = MultiplayerTest()
+    test = DummyMultiplayerGame()
     token = DummyToken()
     message = kxg.CreateToken(token)
 
@@ -172,9 +162,8 @@ def test_multiplayer_token_creation():
     assert token in test.server_world
     assert token in test.client_worlds[1]
 
-@finalexam.test
 def test_multiplayer_token_destruction():
-    test = MultiplayerTest()
+    test = DummyMultiplayerGame()
     token = test.client_tokens[0]
     message = kxg.DestroyToken(token)
 
@@ -189,15 +178,12 @@ def test_multiplayer_token_destruction():
     assert len(test.server_world) == 1
     assert len(test.client_worlds[1]) == 1
 
-@finalexam.skip
 def test_multiplayer_token_creation_with_hard_sync_error():
     pass
 
-@finalexam.skip
 def test_multiplayer_token_destruction_with_hard_sync_error():
     pass
 
-@finalexam.test
 def test_stale_reporter_error():
 
     class StaleReporterToken (kxg.Token):
@@ -214,15 +200,12 @@ def test_stale_reporter_error():
                 self.reporter.send_message(DummyMessage())
 
 
-    test = UniplayerTest()
+    test = DummyUniplayerGame()
     token = StaleReporterToken()
     message = kxg.CreateToken(token)
     test.actors[0].send_message(message)
 
-    with finalexam.expect(kxg.StaleReporterError):
+    with raises_api_usage_error():
         test.update(1)
 
 
-if __name__ == '__main__':
-    finalexam.title("Testing the forum and the actors...")
-    finalexam.run()

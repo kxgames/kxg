@@ -1,6 +1,5 @@
-from .forum_observer import ForumObserver
-from .token_and_world import TokenSerializer, unrestricted_token_access
-from .message import CreateToken
+#!/usr/bin/env python3
+
 from .errors import *
 
 class Forum:
@@ -24,7 +23,7 @@ class Forum:
         # handling messages and enforced again once the actors are handling 
         # messages.
 
-        with unrestricted_token_access():
+        with self.world.unlock_temporarily():
 
             # First, let the message update the state of the game world.
 
@@ -88,7 +87,7 @@ class Forum:
 
     def _assign_id_factories(self):
         id_factories = {}
-        actors = sorted(self.actors, key=lambda x: not isinstance(x, Referee))
+        actors = sorted(self.actors, key=lambda x: not x.is_referee())
         first_id = self.world.get_last_id() + 1
         spacing = len(self.actors)
 
@@ -98,103 +97,129 @@ class Forum:
         return id_factories
 
 
-class Actor (ForumObserver):
+class ForumObserver:
+
+    from collections import namedtuple
+    CallbackInfo = namedtuple('CallbackInfo', 'message_cls, callback')
 
     def __init__(self):
         super().__init__()
-        self.world = None
-        self._forum = None
-        self._id_factory = None
 
-    def set_world(self, world):
-        assert self.world is None, "Actor already has world."
-        self.world = world
+        # Create a data structure to hold all the callbacks registered with 
+        # this observer.  Using a dictionary to distinguish between the regular 
+        # message handlers, the soft sync error handlers, and the hard sync 
+        # error handlers (instead of just having three different lists) makes 
+        # it easy to write protected helpers to do most of the work.  
 
-    def set_forum(self, forum, id_factory):
-        assert self._id_factory is None, "Actor already has id."
-        self._id_factory = id_factory
+        self._callbacks = {
+                'message': [],
+                'soft_sync_error': [],
+                'hard_sync_error': [],
+        }
 
-        assert self._forum is None, "Actor already has forum."
-        self._forum = forum
+        # Create a member variable indicating whether or not the ability to 
+        # subscribe to or unsubscribe from messages should be enabled.  Token 
+        # disable this functionality until they've been added to the world and 
+        # RemoteActors disable it permanently. 
 
-    def get_id(self):
-        assert self._id_factory is not None, "Actor does not have id."
-        return self._id_factory.get()
+        self._is_enabled = True
 
-    def is_finished(self):
-        return self.world.has_game_ended()
+        # Decorators can be used to automatically label methods that should be 
+        # callbacks.  Here, we look for methods that have been labeled in this 
+        # way and register them appropriately.
 
-    def send_message(self, message):
-        # Indicate that the message was sent by this actor and give the message 
-        # a chance to assign id numbers to the tokens it's creating, if it's a 
-        # CreateToken message.  This is done before the message is checked so 
-        # that the check can make sure valid ids were assigned.
+        from inspect import getmembers, ismethod
 
-        message.set_sender_id(self._id_factory)
+        for method_name, method in getmembers(self, ismethod):
+            message_cls = getattr(method, '_subscribe_to_message', None)
+            if message_cls: self.subscribe_to_message(message_cls, method)
 
-        if isinstance(message, CreateToken):
-            message.assign_token_ids(self._id_factory)
+            message_cls = getattr(method, '_subscribe_to_soft_sync_error', None)
+            if message_cls: self.subscribe_to_soft_sync_error(message_cls, method)
 
-        # Make sure that the message isn't requesting something that can't be 
-        # done.  For example, make sure the players have enough resource when 
-        # they're trying to buy things.  If the message fails the check, return 
-        # False immediately.
+            message_cls = getattr(method, '_subscribe_to_hard_sync_error', None)
+            if message_cls: self.subscribe_to_hard_sync_error(message_cls, method)
 
-        if not message.check(self.world, self._id_factory):
-            return False
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['_callbacks']
+        del state['_is_enabled']
+        return state
 
-        # Hand the message off to the forum to be applied to the world and 
-        # relayed on to all the other actors (which may or may not be on 
-        # different machines).
+    def __setstate__(self, state):
+        ForumObserver.__init__(self)
+        self.__dict__.update(state)
 
-        self._forum.dispatch_message(message)
-        return True
+    def subscribe_to_message(self, message_cls, callback):
+        self._add_callback('message', message_cls, callback)
 
-    def dispatch_message(self, message):
-        pass
+    def subscribe_to_soft_sync_error(self, message_cls, callback):
+        self._add_callback('soft_sync_error', message_cls, callback)
 
-    def on_start_game(self):
-        pass
+    def subscribe_to_hard_sync_error(self, message_cls, callback):
+        self._add_callback('hard_sync_error', message_cls, callback)
 
-    def on_update_game(self, dt):
-        pass
+    def unsubscribe_from_message(self, message_cls, callback=None):
+        self._drop_callback('message', message_cls, callback)
 
-    def on_finish_game(self):
-        pass
+    def unsubscribe_from_soft_sync_error(self, message_cls, callback=None):
+        self._drop_callback('soft_sync_error', message_cls, callback)
+
+    def unsubscribe_from_hard_sync_error(self, message_cls, callback=None):
+        self._drop_callback('hard_sync_error', message_cls, callback)
+
+    def react_to_message(self, message):
+        self._call_callbacks('message', message)
+
+    def react_to_soft_sync_error(self, message):
+        self._call_callbacks('soft_sync_error', message)
+
+    def react_to_hard_sync_error(self, message):
+        self._call_callbacks('hard_sync_error', message)
+
+    def _enable_forum_observation(self):
+        self._is_enabled = True
+
+    def _disable_forum_observation(self):
+        self._is_enabled = False
+
+    def _check_if_forum_observation_is_enabled(self):
+        assert self._is_enabled, "{} has disabled forum observation.".format(self)
+
+    def _add_callback(self, event, message_cls, callback):
+        self._check_if_forum_observation_is_enabled()
+        callback_info = ForumObserver.CallbackInfo(message_cls, callback)
+        self._callbacks[event].append(callback_info)
+
+    def _drop_callback(self, event, message_cls, callback):
+        self._check_if_forum_observation_is_enabled()
+
+        # The [:] syntax is important, because it causes the same list object 
+        # to be refilled with the new values.  Without it a new list would be 
+        # created and the list in self.callbacks would not be changed.
+
+        self._callbacks[event][:] = [
+                callback_info for callback_info in self.callbacks[event]
+                if (callback_info.message_cls is message_cls) and
+                   (callback_info.callback is callback or callback is None)
+        ]
+        
+    def _call_callbacks(self, event, message):
+        self._check_if_forum_observation_is_enabled()
+
+        # Call the callbacks stored in this observer.
+
+        for callback_info in self._callbacks[event]:
+            if isinstance(message, callback_info.message_cls):
+                callback_info.callback(message)
+
+        # Call the callbacks stored in nested observers.
+
+        for observer in self._get_nested_observers():
+            observer._call_callbacks(event, message)
 
     def _get_nested_observers(self):
-        return (token.get_extension(self)
-                for token in self.world if token.has_extension(self))
-
-
-class Referee (Actor):
-
-    class Reporter:
-        
-        def __init__(self, referee):
-            self.referee = None
-            self.is_finished_reporting = False
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_value, traceback):
-            self.is_finished_reporting = True
-
-        def send_message(self, message):
-            if self.is_finished_reporting:
-                raise StaleReporterError(message)
-            else:
-                self.referee.send_message(message)
-
-    def set_forum(self, forum, id_factory):
-        super().set_forum(forum, id_factory)
-        assert self.get_id() == 1
-
-    def on_update_game(self, dt):
-        with Referee.Reporter(self) as reporter:
-            for token in self.world:
-                token.on_report_to_referee(reporter)
+        return []
 
 
 class RemoteForum (Forum):
@@ -255,7 +280,7 @@ class RemoteForum (Forum):
 
         # Synchronize the world.
 
-        with unrestricted_token_access():
+        with self.world.unlock_temporarily():
             message.handle_soft_sync_error(self.world)
             self.world.react_to_soft_sync_error(message)
 
@@ -278,7 +303,7 @@ class RemoteForum (Forum):
 
         # Roll back changes that the original message made to the world.
 
-        with unrestricted_token_access():
+        with self.world.unlock_temporarily():
             message.handle_hard_sync_error(self.world)
             self.world.react_to_hard_sync_error(message)
 
@@ -300,6 +325,7 @@ class RemoteForum (Forum):
         super().connect_everyone(world, actors)
 
     def on_start_game(self):
+        from .tokens import TokenSerializer
         serializer = TokenSerializer(self.world)
         self.pipe.push_serializer(serializer)
 
@@ -342,79 +368,6 @@ class RemoteForum (Forum):
         return {self.actor: self.actor_id_factory}
 
 
-class RemoteActor (Actor):
-
-    def __init__(self, pipe):
-        super().__init__()
-        self._disable_forum_observation()
-        self.pipe = pipe
-        self.pipe.lock()
-
-    def set_forum(self, forum, id):
-        super().set_forum(forum, id)
-        self.pipe.send(id)
-
-    def is_finished(self):
-        return self.pipe.finished() or Actor.is_finished(self)
-
-    def send_message(self):
-        raise NotImplementedError
-
-    def dispatch_message(self, message):
-        if not message.was_sent_by(self._id_factory):
-            self.pipe.send(message)
-            self.pipe.deliver()
-
-    def react_to_message(self, message):
-        pass
-
-    def on_start_game(self):
-        serializer = TokenSerializer(self.world)
-        self.pipe.push_serializer(serializer)
-
-    def on_update_game(self, dt):
-        # For each message received from the connected client:
-
-        for message in self.pipe.receive():
-
-            # Check the message to make sure it matches the state of the game 
-            # world on the server.  If the message doesn't pass the check, the 
-            # client and server must be out of sync.  Decide whether the sync 
-            # error is recoverable (i.e. soft) or not (i.e. hard).  Soft sync 
-            # errors are relayed on to the rest of the game as usual and are 
-            # given an opportunity to sync all the clients.  Hard sync errors 
-            # are not not relayed and must be somehow undone on the client that 
-            # sent the message.
-            
-            if not message.check(self.world, self._id_factory):
-                message.set_error_state(self.world)
-                self.pipe.send(message)
-
-                if message.has_hard_sync_error():
-                    continue
-
-            # Silently reject the message if it was sent by an actor with a 
-            # different id that this one.  This should absolutely never happen 
-            # because this actor gives its id to its client, so if a mismatch 
-            # is detected we've mostly likely received some sort of malformed 
-            # or malicious packet.
-
-            if not message.was_sent_by(self._id_factory):
-                continue
-
-            # Execute the message if it hasn't been rejected yet.
-
-            self._forum.dispatch_message(message)
-
-        # Deliver any messages waiting to be sent.  This has to be done every 
-        # frame because it sometimes takes more than one try to send a message.
-
-        self.pipe.deliver()
-
-    def on_finish_game(self):
-        self.pipe.pop_serializer()
-
-
 class IdFactory:
 
     def __init__(self, offset, spacing):
@@ -435,4 +388,25 @@ class IdFactory:
 
 
 
+@debug_only
+def require_forum(object):
+    require_instance(Forum(), object)
+
+def subscribe_to_message(message_cls):
+    def decorator(function):
+        function._subscribe_to_message = message_cls
+        return function
+    return decorator
+
+def subscribe_to_soft_sync_error(message_cls):
+    def decorator(function):
+        function._subscribe_to_soft_sync_error = message_cls
+        return function
+    return decorator
+
+def subscribe_to_hard_sync_error(message_cls):
+    def decorator(function):
+        function._subscribe_to_hard_sync_error = message_cls
+        return function
+    return decorator
 

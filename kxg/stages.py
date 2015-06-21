@@ -1,56 +1,23 @@
-import pyglet
-from .token_and_world import Token, unrestricted_token_access
-from .forum_and_actor import Forum, RemoteForum, RemoteActor
+#!/usr/bin/env python3
 
-class Loop:
-    """ Manage whichever stage is currently active.  This involves both
-    updating the current stage and handling transitions between stages. """
-
-    def __init__(self, initial_stage):
-        self.stage = initial_stage
-
-    def play(self, frames_per_sec=50):
-        self.stage.set_loop(self)
-        self.stage.on_enter_stage()
-
-        pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
-        pyglet.app.run()
-
-    def update(self, dt):
-        self.stage.on_update_stage(dt)
-
-        if self.stage.is_finished():
-            self.stage.on_exit_stage()
-            self.stage = self.stage.get_successor()
-
-            if self.stage:
-                self.stage.set_loop(self)
-                self.stage.on_enter_stage()
-            else:
-                self.exit()
-
-    def exit(self):
-        if self.stage:
-            self.stage.on_exit_stage()
-
-        pyglet.app.exit()
-
-
-class GuiLoop (Loop):
-
-    def play(self, frames_per_sec=50):
-        self.window = pyglet.window.Window()
-        Loop.play(self, frames_per_sec)
-
-    def get_window(self):
-        return self.window
-
-
+from .errors import *
+from .world import require_world
+from .forums import Forum, RemoteForum, require_forum
+from .actors import RemoteActor, require_actors
 
 class Stage:
 
     def __init__(self):
+        self._successor = None
         self._stop_flag = False
+
+    @property
+    def successor(self):
+        return self._successor
+
+    @successor.setter
+    def successor(self, stage):
+        self._successor = stage
 
     def get_loop(self):
         return self._loop
@@ -88,6 +55,11 @@ class GameStage (Stage):
 
     def __init__(self, world, forum, actors):
         Stage.__init__(self)
+
+        require_world(world)
+        require_forum(forum)
+        require_actors(actors)
+
         self.world = world
         self.forum = forum
         self.actors = actors
@@ -98,11 +70,12 @@ class GameStage (Stage):
         Prepare the actors, the world, and the messaging system to begin 
         playing the game.
         
-        This function is guaranteed to be called exactly once upon entering the 
-        game stage.  Therefore it is used for initialization code.
+        This method is guaranteed to be called exactly once upon entering the 
+        game stage.
         """
 
-        self.forum.connect_everyone(self.world, self.actors)
+        with self.world.unlock_temporarily():
+            self.forum.connect_everyone(self.world, self.actors)
 
         # 1. Setup the forum.
 
@@ -110,10 +83,10 @@ class GameStage (Stage):
 
         # 2. Setup the world.
 
-        with unrestricted_token_access():
+        with self.world.unlock_temporarily():
             self.world.on_start_game()
 
-        # 3. Setup the actors.  Because this is done once the forum and the  
+        # 3. Setup the actors.  Because this is done after the forum and the  
         #    world have been setup, this signals to the actors that they can 
         #    send messages and query the game world as usual.
 
@@ -121,37 +94,61 @@ class GameStage (Stage):
             actor.on_start_game()
 
     def on_update_stage(self, dt):
-        """ Sequentially updates the actors, world, and messaging system.  The
-        loop terminates once all of the actors indicate that they are done. """
+        """
+        Sequentially update the actors, the world, and the messaging system.  
+        The loop terminates once all of the actors indicate that they are done.
+        """
 
-        still_playing = False
+        # 1. Update the actors.
 
         for actor in self.actors:
             actor.on_update_game(dt)
-            if not actor.is_finished():
-                still_playing = True
 
-        if not still_playing:
+        # 2. If all the actors are finished, exit this stage.
+
+        if all(x.is_finished() for x in self.actors):
             self.exit_stage()
+
+        # 3. Update the messaging system.
 
         self.forum.on_update_game()
 
-        with unrestricted_token_access():
+        # 4. 
+        with self.world.unlock_temporarily():
             self.world.on_update_game(dt)
 
     def on_exit_stage(self):
+        """
+        Give the actors, the world, and the messaging system a chance to react 
+        to the end of the game.
+        """
+
+        # 1. Let the forum react to the end of the game.  Local forums don't 
+        #    react to this, but remote forums take the opportunity to stop 
+        #    trying to extract tokens from messages.
+
         self.forum.on_finish_game()
+
+        # 2. Let the actors react to the end of the game.
 
         for actor in self.actors:
             actor.on_finish_game()
 
-        with unrestricted_token_access():
+        # 3. Let the world react to the end of the game.
+
+        with self.world.unlock_temporarily():
             self.world.on_finish_game()
 
     def get_successor(self):
+        """
+        Return the stage that will be run by the loop after this one finishes.
+        """
         return self.successor
 
     def set_successor(self, successor):
+        """
+        Set the stage that will be run by the loop after this one finishes.
+        """
         self.successor = successor
 
 

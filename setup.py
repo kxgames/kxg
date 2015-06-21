@@ -13,7 +13,7 @@ distutils.core.setup(
         url='https://github.com/kxgames/GameEngine',
         download_url='https://github.com/kxgames/GameEngine/tarball/'+version,
         license='LICENSE.txt',
-        description="A collection of generally useful game libraries.",
+        description="A multiplayer game engine.",
         long_description=open('README.rst').read(),
         keywords=['game', 'network', 'gui', 'pyglet'],
         packages=['kxg'],
@@ -23,6 +23,5 @@ distutils.core.setup(
             'linersock',
             'vecrec',
             'glooey',
-            'finalexam',
         ],
 )

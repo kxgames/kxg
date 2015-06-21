@@ -1,7 +1,8 @@
 import kxg
+import pytest, contextlib
 import linersock.test_helpers
 
-class UniplayerTest:
+class DummyUniplayerGame:
 
     def __init__(self):
         # Setup up a uniplayer game.
@@ -24,7 +25,7 @@ class UniplayerTest:
             self.game_stage.on_update_stage(0.1)
 
 
-class MultiplayerTest:
+class DummyMultiplayerGame:
 
     def __init__(self):
         # Create the client and server stages.
@@ -84,7 +85,7 @@ class MultiplayerTest:
             self.server_game_stage.on_update_stage(0.1)
 
 
-class TestObserver:
+class DummyObserver:
     
     def __init__(self):
         super().__init__()
@@ -105,13 +106,13 @@ class TestObserver:
         self.hard_errors_received.append(message)
 
 
-class DummyActor (kxg.Actor, TestObserver):
+class DummyActor (kxg.Actor, DummyObserver):
     pass
 
-class DummyReferee (kxg.Referee, TestObserver):
+class DummyReferee (kxg.Referee, DummyObserver):
     pass
 
-class DummyWorld (kxg.World, TestObserver):
+class DummyWorld (kxg.World, DummyObserver):
 
     def __init__(self):
         super().__init__()
@@ -124,13 +125,27 @@ class DummyWorld (kxg.World, TestObserver):
         return False
 
 
-class DummyToken (kxg.Token, TestObserver):
+class DummyToken (kxg.Token, DummyObserver):
+
+    def __str__(self):
+        return '<DummyToken>'
 
     def __extend__(self):
         return {DummyActor: DummyExtension}
 
+    @kxg.read_only
+    def read_only(self):
+        pass
 
-class DummyExtension (kxg.TokenExtension, TestObserver):
+    def read_write(self):
+        pass
+
+    @kxg.before_world
+    def before_world(self):
+        pass
+
+
+class DummyExtension (kxg.TokenExtension, DummyObserver):
     pass
 
 class DummyMessage (kxg.Message, linersock.test_helpers.Message):
@@ -152,7 +167,7 @@ class DummyMessage (kxg.Message, linersock.test_helpers.Message):
         raise AssertionError
 
 
-class SoftSyncError (kxg.Message, linersock.test_helpers.Message):
+class DummySoftSyncError (kxg.Message, linersock.test_helpers.Message):
 
     def __init__(self):
         super().__init__()
@@ -174,7 +189,7 @@ class SoftSyncError (kxg.Message, linersock.test_helpers.Message):
         world.soft_errors_handled.append(self)
 
 
-class HardSyncError (kxg.Message, linersock.test_helpers.Message):
+class DummyHardSyncError (kxg.Message, linersock.test_helpers.Message):
 
     def __init__(self):
         super().__init__()
@@ -200,4 +215,9 @@ class HardSyncError (kxg.Message, linersock.test_helpers.Message):
 
 
 
-
+@contextlib.contextmanager
+def raises_api_usage_error(*key_phrase_or_phrases):
+    with pytest.raises(kxg.ApiUsageError) as exc:
+        yield exc
+    for key_phrase in key_phrase_or_phrases:
+        assert key_phrase in exc.exconly()

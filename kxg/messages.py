@@ -1,5 +1,6 @@
-import contextlib
-from . import errors
+#!/usr/bin/env python3
+
+from .errors import *
 
 class Message:
 
@@ -67,7 +68,7 @@ class Message:
             # Make sure that the token was created by the same actor that's 
             # checking the message.
 
-            if token.get_id() not in id_factory:
+            if token.id not in id_factory:
                 return False
 
         # Check all the tokens to destroy:
@@ -146,7 +147,7 @@ class Message:
         # far out of sync with the world on the server, and that the message 
         # needs to be undone on this client.  Only the RemoteForum that sent 
         # the offending message will call this method.
-        raise errors.UnhandledSyncError
+        raise UnhandledSyncError(self)
 
 
 class CreateToken (Message):
