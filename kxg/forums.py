@@ -23,7 +23,7 @@ class Forum:
         # handling messages and enforced again once the actors are handling 
         # messages.
 
-        with self.world.unlock_temporarily():
+        with self.world._unlock_temporarily():
 
             # First, let the message update the state of the game world.
 
@@ -280,7 +280,7 @@ class RemoteForum (Forum):
 
         # Synchronize the world.
 
-        with self.world.unlock_temporarily():
+        with self.world._unlock_temporarily():
             message.handle_soft_sync_error(self.world)
             self.world.react_to_soft_sync_error(message)
 
@@ -303,7 +303,7 @@ class RemoteForum (Forum):
 
         # Roll back changes that the original message made to the world.
 
-        with self.world.unlock_temporarily():
+        with self.world._unlock_temporarily():
             message.handle_hard_sync_error(self.world)
             self.world.react_to_hard_sync_error(message)
 

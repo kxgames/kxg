@@ -133,10 +133,10 @@ may have forgotten to add {token} to the world.
 
 The {token_class}.{method_name}() method was invoked on a token that had not 
 yet been added to the game world.  This is usually a sign that you forgot to 
-add in question was to the game world.  Label the {method_name}() method with 
-the @kxg.before_world decorator if you really do need to call it before the 
-token has been added to the world (i.e. the method helps setup {token_class} 
-tokens)."""
+add the token in question was to the game world.  Label the {method_name}() 
+method with the @kxg.before_world decorator if you really do need to call it 
+before the token has been added to the world (i.e. the method helps setup 
+{token_class} tokens)."""
 
     def __init__(self, token, method_name):
         self.token = token
@@ -175,7 +175,7 @@ was already reset)."""
 class ObjectIsntRightType (ApiUsageErrorFactory):
 
     message = """\
-expected a {prototype_cls} object, but got {object} instead."""
+expected a {prototype_cls}, but got a {object_cls} instead."""
 
     def __init__(self, prototype, object):
         self.prototype = prototype
@@ -243,15 +243,14 @@ This error usually means that {token} was added to the world twice."""
 class TokenAlreadyInWorld (ApiUsageErrorFactory):
 
     message = """\
-can't reuse {id} as an id number.
+can't add the same token to the world twice.
 
 Token {token} can't be added to the world, because the world already contains a 
 token with the id={token.id}.  You can get this error if you try to add a token 
 to the world on without using a message (i.e. CreateToken)."""
 
-    def __init__(self, token, world):
+    def __init__(self, token):
         self.token = token
-        self.world = world
 
 
 class TokenNotInWorld (ApiUsageErrorFactory):
@@ -361,6 +360,16 @@ undoes everything done in {message_cls}.on_execute()."""
         self.message_cls = message.__class__.__name__
 
 
+class WorldAlreadyUnlocked (ApiUsageErrorFactory):
+
+    message = """\
+tired to unlock the world, but it's already unlocked.
+
+You can't get this error unless you manually call World._unlock_temporarily(), 
+which you should never do.  This method is intended to be used by the game 
+engine, which was carefully designed to allow the world to be modified only 
+when safe.  Calling this method yourself disables an important safety check.
+"""
 
 def debug_only(function):
     if __debug__:

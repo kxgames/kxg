@@ -1,6 +1,11 @@
 import kxg
 import pytest, contextlib
 import linersock.test_helpers
+from pprint import pprint
+
+# I need a new name for this module, since I starting to fill it with 
+# utilities.  MY normal go-to is "test_helpers", but that would confuse the 
+# glob I have in the run_tests.py script.  Hmmm...
 
 class DummyUniplayerGame:
 
@@ -18,7 +23,8 @@ class DummyUniplayerGame:
         
         self.token = DummyToken()
         self.token.give_id(self.referee._id_factory)
-        self.world._add_token(self.token)
+
+        force_add_token(self.world, self.token)
 
     def update(self, num_updates=1):
         for i in range(num_updates):
@@ -70,12 +76,12 @@ class DummyMultiplayerGame:
         token.give_id(self.server_referee._id_factory)
 
         self.server_token = deepcopy(token)
-        self.server_world._add_token(self.server_token)
+        force_add_token(self.server_world, self.server_token)
 
         self.client_tokens = []
         for client_world in self.client_worlds:
             client_token = deepcopy(token)
-            client_world._add_token(client_token)
+            force_add_token(client_world, client_token)
             self.client_tokens.append(client_token)
 
     def update(self, num_updates=2):
@@ -126,6 +132,10 @@ class DummyWorld (kxg.World, DummyObserver):
 
 
 class DummyToken (kxg.Token, DummyObserver):
+
+    def __init__(self, parent=None):
+        super().__init__()
+        self.parent = parent
 
     def __str__(self):
         return '<DummyToken>'
@@ -221,3 +231,16 @@ def raises_api_usage_error(*key_phrase_or_phrases):
         yield exc
     for key_phrase in key_phrase_or_phrases:
         assert key_phrase in exc.exconly()
+def force_add_token(world, token, id=None):
+    if id is not None:
+        token._id = id
+    elif token._id is None:
+        token._id = len(world)
+
+    with world._unlock_temporarily():
+        world._add_token(token)
+
+def force_remove_token(world, token):
+    with world._unlock_temporarily():
+        world._remove_token(token)
+

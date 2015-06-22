@@ -66,116 +66,106 @@ class TokenMetaclass (type):
         optimization enabled (i.e. passing -O) these checks are skipped.
         """
 
+        from pprint import pprint
+        pprint(members)
+
         if __debug__:
             meta.add_safety_checks(members)
 
         return type.__new__(meta, name, bases, members)
         
 
-    @staticmethod
-    def add_safety_checks(members):
+    @classmethod
+    def add_safety_checks(cls, members):
         """
         Iterate through each member of the class being created and add a 
         safety check to every method that isn't marked as read-only.
         """
         for member_name, member_value in members.items():
-            members[member_name] = add_safety_check(member_value)
+            members[member_name] = cls.add_safety_check(
+                    member_name, member_value)
 
     @staticmethod
-    def add_safety_check(member):
+    def add_safety_check(member_name, member_value):
         """
         If the given member is a method that hasn't been marked as read-only, 
         return a version of it that will complain if invoked in a dangerous 
         way.  This mostly means checking to make sure that methods that alter 
         the token are only called from update methods or messages.
         """
-        member_value = member
-        member_name = member.__name__
 
         from types import FunctionType
 
-        read_only_special_cases = (
+        special_cases = (
+                '__init__',
                 '__str__',
                 '__repr__',
                 '__extend__',
                 '__getstate__',
                 '__setstate__',
         )
-        before_world_special_cases = (
-                '__init__',
-        )
-        after_world_special_cases = (
-                'reset_registration',
-        )
 
         is_method = isinstance(member_value, FunctionType)
-        is_read_only = hasattr(member_value, '_kxg_read_only') or \
-                member_name in read_only_special_cases
+        is_read_only = hasattr(member_value, '_kxg_read_only')
+        is_special_case = member_name in special_cases
 
-        if is_method and not is_read_only:
+        if not is_method or is_read_only or is_special_case:
+            return member_value
 
-            def safety_checked_method(self, *args, **kwargs):
+        def safety_checked_method(self, *args, **kwargs):
 
-                if token.world_registration == 'pending':
+            if self.world_registration == 'pending':
 
-                    # Calling a non-read-only method before on a token before 
-                    # adding it to the world isn't inherently a synchronization 
-                    # issue, because until a token is added to the world only 
-                    # one client knows about it.  However, this happens most 
-                    # often when the user forgets to add a token to the world 
-                    # in the first place.  To catch these bugs, non-read-only 
-                    # token methods can't be called before the token has been 
-                    # added to the world unless they are explicitly labeled 
-                    # with the kxg.before_world() decorator.
+                # Calling a non-read-only method before on a token before 
+                # adding it to the world isn't inherently a synchronization 
+                # issue, because until a token is added to the world only 
+                # one client knows about it.  However, this happens most 
+                # often when the user forgets to add a token to the world 
+                # in the first place.  To catch these bugs, non-read-only 
+                # token methods can't be called before the token has been 
+                # added to the world unless they are explicitly labeled 
+                # with the kxg.before_world() decorator.
 
-                    is_special_case = \
-                            member_name in before_world_special_cases
-                    is_explicitly_labeled = hasattr(
-                            member_value, '_kxg_before_world')
+                if not hasattr(member_value, '_kxg_before_world'):
+                    raise CantModifyTokenIfNotInWorld(self, member_name)
 
-                    if not is_special_case and not is_explicitly_labeled:
-                        raise CantModifyTokenIfNotInWorld(self, member_name)
+            if self.world_registration == 'active':
 
-                if token.world_registration == 'active':
+                # If the token has already been added to the world, make 
+                # sure that the token seems properly set up (specifically 
+                # that it has all the attributes that tokens should have 
+                # and that it's id isn't null) and that the world is 
+                # unlocked.
 
-                    # If the token has already been added to the world, make 
-                    # sure that the token seems properly set up (specifically 
-                    # that it has all the attributes that tokens should have 
-                    # and that it's id isn't null) and that the world is 
-                    # unlocked.
+                require_active_token(self)
 
-                    require_active_token(self)
+                if self.world.is_locked():
+                    raise CantModifyTokenIfWorldLocked(self, member_name)
 
-                    if self.world.is_locked():
-                        raise CantModifyTokenIfWorldLocked(self, member_name)
+            if self.world_registration == 'expired':
 
-                if token.world_registration == 'expired':
+                # Once a token has been removed from the world, almost 
+                # anything you do with it will raise an exception.  This 
+                # behavior is meant to prevent bugs that happen when you 
+                # accidentally keep stale references to removed tokens.  If 
+                # you need to add a removed token again, you can call its 
+                # reset_registration() method, which will allow you to add 
+                # it to the world again in the usual way (i.e. by sending a 
+                # message).
 
-                    # Once a token has been removed from the world, almost 
-                    # anything you do with it will raise an exception.  This 
-                    # behavior is meant to prevent bugs that happen when you 
-                    # accidentally keep stale references to removed tokens.  If 
-                    # you need to add a removed token again, you can call its 
-                    # reset_registration() method, which will allow you to add 
-                    # it to the world again in the usual way (i.e. by sending a 
-                    # message).
+                if member_name != 'reset_registration':
+                    raise UsingRemovedToken(self)
 
-                    if member_name not in after_world_special_cases:
-                        raise CantModifyTokenIfNotInWorld(self, member_name)
+            # After all the checks have been carried out, call the method 
+            # as usual.
 
-                # After all the checks have been carried out, call the method 
-                # as usual.
+            return member_value(self, *args, **kwargs)
 
-                return member_value(self, *args, **kwargs)
-
-            member = safety_checked_method(member_value)
-
-        return member
+        return safety_checked_method
 
         
 
-class Token (ForumObserver):
-    __metaclass__ = TokenMetaclass
+class Token (ForumObserver, metaclass=TokenMetaclass):
 
     class WatchedMethod:
 
@@ -248,7 +238,7 @@ class Token (ForumObserver):
 
     @before_world
     def give_id(self, id_factory):
-        from .forum import IdFactory
+        from .forums import IdFactory
 
         require_token(self)
 
@@ -333,6 +323,7 @@ class Token (ForumObserver):
     def on_update_game(self, dt):
         pass
 
+    @read_only
     def on_report_to_referee(self, reporter):
         pass
 

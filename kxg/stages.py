@@ -74,7 +74,7 @@ class GameStage (Stage):
         game stage.
         """
 
-        with self.world.unlock_temporarily():
+        with self.world._unlock_temporarily():
             self.forum.connect_everyone(self.world, self.actors)
 
         # 1. Setup the forum.
@@ -83,7 +83,7 @@ class GameStage (Stage):
 
         # 2. Setup the world.
 
-        with self.world.unlock_temporarily():
+        with self.world._unlock_temporarily():
             self.world.on_start_game()
 
         # 3. Setup the actors.  Because this is done after the forum and the  
@@ -114,7 +114,7 @@ class GameStage (Stage):
         self.forum.on_update_game()
 
         # 4. 
-        with self.world.unlock_temporarily():
+        with self.world._unlock_temporarily():
             self.world.on_update_game(dt)
 
     def on_exit_stage(self):
@@ -136,7 +136,7 @@ class GameStage (Stage):
 
         # 3. Let the world react to the end of the game.
 
-        with self.world.unlock_temporarily():
+        with self.world._unlock_temporarily():
             self.world.on_finish_game()
 
     def get_successor(self):
