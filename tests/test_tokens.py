@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import kxg
-from dummies import *
+from utilities import *
 
 def test_token_creation():
     world = DummyWorld()
@@ -11,7 +11,7 @@ def test_token_creation():
 
         # Make sure you can't add a non-token to the world.
 
-        with raises_api_usage_error("expected a Token, but got a str instead"):
+        with raises_api_usage_error("expected Token, but got str instead"):
             world._add_token("not a token")
 
         # Make sure the game engine give a helpful error message when you 
@@ -156,3 +156,85 @@ def test_cant_pickle_world():
     with raises_api_usage_error("can't pickle the world"):
         pickle.dumps(world)
 
+def test_token_extensions():
+    actor = DummyActor()
+    world = DummyWorld()
+
+    with world._unlock_temporarily():
+        world.set_actors([actor])
+
+    # Make sure a nice error is raised if the user forgets to write an 
+    # appropriate constructor for their extension class.
+
+    class BadConstructorToken (DummyToken):
+
+        def __extend__(self):
+            return {DummyActor: BadConstructorExtension}
+
+    class BadConstructorExtension (DummyExtension):
+
+        def __init__(self):
+            pass
+
+
+    with raises_api_usage_error("the BadConstructorExtension constructor doesn't take the right arguments."):
+        force_add_token(world, BadConstructorToken())
+
+    # Make sure a nice error is raised if the user tries to attach a callback 
+    # to a token method that doesn't exist.
+
+    class NoSuchMethodToken (DummyToken):
+
+        def __extend__(self):
+            return {DummyActor: NoSuchMethodExtension}
+
+    class NoSuchMethodExtension (DummyExtension):
+
+        @kxg.watch_token
+        def no_such_method(self):
+            pass
+
+
+    with raises_api_usage_error('NoSuchMethodToken has no such method no_such_method() to watch'):
+        force_add_token(world, NoSuchMethodToken())
+
+    # Make sure extensions can attach callbacks to any widget method.
+
+    class WatchMethodToken (DummyToken):
+
+        def __extend__(self):
+            return {DummyActor: WatchMethodExtension}
+
+    class WatchMethodExtension (DummyExtension):
+
+        def __init__(self, actor, token):
+            super().__init__(actor, token)
+            self.read_only_calls = 0
+            self.read_write_calls = 0
+
+        @kxg.watch_token
+        def read_only(self):
+            self.read_only_calls += 1
+
+        @kxg.watch_token
+        def read_write(self):
+            self.read_write_calls += 1
+
+
+    token_1 = WatchMethodToken()
+    force_add_token(world, token_1)
+    extension_1 = token_1.get_extension(actor)
+
+    assert extension_1.read_only_calls == 0
+    assert extension_1.read_write_calls == 0
+
+    token_1.read_only()
+    assert extension_1.read_only_calls == 1
+    assert extension_1.read_write_calls == 0
+
+    with world._unlock_temporarily():
+        token_1.read_write()
+    assert extension_1.read_only_calls == 1
+    assert extension_1.read_write_calls == 1
+    
+    

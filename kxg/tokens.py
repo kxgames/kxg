@@ -2,6 +2,7 @@
 
 from .errors import *
 from .forums import ForumObserver
+from .actors import require_actor
 
 def read_only(method):
     setattr(method, '_kxg_read_only', True)
@@ -24,6 +25,7 @@ def watch_token(method):
     But other classes won't make this search and will silently do nothing.
     """
     method._kxg_watch_token = True
+    return method
 
 @debug_only
 def require_token(object):
@@ -65,9 +67,6 @@ class TokenMetaclass (type):
         incur significant computational expense.  By invoking python with 
         optimization enabled (i.e. passing -O) these checks are skipped.
         """
-
-        from pprint import pprint
-        pprint(members)
 
         if __debug__:
             meta.add_safety_checks(members)
@@ -262,10 +261,12 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
 
     @read_only
     def has_extension(self, actor):
+        require_actor(actor)
         return type(actor) in self._extensions
 
     @read_only
     def get_extension(self, actor):
+        require_actor(actor)
         return self._extensions[type(actor)]
 
     @read_only
@@ -294,7 +295,7 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         # called.
 
         if not isinstance(method, Token.WatchedMethod):
-            setattr(token, method_name, Token.WatchedMethod(method))
+            setattr(self, method_name, Token.WatchedMethod(method))
             method = getattr(self, method_name)
 
         # Add the given callback to the watched method.
@@ -362,13 +363,8 @@ class TokenExtension (ForumObserver):
             # up to watch the token.  This attribute is typically set using the
             # @watch_token decorator.
 
-            if not hasattr(method, '_kxg_watch_token'):
-                break
-
-            # Tell the token to call the extension method whenever the matching 
-            # token method is called.
-
-            token.watch_method(method_name, method)
+            if hasattr(method, '_kxg_watch_token'):
+                token.watch_method(method_name, method)
 
     def send_message(self, message):
         return self.actor.send_message(message)

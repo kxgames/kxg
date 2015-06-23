@@ -172,10 +172,24 @@ was already reset)."""
         self.token = token
 
 
+class IllegalTokenExtensionConstructor (ApiUsageErrorFactory):
+
+    message = """\
+the {extension_cls} constructor doesn't take the right arguments.
+
+Token extension constructors must take exactly three arguments: self, actor, 
+and token.  These are the arguments provided by tokens when they automatically 
+instantiates their extensions.  Fix this error by making the {extension_cls} 
+constructor compatible with these arguments."""
+
+    def __init__(self, extension_cls):
+        self.extension_cls = extension_cls.__name__
+
+
 class ObjectIsntRightType (ApiUsageErrorFactory):
 
     message = """\
-expected a {prototype_cls}, but got a {object_cls} instead."""
+expected {prototype_cls}, but got {object_cls} instead."""
 
     def __init__(self, prototype, object):
         self.prototype = prototype
@@ -298,7 +312,7 @@ method call."""
 class TokenHasNoSuchMethodToWatch (ApiUsageErrorFactory):
 
     message = """\
-{token_cls} token has no method {method_name}() to watch.
+{token_cls} has no such method {method_name}() to watch.
 
 This error usually means that you used the @watch_token decorator on a method 
 of a token extension class that didn't match the name of any method in the 

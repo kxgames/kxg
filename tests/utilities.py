@@ -3,10 +3,6 @@ import pytest, contextlib
 import linersock.test_helpers
 from pprint import pprint
 
-# I need a new name for this module, since I starting to fill it with 
-# utilities.  MY normal go-to is "test_helpers", but that would confuse the 
-# glob I have in the run_tests.py script.  Hmmm...
-
 class DummyUniplayerGame:
 
     def __init__(self):
@@ -230,7 +226,8 @@ def raises_api_usage_error(*key_phrase_or_phrases):
     with pytest.raises(kxg.ApiUsageError) as exc:
         yield exc
     for key_phrase in key_phrase_or_phrases:
-        assert key_phrase in exc.exconly()
+        assert key_phrase in exc.exconly().replace('\n', ' ')
+
 def force_add_token(world, token, id=None):
     if id is not None:
         token._id = id

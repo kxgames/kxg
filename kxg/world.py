@@ -159,6 +159,18 @@ class World (Token):
             extension_class = extension_classes.get(actor_class)
 
             if extension_class:
+
+                # Make sure the extension class constructor takes exactly three 
+                # arguments: self, actor, token.  If the constructor has a 
+                # different signature, raise an error with a helpful message.
+
+                from inspect import getargspec
+                argspec = getargspec(extension_class.__init__)
+                if len(argspec.args) != 3:
+                    raise IllegalTokenExtensionConstructor(extension_class)
+
+                # Instantiate the extension and store a reference to it.
+
                 extension = extension_class(actor, token)
                 token._extensions[actor_class] = extension
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import kxg
-from dummies import *
+from utilities import *
 from pprint import pprint
 
 def test_uniplayer_message_handling():
