@@ -230,19 +230,6 @@ like CreateToken to create all your tokens and avoid synchronization bugs."""
         self.bad_id = bad_id
 
 
-class TokenDoesntHaveId (ApiUsageErrorFactory):
-
-    message = """\
-token {token} should have an id, but doesn't.
-
-This error usually means that a token was added to the world without being 
-assigned an id number.  To correct this, make sure that you're using a message 
-(i.e. CreateToken) to create all of your tokens."""
-
-    def __init__(self, token):
-        self.token = token
-
-
 class TokenAlreadyHasId (ApiUsageErrorFactory):
 
     message = """\
@@ -267,15 +254,14 @@ to the world on without using a message (i.e. CreateToken)."""
         self.token = token
 
 
-class TokenNotInWorld (ApiUsageErrorFactory):
+class TokenDoesntHaveId (ApiUsageErrorFactory):
 
     message = """\
-token {token} (id={token.id}) not in world.
+token {token} should have an id, but doesn't.
 
-You can get this error if you try to remove the same token from the world 
-twice.  This might happen is you don't get rid of every reference to a token 
-after it's removed the first time, then later on you try to remove the stale 
-reference."""
+This error usually means that a token was added to the world without being 
+assigned an id number.  To correct this, make sure that you're using a message 
+(i.e. CreateToken) to create all of your tokens."""
 
     def __init__(self, token):
         self.token = token
@@ -322,6 +308,20 @@ corresponding token class.  Check for typos."""
         self.token = token
         self.token_cls = token.__class__.__name__
         self.method_name = method_name
+
+
+class TokenNotInWorld (ApiUsageErrorFactory):
+
+    message = """\
+token {token} (id={token.id}) not in world.
+
+You can get this error if you try to remove the same token from the world 
+twice.  This might happen is you don't get rid of every reference to a token 
+after it's removed the first time, then later on you try to remove the stale 
+reference."""
+
+    def __init__(self, token):
+        self.token = token
 
 
 class UsingRemovedToken (ApiUsageErrorFactory):

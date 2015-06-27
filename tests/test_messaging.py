@@ -184,6 +184,26 @@ def test_multiplayer_token_creation_with_hard_sync_error():
 def test_multiplayer_token_destruction_with_hard_sync_error():
     pass
 
+def test_sending_from_token_extension():
+    test = DummyUniplayerGame()
+    message = DummyMessage()
+
+    assert test.world.messages_executed == []
+    assert test.world.messages_received == []
+    assert test.token.messages_received == []
+    assert test.referee.messages_received == []
+    assert test.actors[0].messages_received == []
+    assert test.actors[1].messages_received == []
+
+    assert test.token.get_extension(test.actors[0]).send_message(message)
+
+    assert test.world.messages_executed == [message]
+    assert test.world.messages_received == [message]
+    assert test.token.messages_received == [message]
+    assert test.referee.messages_received == [message]
+    assert test.actors[0].messages_received == [message]
+    assert test.actors[1].messages_received == [message]
+
 def test_stale_reporter_error():
 
     class StaleReporterToken (kxg.Token):
@@ -192,6 +212,7 @@ def test_stale_reporter_error():
             super().__init__()
             self.reporter = None
 
+        @kxg.read_only
         def on_report_to_referee(self, reporter):
             self.reporter = reporter
 
@@ -205,7 +226,7 @@ def test_stale_reporter_error():
     message = kxg.CreateToken(token)
     test.actors[0].send_message(message)
 
-    with raises_api_usage_error():
+    with raises_api_usage_error("DummyMessage message sent using a stale reporter"):
         test.update(1)
 
 

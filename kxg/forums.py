@@ -183,16 +183,16 @@ class ForumObserver:
     def _disable_forum_observation(self):
         self._is_enabled = False
 
-    def _check_if_forum_observation_is_enabled(self):
+    def _check_if_forum_observation_enabled(self):
         assert self._is_enabled, "{} has disabled forum observation.".format(self)
 
     def _add_callback(self, event, message_cls, callback):
-        self._check_if_forum_observation_is_enabled()
+        self._check_if_forum_observation_enabled()
         callback_info = ForumObserver.CallbackInfo(message_cls, callback)
         self._callbacks[event].append(callback_info)
 
     def _drop_callback(self, event, message_cls, callback):
-        self._check_if_forum_observation_is_enabled()
+        self._check_if_forum_observation_enabled()
 
         # The [:] syntax is important, because it causes the same list object 
         # to be refilled with the new values.  Without it a new list would be 
@@ -205,7 +205,7 @@ class ForumObserver:
         ]
         
     def _call_callbacks(self, event, message):
-        self._check_if_forum_observation_is_enabled()
+        self._check_if_forum_observation_enabled()
 
         # Call the callbacks stored in this observer.
 

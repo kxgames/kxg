@@ -113,7 +113,8 @@ class GameStage (Stage):
 
         self.forum.on_update_game()
 
-        # 4. 
+        # 4. Update the game world.
+
         with self.world._unlock_temporarily():
             self.world.on_update_game(dt)
 

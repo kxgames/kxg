@@ -29,14 +29,69 @@ def test_token_creation():
         with raises_api_usage_error("should have an id, but doesn't"):
             world._add_token(token)
 
+        # Make sure Token.give_id() rejects raw id numbers.
+
+        with raises_api_usage_error("can't use 1 as a token id"):
+            token.give_id(1)
+
         # Make sure the token can actually be added to the world.
 
         force_add_token(world, token)
+
+        # Make sure you can't assign the token an id twice.
+
+        with raises_api_usage_error("already has an id"):
+            token.give_id(kxg.IdFactory(1, 1))
 
         # Make sure you can't add the same token to the world twice.
 
         with raises_api_usage_error("can't add the same token to the world twice"):
             world._add_token(token)
+
+def test_token_type_checking():
+    world = DummyWorld()
+
+    class UninitializedTokenClass(DummyToken):
+        def __init__(self):
+            pass
+
+    class NonTokenClass:
+        pass
+
+
+    pending_token = DummyToken()
+    pending_with_id_token = DummyToken(); \
+            pending_with_id_token._id = 1
+    active_token = DummyToken(); \
+            force_add_token(world, active_token)
+    expired_token = DummyToken(); \
+            force_add_token(world, expired_token); \
+            force_remove_token(world, expired_token)
+    uninitialized_token = UninitializedTokenClass()
+    non_token = NonTokenClass()
+
+    kxg.require_token(active_token)
+    kxg.require_token(pending_token)
+    kxg.require_token(pending_with_id_token)
+    kxg.require_token(expired_token)
+
+    with raises_api_usage_error("forgot to call the Token constructor"):
+        kxg.require_token(uninitialized_token)
+    with raises_api_usage_error("expected Token, but got NonTokenClass"):
+        kxg.require_token(non_token)
+
+    kxg.require_active_token(active_token)
+
+    with raises_api_usage_error("should have an id, but doesn't"):
+        kxg.require_active_token(pending_token)
+    with raises_api_usage_error("not in world"):
+        kxg.require_active_token(pending_with_id_token)
+    with raises_api_usage_error("has been removed from the world"):
+        kxg.require_active_token(expired_token)
+    with raises_api_usage_error("forgot to call the Token constructor"):
+        kxg.require_token(uninitialized_token)
+    with raises_api_usage_error("expected Token, but got NonTokenClass"):
+        kxg.require_token(non_token)
 
 def test_illegal_token_usage():
     world = DummyWorld()
@@ -49,6 +104,8 @@ def test_illegal_token_usage():
     token.before_world()
     with raises_api_usage_error("may have forgotten to add <DummyToken>"):
         token.read_write()
+    with raises_api_usage_error("can't be reset because it's still being used"):
+        token.reset_registration()
 
     # Manually add the token to the world.
 
@@ -61,6 +118,8 @@ def test_illegal_token_usage():
         token.before_world()
     with raises_api_usage_error("unsafe invocation", "DummyToken.read_write()"):
         token.read_write()
+    with raises_api_usage_error("can't be reset because it's still being used"):
+        token.reset_registration()
 
     # Make sure any methods can be called when the world is unlocked.
 
@@ -83,6 +142,9 @@ def test_illegal_token_usage():
     # Make sure that tokens can be reused once they've been reset.
 
     token.reset_registration()
+
+    with raises_api_usage_error("can't be reset because it's still being used"):
+        token.reset_registration()
 
     token.read_only()
     token.before_world()
@@ -137,6 +199,16 @@ def test_token_serialization():
     assert duplicate_token_2.parent is token_2.parent
     assert duplicate_token_2.attribute == token_2.attribute
 
+    # Test the serialization of a token that was previously registered with the 
+    # world, but has since been removed.  This should result in a useful error:
+
+    token_3 = DummyToken()
+    force_add_token(world, token_3)
+    force_remove_token(world, token_3)
+
+    with raises_api_usage_error("has been removed from the world"):
+        serializer.pack(token_3)
+
     # Test the serialization of a message object.  This should not result in 
     # the parent token being copied.
 
@@ -148,13 +220,6 @@ def test_token_serialization():
     assert duplicate_message.token is not message.token
     assert duplicate_message.token.parent is message.token.parent
     assert duplicate_message.token.attribute == message.token.attribute
-
-def test_cant_pickle_world():
-    import pickle
-    world = DummyWorld()
-
-    with raises_api_usage_error("can't pickle the world"):
-        pickle.dumps(world)
 
 def test_token_extensions():
     actor = DummyActor()
@@ -227,6 +292,8 @@ def test_token_extensions():
 
     assert extension_1.read_only_calls == 0
     assert extension_1.read_write_calls == 0
+    pprint(token_1.get_extensions())
+    assert token_1.get_extensions() == [extension_1]
 
     token_1.read_only()
     assert extension_1.read_only_calls == 1
@@ -237,4 +304,23 @@ def test_token_extensions():
     assert extension_1.read_only_calls == 1
     assert extension_1.read_write_calls == 1
     
-    
+def test_cant_pickle_world():
+    import pickle
+    world = DummyWorld()
+
+    with raises_api_usage_error("can't pickle the world"):
+        pickle.dumps(world)
+
+def test_cant_subscribe_in_ctor():
+
+    class SubscribeInConstructorToken (DummyToken):
+
+        def __init__(self):
+            super().__init__()
+            self.subscribe_to_message(DummyMessage, lambda message: None)
+
+
+    with raises_api_usage_error("can't subscribe to messages now."):
+        token = SubscribeInConstructorToken()
+
+

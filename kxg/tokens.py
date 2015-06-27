@@ -71,7 +71,7 @@ class TokenMetaclass (type):
         if __debug__:
             meta.add_safety_checks(members)
 
-        return type.__new__(meta, name, bases, members)
+        return super().__new__(meta, name, bases, members)
         
 
     @classmethod
@@ -242,9 +242,7 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         require_token(self)
 
         if self.has_id():
-            raise TokenAlreadyHasId()
-        if self.has_world():
-            raise TokenAlreadyInWorld()
+            raise TokenAlreadyHasId(self)
         if not isinstance(id_factory, IdFactory):
             raise NotUsingIdFactory(id_factory)
 
@@ -271,7 +269,7 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
 
     @read_only
     def get_extensions(self):
-        return self._extensions.values()
+        return list(self._extensions.values())
 
     @read_only
     def watch_method(self, method_name, callback):
@@ -302,6 +300,7 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
 
         method.add_watcher(callback)
 
+    @read_only
     def reset_registration(self):
         """
         Allow the token to be added to the world again.
@@ -315,7 +314,7 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         to do that in the usual way (i.e. by sending a message).  
         """
         if self.world_registration != 'expired':
-            raise CantResetActiveToken(token)
+            raise CantResetActiveToken(self)
         Token.__init__(self)
 
     def on_add_to_world(self, world):
@@ -331,6 +330,7 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
     def on_remove_from_world(self):
         pass
 
+    @read_only
     def _check_if_forum_observation_enabled(self):
         """
         Give a helpful error if the user attempts to subscribe or unsubscribe 
@@ -341,7 +341,7 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         would create hard-to-find synchronization bugs.
         """
         try: super()._check_if_forum_observation_enabled()
-        except: raise TokenCantSubscribeNow(self)
+        except AssertionError: raise TokenCantSubscribeNow(self)
 
 
 class TokenExtension (ForumObserver):
