@@ -9,8 +9,25 @@ class Message:
         HARD_SYNC_ERROR = 1
 
 
-    def set_sender_id(self, sender_id):
-        self.sender_id = sender_id.get()
+    def __init__(self):
+        super().__init__()
+        self._was_sent = False
+        self._tokens_to_add = []
+        self._tokens_to_remove = []
+        self._end_game = False
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['_was_sent']
+        if not self._tokens_to_add: del state['_tokens_to_add']
+        if not self._tokens_to_remove: del state['_tokens_to_remove']
+        if not self._end_game: del state['_end_game']
+        return state
+
+    def __setstate__(self, state):
+        Message.__init__(self)
+        self.__dict__.update(state)
+        self._was_sent = True
 
     def was_sent_by(self, sender_id):
         return self.sender_id == sender_id.get()
@@ -18,98 +35,20 @@ class Message:
     def was_sent_by_referee(self):
         return self.sender_id == 0
 
-    def set_error_state(self, world):
-        if self.on_check_for_soft_sync_error(world):
-            self._error_state = Message.ErrorState.SOFT_SYNC_ERROR
-        else:
-            self._error_state = Message.ErrorState.HARD_SYNC_ERROR
-
     def has_soft_sync_error(self):
         return getattr(self, '_error_state', None) == Message.ErrorState.SOFT_SYNC_ERROR
 
     def has_hard_sync_error(self):
         return getattr(self, '_error_state', None) == Message.ErrorState.HARD_SYNC_ERROR
 
-    def get_tokens_to_create(self):
-        return []
+    def create_token(self, token):
+        self._tokens_to_add.append(token)
 
-    def get_tokens_to_destroy(self):
-        return []
+    def destroy_token(self, token):
+        self._tokens_to_remove.append(token)
 
-    def copy(self):
-        """
-        Return a shallow copy of the message object.
-        
-        This is called by the game engine just before the message is delivered 
-        to the actors, so that the game can provide information specific to 
-        certain actors.
-        """
-        import copy
-        return copy.copy(self)
-
-
-    def assign_token_ids(self, id_factory):
-        # Called by Actor but not by RemoteActor, so it is guaranteed to be 
-        # called exactly once.  Not really different from the constructor, 
-        # except that the id_factory object is nicely provided.  That's useful 
-        # for CreateToken but probably nothing else.  Could be called after 
-        # check() to not waste id numbers, but that's not super important.
-
-        for token in self.get_tokens_to_create():
-            token.give_id(id_factory)
-
-    def check(self, world, id_factory):
-        # Check all the tokens to create:
-
-        for token in self.get_tokens_to_create():
-            if token in world:
-                return False
-
-            # Make sure that the token was created by the same actor that's 
-            # checking the message.
-
-            if token.id not in id_factory:
-                return False
-
-        # Check all the tokens to destroy:
-        
-        for token in self.get_tokens_to_destroy():
-            if token not in world:
-                return False
-
-        # Let derived classes check themselves:
-
-        return self.on_check(world, id_factory.get())
-
-    def execute(self, world):
-        # Deal with tokens to be created or destroyed.
-
-        for token in self.get_tokens_to_create():
-            world._add_token(token)
-
-        for token in self.get_tokens_to_destroy():
-            world._remove_token(token)
-
-        # Let derived classes execute themselves.
-
-        self.on_execute(world)
-
-    def handle_soft_sync_error(self, world):
-        self.on_soft_sync_error(world)
-
-    def handle_hard_sync_error(self, world):
-        # Deal with the tokens that were created or destroyed.
-
-        for token in self.get_tokens_to_create():
-            world._remove_token(token)
-
-        for token in self.get_tokens_to_destroy():
-            world._add_token(token)
-
-        # Let derived classes execute themselves.
-
-        self.on_hard_sync_error(world)
-
+    def end_game(self):
+        self._end_game = True
 
     def on_check(self, world, sender_id):
         # Called by the actor.  Normal Actor will not send if this returns 
@@ -149,40 +88,82 @@ class Message:
         # the offending message will call this method.
         raise UnhandledSyncError(self)
 
+    def _set_sender_id(self, sender_id):
+        self.sender_id = sender_id.get()
 
-class CreateToken (Message):
+    def _set_error_state(self, world):
+        if self.on_check_for_soft_sync_error(world):
+            self._error_state = Message.ErrorState.SOFT_SYNC_ERROR
+        else:
+            self._error_state = Message.ErrorState.HARD_SYNC_ERROR
 
-    def __init__(self, token):
-        self.token = token
+    def _assign_token_ids(self, id_factory):
+        # Called by Actor but not by RemoteActor, so it is guaranteed to be 
+        # called exactly once.  Not really different from the constructor, 
+        # except that the id_factory object is nicely provided.  That's useful 
+        # for adding tokens but probably nothing else.  This method is called 
+        # before check() so that check() can make sure that valid ids were 
+        # assigned.
 
-    def get_tokens_to_create(self):
-        return [self.token]
+        for token in self._tokens_to_add:
+            token._give_id(id_factory)
 
+    def _check(self, world, id_factory):
+        # Check all the tokens to create:
 
-class CreateTokens (Message):
+        for token in self._tokens_to_add:
+            if token in world:
+                return False
 
-    def __init__(self, tokens):
-        self.tokens = tokens
+            # Make sure that the token was created by the same actor that's 
+            # checking the message.
 
-    def get_tokens_to_create(self):
-        return self.tokens
+            if token.id not in id_factory:
+                return False
 
+        # Check all the tokens to destroy:
 
-class DestroyToken (Message):
+        for token in self._tokens_to_remove:
+            if token not in world:
+                return False
 
-    def __init__(self, token):
-        self.token = token
+        # Let derived classes check themselves:
 
-    def get_tokens_to_destroy(self):
-        return [self.token]
+        return self.on_check(world, id_factory.get())
 
+    def _execute(self, world):
+        # Deal with tokens to be created or destroyed.
 
-class DestroyTokens (Message):
+        for token in self._tokens_to_add:
+            world._add_token(token)
 
-    def __init__(self, tokens):
-        self.tokens = tokens
+        for token in self._tokens_to_remove:
+            world._remove_token(token)
 
-    def get_tokens_to_destroy(self):
-        return self.tokens
+        # Deal with the end of the game.
+
+        if self._end_game:
+            world._end_game()
+
+        # Let derived classes execute themselves.
+
+        self.on_execute(world)
+
+    def _handle_soft_sync_error(self, world):
+        self.on_soft_sync_error(world)
+
+    def _handle_hard_sync_error(self, world):
+        # Deal with the tokens that were created or destroyed.
+
+        for token in self._tokens_to_add:
+            world._remove_token(token)
+
+        for token in self._tokens_to_remove:
+            world._add_token(token)
+
+        # Let derived classes execute themselves.
+
+        self.on_hard_sync_error(world)
+
 
 

@@ -2,9 +2,8 @@
 
 # Imports (fold)
 import linersock
-from .loops import                                                          \
-        Loop,                                                               \
-        GuiLoop
+from .errors import *
+from .loops import Loop
 from .stages import                                                         \
         Stage,                                                              \
         UniplayerGameStage,                                                 \
@@ -14,24 +13,23 @@ from .stages import                                                         \
 
 class UniplayerLoop (Loop):
 
-    def __init__(self, world, referee, gui):
-        game_stage = UniplayerGameStage(world, referee, gui)
-        game_stage.successor = PostgameSplashStage(world, actor)
+    def __init__(self, world, referee, *other_actors):
+        game_stage = UniplayerGameStage(world, referee, list(other_actors))
         Loop.__init__(self, game_stage)
 
 
-class MultiplayerClientLoop (GuiLoop):
+class MultiplayerClientLoop (Loop):
 
     def __init__(self, world, gui, host, port):
         stage = ClientConnectionStage(world, gui, host, port)
-        GuiLoop.__init__(self, stage)
+        super().__init__(self, stage)
 
 
 class MultiplayerServerLoop (Loop):
 
     def __init__(self, world, referee, num_players, host, port):
         stage = ServerConnectionStage(world, referee, num_players, host, port)
-        Loop.__init__(self, stage)
+        super().__init__(self, stage)
 
 
 class MultiplayerDebugger:
@@ -106,9 +104,9 @@ class MultiplayerDebugger:
             "Fred",
     ]
 
-    def __init__(self, world, referee, gui, num_players, host, port):
+    def __init__(self, world, referee, other_actors, host, port):
         if num_players > len(self.names):
-            raise ValueError("Multiplayer debugging only supports {} players.".format(len(self.names)))
+            raise DebuggingTooManyPlayers(self.names)
 
         self.threads = []
 
@@ -135,7 +133,7 @@ class MultiplayerDebugger:
 class ClientConnectionStage (Stage):
 
     def __init__(self, world, gui, host, port):
-        Stage.__init__(self)
+        super().__init__(self)
 
         self.world = world
         self.gui = gui
@@ -186,7 +184,7 @@ class ClientConnectionStage (Stage):
 class ServerConnectionStage (Stage):
 
     def __init__(self, world, referee, num_players, host, port):
-        Stage.__init__(self)
+        super().__init__(self)
 
         self.pipes = []
         self.greetings = []
@@ -235,7 +233,7 @@ class PostgameSplashStage (Stage):
     """
 
     def __init__(self):
-        Stage.__init__(self)
+        super().__init__(self)
 
     def on_enter_stage(self):
         pass

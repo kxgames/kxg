@@ -172,6 +172,19 @@ was already reset)."""
         self.token = token
 
 
+class DebuggingTooManyPlayers (ApiUsageErrorFactory):
+
+    message = """\
+multiplayer debugging only supports {num_names} players.
+
+You can increase the number of allowed players by appending names to the 
+MultiplayerDebugger.names list.  The list is only finite so that in the most 
+common case (debugging two players) each player is given a canonical name."""
+
+    def __init__(self, names):
+        self.num_names = len(names)
+
+
 class IllegalTokenExtensionConstructor (ApiUsageErrorFactory):
 
     message = """\
@@ -220,11 +233,11 @@ class NotUsingIdFactory (ApiUsageErrorFactory):
     message = """\
 can't use {bad_id} as a token id.
 
-Token.give_id() expects to be passed an internal object that can be used to 
+Token._give_id() expects to be passed an internal object that can be used to 
 create new, unique id numbers.  For that reason, this method should only be 
-called by the game engine itself.  You can get this error if you try to assign 
-an id to a token by calling Token.give_id() yourself.  Instead use messages 
-like CreateToken to create all your tokens and avoid synchronization bugs."""
+called by the game engine.  You can get this error if you try to assign an id 
+to a token by calling Token._give_id() yourself.  Use Message.add_token() to 
+create all your tokens in a manner that avoids synchronization bugs."""
 
     def __init__(self, bad_id):
         self.bad_id = bad_id

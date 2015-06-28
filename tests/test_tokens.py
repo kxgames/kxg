@@ -29,10 +29,10 @@ def test_token_creation():
         with raises_api_usage_error("should have an id, but doesn't"):
             world._add_token(token)
 
-        # Make sure Token.give_id() rejects raw id numbers.
+        # Make sure Token._give_id() rejects raw id numbers.
 
         with raises_api_usage_error("can't use 1 as a token id"):
-            token.give_id(1)
+            token._give_id(1)
 
         # Make sure the token can actually be added to the world.
 
@@ -41,7 +41,7 @@ def test_token_creation():
         # Make sure you can't assign the token an id twice.
 
         with raises_api_usage_error("already has an id"):
-            token.give_id(kxg.IdFactory(1, 1))
+            token._give_id(kxg.IdFactory(1, 1))
 
         # Make sure you can't add the same token to the world twice.
 
@@ -226,7 +226,7 @@ def test_token_extensions():
     world = DummyWorld()
 
     with world._unlock_temporarily():
-        world.set_actors([actor])
+        world._set_actors([actor])
 
     # Make sure a nice error is raised if the user forgets to write an 
     # appropriate constructor for their extension class.

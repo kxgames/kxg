@@ -2,101 +2,6 @@
 
 from .errors import *
 
-class Forum:
-
-    def __init__(self):
-        self.world = None
-        self.actors = None
-
-    def dispatch_message(self, message):
-        # Relay the messages to clients running on other machines, if this is a 
-        # multiplayer game.  Since the tokens referenced in the message might 
-        # be changed once the message is executed, the message has to be 
-        # relayed before then.
-        
-        for actor in self.actors:
-            actor.dispatch_message(message)
-
-        # Normally, tokens can only call methods that have been decorated with 
-        # @read_only.  This is a precaution to help keep the worlds in sync on 
-        # all the clients.  This restriction is lifted when the tokens are 
-        # handling messages and enforced again once the actors are handling 
-        # messages.
-
-        with self.world._unlock_temporarily():
-
-            # First, let the message update the state of the game world.
-
-            message.execute(self.world)
-
-            # Second, let the world react to the message.  The main effect of 
-            # the message should have already been carried out above.  These 
-            # callbacks should take care of more peripheral effects.
-
-            self.world.react_to_message(message)
-
-        # Third, let the actors and the extensions react to the message.  This 
-        # step is carried out last so that the actors can be sure that the 
-        # world has a consistent state by the time their handlers are called.
-
-        for actor in self.actors:
-            actor.react_to_message(message)
-
-    def connect_everyone(self, world, actors):
-        # Save references to the world and the actors in the forum.
-
-        self.world = world
-        self.actors = actors
-
-        # Save references to the actors in the world.  The world doesn't need 
-        # to know about the forum because it can't send messages.  It needs to 
-        # know about the actors so it can create token extensions.
-
-        self.world.set_actors(actors)
-
-        # Save references to the forum and the world in the actors.  Also 
-        # assign each actor a factory it can use to generate unique token ids.
-        #
-        # In multiplayer games, each client needs the ability to create tokens, 
-        # so that messages can be instantly handled.  Tokens still need unique 
-        # ids though, so this method provides each actor with an IdFactory that 
-        # generates ids using an offset and a spacing to ensure uniqueness.
-        #
-        # Actors take their own id numbers (used for figuring out who messages 
-        # were sent by) from the offset parameter of the id factory.  Since the 
-        # Referee must have an id of 0 if it's present, care is taken to make 
-        # that happen.
-
-        id_factories = self._assign_id_factories()
-
-        for actor in self.actors:
-            actor.set_world(world)
-            actor.set_forum(self, id_factories[actor])
-
-    def on_start_game(self):
-        pass
-
-    def on_update_game(self):
-        # The base forum doesn't do anything on a timer; it does everything in 
-        # response to a message being sent.  But the RemoteForum uses this 
-        # method to react to message that have arrived from the server.
-        pass
-
-    def on_finish_game(self):
-        pass
-
-    def _assign_id_factories(self):
-        id_factories = {}
-        actors = sorted(self.actors, key=lambda x: not x.is_referee())
-        first_id = self.world.get_last_id() + 1
-        spacing = len(self.actors)
-
-        for offset, actor in enumerate(actors, first_id):
-            id_factories[actor] = IdFactory(offset, spacing)
-
-        return id_factories
-
-
 class ForumObserver:
 
     from collections import namedtuple
@@ -168,13 +73,13 @@ class ForumObserver:
     def unsubscribe_from_hard_sync_error(self, message_cls, callback=None):
         self._drop_callback('hard_sync_error', message_cls, callback)
 
-    def react_to_message(self, message):
+    def _react_to_message(self, message):
         self._call_callbacks('message', message)
 
-    def react_to_soft_sync_error(self, message):
+    def _react_to_soft_sync_error(self, message):
         self._call_callbacks('soft_sync_error', message)
 
-    def react_to_hard_sync_error(self, message):
+    def _react_to_hard_sync_error(self, message):
         self._call_callbacks('hard_sync_error', message)
 
     def _enable_forum_observation(self):
@@ -220,6 +125,101 @@ class ForumObserver:
 
     def _get_nested_observers(self):
         return []
+
+
+class Forum:
+
+    def __init__(self):
+        self.world = None
+        self.actors = None
+
+    def dispatch_message(self, message):
+        # Relay the messages to clients running on other machines, if this is a 
+        # multiplayer game.  Since the tokens referenced in the message might 
+        # be changed once the message is executed, the message has to be 
+        # relayed before then.
+
+        for actor in self.actors:
+            actor._dispatch_message(message)
+
+        # Normally, tokens can only call methods that have been decorated with 
+        # @read_only.  This is a precaution to help keep the worlds in sync on 
+        # all the clients.  This restriction is lifted when the tokens are 
+        # handling messages and enforced again once the actors are handling 
+        # messages.
+
+        with self.world._unlock_temporarily():
+
+            # First, let the message update the state of the game world.
+
+            message._execute(self.world)
+
+            # Second, let the world react to the message.  The main effect of 
+            # the message should have already been carried out above.  These 
+            # callbacks should take care of more peripheral effects.
+
+            self.world._react_to_message(message)
+
+        # Third, let the actors and the extensions react to the message.  This 
+        # step is carried out last so that the actors can be sure that the 
+        # world has a consistent state by the time their handlers are called.
+
+        for actor in self.actors:
+            actor._react_to_message(message)
+
+    def connect_everyone(self, world, actors):
+        # Save references to the world and the actors in the forum.
+
+        self.world = world
+        self.actors = actors
+
+        # Save references to the actors in the world.  The world doesn't need 
+        # to know about the forum because it can't send messages.  It needs to 
+        # know about the actors so it can create token extensions.
+
+        self.world._set_actors(actors)
+
+        # Save references to the forum and the world in the actors.  Also 
+        # assign each actor a factory it can use to generate unique token ids.
+        #
+        # In multiplayer games, each client needs the ability to create tokens, 
+        # so that messages can be instantly handled.  Tokens still need unique 
+        # ids though, so this method provides each actor with an IdFactory that 
+        # generates ids using an offset and a spacing to ensure uniqueness.
+        #
+        # Actors take their own id numbers (used for figuring out who messages 
+        # were sent by) from the offset parameter of the id factory.  Since the 
+        # Referee must have an id of 0 if it's present, care is taken to make 
+        # that happen.
+
+        id_factories = self._assign_id_factories()
+
+        for actor in self.actors:
+            actor._set_world(world)
+            actor._set_forum(self, id_factories[actor])
+
+    def on_start_game(self):
+        pass
+
+    def on_update_game(self):
+        # Forum doesn't do anything on a timer; it does everything in response 
+        # to a message being sent.  But the RemoteForum uses this method to 
+        # react to message that have arrived from the server.
+        pass
+
+    def on_finish_game(self):
+        pass
+
+    def _assign_id_factories(self):
+        id_factories = {}
+        actors = sorted(self.actors, key=lambda x: not x.is_referee())
+        first_id = self.world.get_last_id() + 1
+        spacing = len(self.actors)
+
+        for offset, actor in enumerate(actors, first_id):
+            id_factories[actor] = IdFactory(offset, spacing)
+
+        return id_factories
 
 
 class RemoteForum (Forum):
@@ -281,13 +281,13 @@ class RemoteForum (Forum):
         # Synchronize the world.
 
         with self.world._unlock_temporarily():
-            message.handle_soft_sync_error(self.world)
-            self.world.react_to_soft_sync_error(message)
+            message._handle_soft_sync_error(self.world)
+            self.world._react_to_soft_sync_error(message)
 
         # Synchronize the tokens.
 
         for actor in self.actors:
-            actor.react_to_soft_sync_error(message)
+            actor._react_to_soft_sync_error(message)
 
     def dispatch_hard_sync_error(self, message):
         """
@@ -304,15 +304,15 @@ class RemoteForum (Forum):
         # Roll back changes that the original message made to the world.
 
         with self.world._unlock_temporarily():
-            message.handle_hard_sync_error(self.world)
-            self.world.react_to_hard_sync_error(message)
+            message._handle_hard_sync_error(self.world)
+            self.world._react_to_hard_sync_error(message)
 
         # Give the actors a chance to react to the error.  For example, a 
         # GUI actor might inform the user that there are connectivity 
         # issues and that their last action was countermanded.
 
         for actor in self.actors:
-            actor.react_to_hard_sync_error(message)
+            actor._react_to_hard_sync_error(message)
 
     def connect_everyone(self, world, actors):
         # Make sure that this forum is only connected to one actor.

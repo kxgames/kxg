@@ -4,6 +4,23 @@ import kxg
 from utilities import *
 from pprint import pprint
 
+def test_message_pickling():
+    import pickle
+
+    original_message = DummyMessage()
+    packed_message = pickle.dumps(original_message)
+    duplicate_message = pickle.loads(packed_message)
+
+    assert b'_was_sent' not in packed_message
+    assert b'_tokens_to_add' not in packed_message
+    assert b'_tokens_to_remove' not in packed_message
+    assert b'_end_game' not in packed_message
+
+    assert original_message.data == duplicate_message.data
+    assert original_message._tokens_to_add == []
+    assert original_message._tokens_to_remove == []
+    assert original_message._end_game == False
+
 def test_uniplayer_message_handling():
     test = DummyUniplayerGame()
     message = DummyMessage()
@@ -136,23 +153,35 @@ def test_multiplayer_hard_sync_error_handling():
 def test_uniplayer_token_creation():
     test = DummyUniplayerGame()
     token = DummyToken()
-    message = kxg.CreateToken(token)
+    message = DummyMessage()
+    message.create_token(token)
 
     assert test.actors[0].send_message(message)
     assert token in test.world
 
 def test_uniplayer_token_destruction():
     test = DummyUniplayerGame()
-    message = kxg.DestroyToken(test.token)
+    message = DummyMessage() 
+    message.destroy_token(test.token)
 
     assert test.token in test.world
     assert test.actors[0].send_message(message)
     assert test.token not in test.world
 
+def test_uniplayer_game_ending():
+    test = DummyUniplayerGame()
+    message = DummyMessage() 
+    message.end_game()
+
+    assert not test.world.is_game_over()
+    assert test.actors[0].send_message(message)
+    assert test.world.is_game_over()
+
 def test_multiplayer_token_creation():
     test = DummyMultiplayerGame()
     token = DummyToken()
-    message = kxg.CreateToken(token)
+    message = DummyMessage()
+    message.create_token(token)
 
     assert test.client_actors[0].send_message(message)
     assert token in test.client_worlds[0]
@@ -165,7 +194,8 @@ def test_multiplayer_token_creation():
 def test_multiplayer_token_destruction():
     test = DummyMultiplayerGame()
     token = test.client_tokens[0]
-    message = kxg.DestroyToken(token)
+    message = DummyMessage()
+    message.destroy_token(token)
 
     assert len(test.client_worlds[0]) == 2
     assert test.client_actors[0].send_message(message)
@@ -177,6 +207,23 @@ def test_multiplayer_token_destruction():
 
     assert len(test.server_world) == 1
     assert len(test.client_worlds[1]) == 1
+
+def test_multiplayer_game_ending():
+    test = DummyMultiplayerGame()
+    message = DummyMessage()
+    message.end_game()
+
+    assert not test.server_world.is_game_over()
+    assert not test.client_worlds[0].is_game_over()
+    assert not test.client_worlds[1].is_game_over()
+
+    assert test.server_referee.send_message(message)
+    assert test.server_world.is_game_over()
+
+    test.update()
+
+    assert test.client_worlds[0].is_game_over()
+    assert test.client_worlds[1].is_game_over()
 
 def test_multiplayer_token_creation_with_hard_sync_error():
     pass
@@ -220,10 +267,16 @@ def test_stale_reporter_error():
             if self.reporter:
                 self.reporter.send_message(DummyMessage())
 
+    class CreateStaleReporterToken (kxg.Message):
+
+        def __init__(self):
+            super().__init__()
+            token = StaleReporterToken()
+            self.create_token(token)
+
 
     test = DummyUniplayerGame()
-    token = StaleReporterToken()
-    message = kxg.CreateToken(token)
+    message = CreateStaleReporterToken()
     test.actors[0].send_message(message)
 
     with raises_api_usage_error("DummyMessage message sent using a stale reporter"):

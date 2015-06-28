@@ -99,24 +99,16 @@ class GameStage (Stage):
         The loop terminates once all of the actors indicate that they are done.
         """
 
-        # 1. Update the actors.
-
         for actor in self.actors:
             actor.on_update_game(dt)
 
-        # 2. If all the actors are finished, exit this stage.
-
-        if all(x.is_finished() for x in self.actors):
-            self.exit_stage()
-
-        # 3. Update the messaging system.
-
         self.forum.on_update_game()
-
-        # 4. Update the game world.
 
         with self.world._unlock_temporarily():
             self.world.on_update_game(dt)
+
+        if self.world.is_game_over():
+            self.exit_stage()
 
     def on_exit_stage(self):
         """

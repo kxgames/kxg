@@ -16,20 +16,6 @@ class Actor (ForumObserver):
         assert self._id_factory is not None, "Actor does not have id."
         return self._id_factory.get()
 
-    def set_world(self, world):
-        assert self.world is None, "Actor already has world."
-        self.world = world
-
-    def set_forum(self, forum, id_factory):
-        assert self._id_factory is None, "Actor already has id."
-        self._id_factory = id_factory
-
-        assert self._forum is None, "Actor already has forum."
-        self._forum = forum
-
-    def is_finished(self):
-        return self.world.has_game_ended()
-
     def is_referee(self):
         return isinstance(self, Referee)
 
@@ -39,15 +25,15 @@ class Actor (ForumObserver):
         # done before the message is checked so that the check can make sure 
         # valid ids were assigned.
 
-        message.set_sender_id(self._id_factory)
-        message.assign_token_ids(self._id_factory)
+        message._set_sender_id(self._id_factory)
+        message._assign_token_ids(self._id_factory)
 
         # Make sure that the message isn't requesting something that can't be 
         # done.  For example, make sure the players have enough resource when 
         # they're trying to buy things.  If the message fails the check, return 
         # False immediately.
 
-        if not message.check(self.world, self._id_factory):
+        if not message._check(self.world, self._id_factory):
             return False
 
         # Hand the message off to the forum to be applied to the world and 
@@ -56,9 +42,6 @@ class Actor (ForumObserver):
 
         self._forum.dispatch_message(message)
         return True
-
-    def dispatch_message(self, message):
-        pass
 
     def on_start_game(self):
         pass
@@ -69,9 +52,23 @@ class Actor (ForumObserver):
     def on_finish_game(self):
         pass
 
+    def _set_world(self, world):
+        assert self.world is None, "Actor already has world."
+        self.world = world
+
+    def _set_forum(self, forum, id_factory):
+        assert self._id_factory is None, "Actor already has id."
+        self._id_factory = id_factory
+
+        assert self._forum is None, "Actor already has forum."
+        self._forum = forum
+
     def _get_nested_observers(self):
         return (token.get_extension(self)
                 for token in self.world if token.has_extension(self))
+
+    def _dispatch_message(self, message):
+        pass
 
 
 class RemoteActor (Actor):
@@ -82,23 +79,8 @@ class RemoteActor (Actor):
         self.pipe = pipe
         self.pipe.lock()
 
-    def set_forum(self, forum, id):
-        super().set_forum(forum, id)
-        self.pipe.send(id)
-
-    def is_finished(self):
-        return self.pipe.finished() or Actor.is_finished(self)
-
     def send_message(self):
         raise NotImplementedError
-
-    def dispatch_message(self, message):
-        if not message.was_sent_by(self._id_factory):
-            self.pipe.send(message)
-            self.pipe.deliver()
-
-    def react_to_message(self, message):
-        pass
 
     def on_start_game(self):
         from .tokens import TokenSerializer
@@ -119,8 +101,8 @@ class RemoteActor (Actor):
             # are not not relayed and must be somehow undone on the client that 
             # sent the message.
             
-            if not message.check(self.world, self._id_factory):
-                message.set_error_state(self.world)
+            if not message._check(self.world, self._id_factory):
+                message._set_error_state(self.world)
                 self.pipe.send(message)
 
                 if message.has_hard_sync_error():
@@ -147,6 +129,26 @@ class RemoteActor (Actor):
     def on_finish_game(self):
         self.pipe.pop_serializer()
 
+    def _set_forum(self, forum, id):
+        super()._set_forum(forum, id)
+        self.pipe.send(id)
+
+    def _dispatch_message(self, message):
+        if not message.was_sent_by(self._id_factory):
+            self.pipe.send(message)
+            self.pipe.deliver()
+
+    def _react_to_message(self, message):
+        """
+        Don't ever change the world in response to a message.
+
+        This method is defined is called by the game engine to trigger 
+        callbacks tied by this actor to particular messages.  This is useful 
+        for ordinary actors, but remote actors are only meant to shuttle 
+        message between clients and should never react to individual messages.
+        """
+        pass
+
 
 class Referee (Actor):
 
@@ -168,14 +170,14 @@ class Referee (Actor):
             else:
                 self.referee.send_message(message)
 
-    def set_forum(self, forum, id_factory):
-        super().set_forum(forum, id_factory)
-        assert self.id == 1
-
     def on_update_game(self, dt):
         with Referee.Reporter(self) as reporter:
             for token in self.world:
                 token.on_report_to_referee(reporter)
+
+    def _set_forum(self, forum, id_factory):
+        super()._set_forum(forum, id_factory)
+        assert self.id == 1
 
 
 

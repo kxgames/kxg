@@ -3,8 +3,10 @@
 import pyglet
 
 class Loop:
-    """ Manage whichever stage is currently active.  This involves both
-    updating the current stage and handling transitions between stages. """
+    """
+    Manage whichever stage is currently active.  This involves both
+    updating the current stage and handling transitions between stages.
+    """
 
     def __init__(self, initial_stage):
         self.stage = initial_stage
@@ -34,16 +36,5 @@ class Loop:
             self.stage.on_exit_stage()
 
         pyglet.app.exit()
-
-
-class GuiLoop (Loop):
-
-    def play(self, frames_per_sec=50):
-        self.window = pyglet.window.Window()
-        Loop.play(self, frames_per_sec)
-
-    def get_window(self):
-        return self.window
-
 
 

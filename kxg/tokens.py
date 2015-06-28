@@ -235,19 +235,6 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         else:
             return 'pending'
 
-    @before_world
-    def give_id(self, id_factory):
-        from .forums import IdFactory
-
-        require_token(self)
-
-        if self.has_id():
-            raise TokenAlreadyHasId(self)
-        if not isinstance(id_factory, IdFactory):
-            raise NotUsingIdFactory(id_factory)
-
-        self._id = id_factory.next()
-
     @read_only
     def has_id(self):
         return self.id is not None
@@ -329,6 +316,19 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
 
     def on_remove_from_world(self):
         pass
+
+    @before_world
+    def _give_id(self, id_factory):
+        from .forums import IdFactory
+
+        require_token(self)
+
+        if self.has_id():
+            raise TokenAlreadyHasId(self)
+        if not isinstance(id_factory, IdFactory):
+            raise NotUsingIdFactory(id_factory)
+
+        self._id = id_factory.next()
 
     @read_only
     def _check_if_forum_observation_enabled(self):

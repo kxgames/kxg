@@ -18,7 +18,7 @@ class DummyUniplayerGame:
         # Add a token to the world.
         
         self.token = DummyToken()
-        self.token.give_id(self.referee._id_factory)
+        self.token._give_id(self.referee._id_factory)
 
         force_add_token(self.world, self.token)
 
@@ -69,7 +69,7 @@ class DummyMultiplayerGame:
 
         from copy import deepcopy
         token = DummyToken()
-        token.give_id(self.server_referee._id_factory)
+        token._give_id(self.server_referee._id_factory)
 
         self.server_token = deepcopy(token)
         force_add_token(self.server_world, self.server_token)
@@ -109,7 +109,19 @@ class DummyObserver:
 
 
 class DummyActor (kxg.Actor, DummyObserver):
-    pass
+
+    def __init__(self, num_updates_before_finished=None):
+        super().__init__()
+        self.num_updates_before_finished = num_updates_before_finished
+        self.num_updates = 0
+
+    def on_update_game(self, dt):
+        self.num_updates += 1
+
+    def is_finished(self):
+        return isinstance(self.num_updates_before_finished, int) and \
+                self.num_updates >= self.num_updates_before_finished
+
 
 class DummyReferee (kxg.Referee, DummyObserver):
     pass

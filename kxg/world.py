@@ -14,6 +14,7 @@ class World (Token):
         self._tokens = {}
         self._actors = []
         self._is_locked = True
+        self._is_game_over = False
         with self._unlock_temporarily():
             self._add_token(self)
 
@@ -55,13 +56,6 @@ class World (Token):
         """
         return max(self._tokens)
 
-    def set_actors(self, actors):
-        """
-        Tell the world which actors are running on this machine.  This 
-        information is used to create extensions for new tokens.  
-        """
-        self._actors = actors
-
     @read_only
     def is_locked(self):
         """
@@ -70,20 +64,11 @@ class World (Token):
         return self._is_locked
 
     @read_only
-    def has_game_started(self):     # (pure virtual)
+    def is_game_over(self):
         """
-        Return true if the game has started.  This is a pure-virtual method 
-        that must be implemented in subclasses.
+        Return true if the game has ended.
         """
-        raise NotImplementedError
-
-    @read_only
-    def has_game_ended(self):       # (pure virtual)
-        """
-        Return true if the game has ended.  This is a pure-virtual method 
-        that must be implemented in subclasses.
-        """
-        raise NotImplementedError
+        return self._is_game_over
 
     def on_start_game(self):
         pass
@@ -197,8 +182,18 @@ class World (Token):
 
         token._id = None
 
+    def _end_game(self):
+        self._is_game_over = True
+
     def _get_nested_observers(self):
         return filter(lambda t: t is not self, self)
+
+    def _set_actors(self, actors):
+        """
+        Tell the world which actors are running on this machine.  This 
+        information is used to create extensions for new tokens.  
+        """
+        self._actors = actors
 
 
 
