@@ -14,14 +14,12 @@ class Message:
         self._was_sent = False
         self._tokens_to_add = []
         self._tokens_to_remove = []
-        self._end_game = False
 
     def __getstate__(self):
         state = self.__dict__.copy()
         del state['_was_sent']
         if not self._tokens_to_add: del state['_tokens_to_add']
         if not self._tokens_to_remove: del state['_tokens_to_remove']
-        if not self._end_game: del state['_end_game']
         return state
 
     def __setstate__(self, state):
@@ -47,9 +45,6 @@ class Message:
     def destroy_token(self, token):
         self._tokens_to_remove.append(token)
 
-    def end_game(self):
-        self._end_game = True
-
     def on_check(self, world, sender_id):
         # Called by the actor.  Normal Actor will not send if this returns 
         # false.  RemoteActor will decide if this is a hard or soft error.  It 
@@ -57,12 +52,13 @@ class Message:
         return True
 
     def on_check_for_soft_sync_error(self, world):
-        # Called only by RemoteActor if check() returns False.  If this method 
-        # returns True, the message will be relayed to the rest of the clients 
-        # with the sync error flag set.  Otherwise the message will not be sent 
-        # and the RemoteForum that sent the message will be instructed to undo 
-        # it.  If a soft error is detected, this method should save information 
-        # about the world that it could use to resynchronize all the clients.
+        # Called only by RemoteActor if on_check() returns False.  If this 
+        # method returns True, the message will be relayed to the rest of the 
+        # clients with the sync error flag set.  Otherwise the message will not 
+        # be sent and the RemoteForum that sent the message will be instructed 
+        # to undo it.  If a soft error is detected, this method should save 
+        # information about the world that it could use to resynchronize all 
+        # the clients.
         return False
 
     def on_execute(self, world):
@@ -102,7 +98,7 @@ class Message:
         # called exactly once.  Not really different from the constructor, 
         # except that the id_factory object is nicely provided.  That's useful 
         # for adding tokens but probably nothing else.  This method is called 
-        # before check() so that check() can make sure that valid ids were 
+        # before _check() so that _check() can make sure that valid ids were 
         # assigned.
 
         for token in self._tokens_to_add:
@@ -139,11 +135,6 @@ class Message:
 
         for token in self._tokens_to_remove:
             world._remove_token(token)
-
-        # Deal with the end of the game.
-
-        if self._end_game:
-            world._end_game()
 
         # Let derived classes execute themselves.
 

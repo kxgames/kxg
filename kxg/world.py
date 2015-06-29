@@ -70,6 +70,9 @@ class World (Token):
         """
         return self._is_game_over
 
+    def end_game(self):
+        self._is_game_over = True
+
     def on_start_game(self):
         pass
 
@@ -181,9 +184,6 @@ class World (Token):
         del self._tokens[id]
 
         token._id = None
-
-    def _end_game(self):
-        self._is_game_over = True
 
     def _get_nested_observers(self):
         return filter(lambda t: t is not self, self)

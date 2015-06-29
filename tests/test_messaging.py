@@ -14,12 +14,10 @@ def test_message_pickling():
     assert b'_was_sent' not in packed_message
     assert b'_tokens_to_add' not in packed_message
     assert b'_tokens_to_remove' not in packed_message
-    assert b'_end_game' not in packed_message
 
     assert original_message.data == duplicate_message.data
     assert original_message._tokens_to_add == []
     assert original_message._tokens_to_remove == []
-    assert original_message._end_game == False
 
 def test_uniplayer_message_handling():
     test = DummyUniplayerGame()
@@ -168,15 +166,6 @@ def test_uniplayer_token_destruction():
     assert test.actors[0].send_message(message)
     assert test.token not in test.world
 
-def test_uniplayer_game_ending():
-    test = DummyUniplayerGame()
-    message = DummyMessage() 
-    message.end_game()
-
-    assert not test.world.is_game_over()
-    assert test.actors[0].send_message(message)
-    assert test.world.is_game_over()
-
 def test_multiplayer_token_creation():
     test = DummyMultiplayerGame()
     token = DummyToken()
@@ -207,23 +196,6 @@ def test_multiplayer_token_destruction():
 
     assert len(test.server_world) == 1
     assert len(test.client_worlds[1]) == 1
-
-def test_multiplayer_game_ending():
-    test = DummyMultiplayerGame()
-    message = DummyMessage()
-    message.end_game()
-
-    assert not test.server_world.is_game_over()
-    assert not test.client_worlds[0].is_game_over()
-    assert not test.client_worlds[1].is_game_over()
-
-    assert test.server_referee.send_message(message)
-    assert test.server_world.is_game_over()
-
-    test.update()
-
-    assert test.client_worlds[0].is_game_over()
-    assert test.client_worlds[1].is_game_over()
 
 def test_multiplayer_token_creation_with_hard_sync_error():
     pass
