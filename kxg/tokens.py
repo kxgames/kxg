@@ -95,20 +95,11 @@ class TokenMetaclass (type):
 
         from types import FunctionType
 
-        special_cases = (
-                '__init__',
-                '__str__',
-                '__repr__',
-                '__extend__',
-                '__getstate__',
-                '__setstate__',
-        )
-
         is_method = isinstance(member_value, FunctionType)
         is_read_only = hasattr(member_value, '_kxg_read_only')
-        is_special_case = member_name in special_cases
+        is_engine_helper = member_name.startswith('_')
 
-        if not is_method or is_read_only or is_special_case:
+        if not is_method or is_read_only or is_engine_helper:
             return member_value
 
         def safety_checked_method(self, *args, **kwargs):
@@ -188,6 +179,10 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         self._removed_from_world = False
         self._extensions = {}
         self._disable_forum_observation()
+
+    def __repr__(self):
+        return '<{} id={}>'.format(
+                self.__class__.__name__, getattr(self, 'id', None))
 
     def __getstate__(self):
         state = super().__getstate__()
@@ -317,7 +312,6 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
     def on_remove_from_world(self):
         pass
 
-    @before_world
     def _give_id(self, id_factory):
         from .forums import IdFactory
 
@@ -330,7 +324,6 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
 
         self._id = id_factory.next()
 
-    @read_only
     def _check_if_forum_observation_enabled(self):
         """
         Give a helpful error if the user attempts to subscribe or unsubscribe 

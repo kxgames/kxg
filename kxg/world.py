@@ -21,15 +21,12 @@ class World (Token):
     def __str__(self):
         return '<World len=%d>' % len(self)
 
-    @read_only
     def __iter__(self):
         yield from self._tokens.values()
 
-    @read_only
     def __len__(self):
         return len(self._tokens)
 
-    @read_only
     def __contains__(self, token):
         return token.id in self._tokens
 
@@ -84,7 +81,6 @@ class World (Token):
     def on_finish_game(self):
         pass
 
-    @read_only
     @contextlib.contextmanager
     def _unlock_temporarily(self):
         """
@@ -114,7 +110,6 @@ class World (Token):
             finally:
                 self._is_locked = True
 
-    @before_world
     def _add_token(self, token):
         require_token(token)
         if token.world_registration == 'pending' and not token.has_id():
@@ -194,7 +189,6 @@ class World (Token):
         information is used to create extensions for new tokens.  
         """
         self._actors = actors
-
 
 
 @debug_only

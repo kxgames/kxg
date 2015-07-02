@@ -2,6 +2,24 @@
 
 from .errors import *
 
+# Message is still vulnerable because I could create a Message object, fill it 
+# up with tokens, and send it.  The server would execute it no questions asked.  
+# I need to add something somewhere that prevents unspecialized messages from 
+# being executed.  
+# 
+# I could make on_check() etc. raise NotImplementerErrors.  That would make a 
+# kind of sense.  It would make Message a little harder to subclass, but it's 
+# probably the kind of thing every class should be doing anyway.  Should all 5 
+# callbacks need to be reimplemented?  How about just on_check() and 
+# on_execute()?  Would it be confusing to only have to reimplement two of the 
+# five methods?  The real problem with this approach is that it will crash the 
+# server if a bad message is received.
+#
+# I could define a method that 
+
+from .errors import *
+from .tokens import require_token
+
 class Message:
 
     class ErrorState:
@@ -11,21 +29,22 @@ class Message:
 
     def __init__(self):
         super().__init__()
-        self._was_sent = False
-        self._tokens_to_add = []
-        self._tokens_to_remove = []
+        self.tokens_to_add = []
+        self.tokens_to_remove = []
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        del state['_was_sent']
-        if not self._tokens_to_add: del state['_tokens_to_add']
-        if not self._tokens_to_remove: del state['_tokens_to_remove']
+        if not self.tokens_to_add: del state['tokens_to_add']
+        if not self.tokens_to_remove: del state['tokens_to_remove']
         return state
 
     def __setstate__(self, state):
         Message.__init__(self)
         self.__dict__.update(state)
         self._was_sent = True
+
+    def was_sent(self):
+        return hasattr(self, 'sender_id')
 
     def was_sent_by(self, sender_id):
         return self.sender_id == sender_id.get()
@@ -39,11 +58,23 @@ class Message:
     def has_hard_sync_error(self):
         return getattr(self, '_error_state', None) == Message.ErrorState.HARD_SYNC_ERROR
 
-    def create_token(self, token):
-        self._tokens_to_add.append(token)
+    def add_token(self, token):
+        require_token(token)
+        if self.was_sent(): raise MessageAlreadySent()
+        self.tokens_to_add.append(token)
 
-    def destroy_token(self, token):
-        self._tokens_to_remove.append(token)
+    def add_tokens(self, tokens):
+        if self.was_sent(): raise MessageAlreadySent()
+        self.tokens_to_add.extend(tokens)
+
+    def remove_token(self, token):
+        require_token(token)
+        if self.was_sent(): raise MessageAlreadySent()
+        self.tokens_to_remove.append(token)
+
+    def remove_tokens(self, tokens):
+        if self.was_sent(): raise MessageAlreadySent()
+        self.tokens_to_remove.extend(tokens)
 
     def on_check(self, world, sender_id):
         # Called by the actor.  Normal Actor will not send if this returns 
@@ -101,13 +132,13 @@ class Message:
         # before _check() so that _check() can make sure that valid ids were 
         # assigned.
 
-        for token in self._tokens_to_add:
+        for token in self.tokens_to_add:
             token._give_id(id_factory)
 
     def _check(self, world, id_factory):
         # Check all the tokens to create:
 
-        for token in self._tokens_to_add:
+        for token in self.tokens_to_add:
             if token in world:
                 return False
 
@@ -119,7 +150,7 @@ class Message:
 
         # Check all the tokens to destroy:
 
-        for token in self._tokens_to_remove:
+        for token in self.tokens_to_remove:
             if token not in world:
                 return False
 
@@ -130,10 +161,10 @@ class Message:
     def _execute(self, world):
         # Deal with tokens to be created or destroyed.
 
-        for token in self._tokens_to_add:
+        for token in self.tokens_to_add:
             world._add_token(token)
 
-        for token in self._tokens_to_remove:
+        for token in self.tokens_to_remove:
             world._remove_token(token)
 
         # Let derived classes execute themselves.
@@ -146,10 +177,10 @@ class Message:
     def _handle_hard_sync_error(self, world):
         # Deal with the tokens that were created or destroyed.
 
-        for token in self._tokens_to_add:
+        for token in self.tokens_to_add:
             world._remove_token(token)
 
-        for token in self._tokens_to_remove:
+        for token in self.tokens_to_remove:
             world._add_token(token)
 
         # Let derived classes execute themselves.
@@ -157,4 +188,6 @@ class Message:
         self.on_hard_sync_error(world)
 
 
-
+@debug_only
+def require_message(object):
+    require_instance(Message(), object)

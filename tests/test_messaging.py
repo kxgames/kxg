@@ -11,13 +11,24 @@ def test_message_pickling():
     packed_message = pickle.dumps(original_message)
     duplicate_message = pickle.loads(packed_message)
 
-    assert b'_was_sent' not in packed_message
-    assert b'_tokens_to_add' not in packed_message
-    assert b'_tokens_to_remove' not in packed_message
+    assert b'tokens_to_add' not in packed_message
+    assert b'tokens_to_remove' not in packed_message
 
     assert original_message.data == duplicate_message.data
-    assert original_message._tokens_to_add == []
-    assert original_message._tokens_to_remove == []
+    assert original_message.tokens_to_add == []
+    assert original_message.tokens_to_remove == []
+
+def test_sending_non_message():
+    test = DummyUniplayerGame()
+
+    with raises_api_usage_error('expected Message, but got str instead'):
+        test.referee.send_message('not a message')
+
+    with raises_api_usage_error('forgot to call the Message constructor in IncompleteMessage.__init__()'):
+        class IncompleteMessage (kxg.Message):
+            def __init__(self):
+                pass
+        test.referee.send_message(IncompleteMessage())
 
 def test_uniplayer_message_handling():
     test = DummyUniplayerGame()
@@ -148,54 +159,85 @@ def test_multiplayer_hard_sync_error_handling():
     assert test.client_worlds[1].messages_received == []
     assert test.client_actors[1].messages_received == []
 
-def test_uniplayer_token_creation():
+def test_uniplayer_token_management():
+    # Add one token:
+
     test = DummyUniplayerGame()
     token = DummyToken()
     message = DummyMessage()
-    message.create_token(token)
+    message.add_token(token)
 
     assert test.actors[0].send_message(message)
     assert token in test.world
 
-def test_uniplayer_token_destruction():
-    test = DummyUniplayerGame()
-    message = DummyMessage() 
-    message.destroy_token(test.token)
+    with raises_api_usage_error("can't add or remove tokens after"):
+        message.add_token(token)
 
-    assert test.token in test.world
+    # Remove one token:
+
+    message = DummyMessage() 
+    message.remove_token(token)
+
+    assert test.actors[1].send_message(message)
+    assert token not in test.world
+
+    with raises_api_usage_error("can't add or remove tokens after"):
+        message.remove_token(token)
+
+    # Add two tokens:
+
+    test = DummyUniplayerGame()
+    tokens = DummyToken(), DummyToken()
+    message = DummyMessage()
+    message.add_tokens(tokens)
+
+    assert test.actors[1].send_message(message)
+    assert all(x in test.world for x in tokens)
+
+    with raises_api_usage_error("can't add or remove tokens after"):
+        message.add_tokens(tokens)
+
+    # Remove two tokens:
+
+    message = DummyMessage()
+    message.remove_tokens(tokens)
+
     assert test.actors[0].send_message(message)
-    assert test.token not in test.world
+    assert all(x not in test.world for x in tokens)
+
+    with raises_api_usage_error("can't add or remove tokens after"):
+        message.add_tokens(tokens)
 
 def test_multiplayer_token_creation():
     test = DummyMultiplayerGame()
     token = DummyToken()
     message = DummyMessage()
-    message.create_token(token)
+    message.add_token(token)
 
-    assert test.client_actors[0].send_message(message)
-    assert token in test.client_worlds[0]
+    assert test.client_actors[1].send_message(message)
+    assert token in test.client_worlds[1]
 
     test.update()
 
     assert token in test.server_world
-    assert token in test.client_worlds[1]
+    assert token in test.client_worlds[0]
 
 def test_multiplayer_token_destruction():
     test = DummyMultiplayerGame()
-    token = test.client_tokens[0]
+    token = test.client_tokens[1]
     message = DummyMessage()
-    message.destroy_token(token)
+    message.remove_token(token)
 
-    assert len(test.client_worlds[0]) == 2
-    assert test.client_actors[0].send_message(message)
-    assert len(test.client_worlds[0]) == 1
-    assert len(test.server_world) == 2
     assert len(test.client_worlds[1]) == 2
+    assert test.client_actors[1].send_message(message)
+    assert len(test.client_worlds[1]) == 1
+    assert len(test.server_world) == 2
+    assert len(test.client_worlds[0]) == 2
 
     test.update()
 
     assert len(test.server_world) == 1
-    assert len(test.client_worlds[1]) == 1
+    assert len(test.client_worlds[0]) == 1
 
 def test_multiplayer_token_creation_with_hard_sync_error():
     pass
@@ -239,16 +281,16 @@ def test_stale_reporter_error():
             if self.reporter:
                 self.reporter.send_message(DummyMessage())
 
-    class CreateStaleReporterToken (kxg.Message):
+    class AddStaleReporterToken (kxg.Message):
 
         def __init__(self):
             super().__init__()
             token = StaleReporterToken()
-            self.create_token(token)
+            self.add_token(token)
 
 
     test = DummyUniplayerGame()
-    message = CreateStaleReporterToken()
+    message = AddStaleReporterToken()
     test.actors[0].send_message(message)
 
     with raises_api_usage_error("DummyMessage message sent using a stale reporter"):

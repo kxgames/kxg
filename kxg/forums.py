@@ -375,8 +375,11 @@ class IdFactory:
         self.spacing = spacing
         self.num_ids_assigned = 0
 
+    def __repr__(self):
+        return 'IdFactory({}, {})'.format(self.offset, self.spacing)
+
     def __contains__(self, id):
-        return id % self.spacing == self.offset
+        return id % self.spacing == self.offset % self.spacing
 
     def get(self):
         return self.offset

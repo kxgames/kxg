@@ -199,6 +199,30 @@ constructor compatible with these arguments."""
         self.extension_cls = extension_cls.__name__
 
 
+class MessageAlreadySent (ApiUsageErrorFactory):
+
+    message = """\
+messages can't add or remove tokens after they've been sent.
+
+You get this error if you call Message.add_token() or Message.remove_token() 
+after the message has been sent.  Normally you would only call these methods 
+from within the constructors of your message subclasses."""
+
+class NotUsingIdFactory (ApiUsageErrorFactory):
+
+    message = """\
+can't use {bad_id} as a token id.
+
+Token._give_id() expects to be passed an internal object that can be used to 
+create new, unique id numbers.  For that reason, this method should only be 
+called by the game engine.  You can get this error if you try to assign an id 
+to a token by calling Token._give_id() yourself.  Use Message.add_token() to 
+create all your tokens in a manner that avoids synchronization bugs."""
+
+    def __init__(self, bad_id):
+        self.bad_id = bad_id
+
+
 class ObjectIsntRightType (ApiUsageErrorFactory):
 
     message = """\
@@ -226,21 +250,6 @@ The game engine expects {object} to be a {prototype_cls}, but it's missing the
         self.object = object
         self.object_cls = object.__class__.__name__
         self.missing_member = missing_member
-
-
-class NotUsingIdFactory (ApiUsageErrorFactory):
-
-    message = """\
-can't use {bad_id} as a token id.
-
-Token._give_id() expects to be passed an internal object that can be used to 
-create new, unique id numbers.  For that reason, this method should only be 
-called by the game engine.  You can get this error if you try to assign an id 
-to a token by calling Token._give_id() yourself.  Use Message.add_token() to 
-create all your tokens in a manner that avoids synchronization bugs."""
-
-    def __init__(self, bad_id):
-        self.bad_id = bad_id
 
 
 class TokenAlreadyHasId (ApiUsageErrorFactory):

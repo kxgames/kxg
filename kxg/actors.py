@@ -20,6 +20,12 @@ class Actor (ForumObserver):
         return isinstance(self, Referee)
 
     def send_message(self, message):
+        # Make sure the user didn't pass the wrong object to this function or 
+        # forget to call the superclass constructor.
+
+        from .messages import require_message
+        require_message(message)
+
         # Indicate that the message was sent by this actor and give the message 
         # a chance to assign id numbers to the tokens it's creating.  This is 
         # done before the message is checked so that the check can make sure 
