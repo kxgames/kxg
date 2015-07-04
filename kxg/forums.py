@@ -36,13 +36,13 @@ class ForumObserver:
         from inspect import getmembers, ismethod
 
         for method_name, method in getmembers(self, ismethod):
-            message_cls = getattr(method, '_subscribe_to_message', None)
+            message_cls = getattr(method, '_kxg_subscribe_to_message', None)
             if message_cls: self.subscribe_to_message(message_cls, method)
 
-            message_cls = getattr(method, '_subscribe_to_soft_sync_error', None)
+            message_cls = getattr(method, '_kxg_subscribe_to_soft_sync_error', None)
             if message_cls: self.subscribe_to_soft_sync_error(message_cls, method)
 
-            message_cls = getattr(method, '_subscribe_to_hard_sync_error', None)
+            message_cls = getattr(method, '_kxg_subscribe_to_hard_sync_error', None)
             if message_cls: self.subscribe_to_hard_sync_error(message_cls, method)
 
     def __getstate__(self):
@@ -92,21 +92,21 @@ class ForumObserver:
         assert self._is_enabled, "{} has disabled forum observation.".format(self)
 
     def _add_callback(self, event, message_cls, callback):
+        from .messages import require_message_cls
+        require_message_cls(message_cls)
         self._check_if_forum_observation_enabled()
         callback_info = ForumObserver.CallbackInfo(message_cls, callback)
         self._callbacks[event].append(callback_info)
 
     def _drop_callback(self, event, message_cls, callback):
+        from .messages import require_message_cls
+        require_message_cls(message_cls)
         self._check_if_forum_observation_enabled()
-
-        # The [:] syntax is important, because it causes the same list object 
-        # to be refilled with the new values.  Without it a new list would be 
-        # created and the list in self.callbacks would not be changed.
-
-        self._callbacks[event][:] = [
-                callback_info for callback_info in self.callbacks[event]
-                if (callback_info.message_cls is message_cls) and
-                   (callback_info.callback is callback or callback is None)
+        self._callbacks[event] = [
+                x for x in self._callbacks[event]
+                if not ((x.message_cls is message_cls) and
+                        (x.callback is callback or callback is None)
+                )
         ]
         
     def _call_callbacks(self, event, message):
@@ -397,19 +397,19 @@ def require_forum(object):
 
 def subscribe_to_message(message_cls):
     def decorator(function):
-        function._subscribe_to_message = message_cls
+        function._kxg_subscribe_to_message = message_cls
         return function
     return decorator
 
 def subscribe_to_soft_sync_error(message_cls):
     def decorator(function):
-        function._subscribe_to_soft_sync_error = message_cls
+        function._kxg_subscribe_to_soft_sync_error = message_cls
         return function
     return decorator
 
 def subscribe_to_hard_sync_error(message_cls):
     def decorator(function):
-        function._subscribe_to_hard_sync_error = message_cls
+        function._kxg_subscribe_to_hard_sync_error = message_cls
         return function
     return decorator
 

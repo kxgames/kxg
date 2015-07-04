@@ -191,3 +191,8 @@ class Message:
 @debug_only
 def require_message(object):
     require_instance(Message(), object)
+
+@debug_only
+def require_message_cls(cls):
+    if not isinstance(cls, type) or not issubclass(cls, Message):
+        raise ObjectIsntMessageSubclass(cls)

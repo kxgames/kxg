@@ -87,6 +87,15 @@ class DummyMultiplayerGame:
             self.server_game_stage.on_update_stage(0.1)
 
 
+class DummyMessage (kxg.Message, linersock.test_helpers.Message):
+
+    def on_execute(self, world):
+        world.messages_executed.append(self)
+
+    def on_soft_sync_error(self, world):
+        world.soft_errors_handled.append(self)
+
+
 class DummyObserver:
     
     def __init__(self):
@@ -95,15 +104,15 @@ class DummyObserver:
         self.soft_errors_received = []
         self.hard_errors_received = []
 
-    @kxg.subscribe_to_message(kxg.Message)
+    @kxg.subscribe_to_message(DummyMessage)
     def on_message(self, message):
         self.messages_received.append(message)
 
-    @kxg.subscribe_to_soft_sync_error(kxg.Message)
+    @kxg.subscribe_to_soft_sync_error(DummyMessage)
     def on_soft_sync_error(self, message):
         self.soft_errors_received.append(message)
 
-    @kxg.subscribe_to_hard_sync_error(kxg.Message)
+    @kxg.subscribe_to_hard_sync_error(DummyMessage)
     def on_hard_sync_error(self, message):
         self.hard_errors_received.append(message)
 
@@ -165,72 +174,6 @@ class DummyToken (kxg.Token, DummyObserver):
 
 class DummyExtension (kxg.TokenExtension, DummyObserver):
     pass
-
-class DummyMessage (kxg.Message, linersock.test_helpers.Message):
-
-    def __init__(self, pass_check=True):
-        super().__init__()
-        self.pass_check = pass_check
-
-    def on_check(self, world, sender):
-        return self.pass_check
-
-    def on_execute(self, world):
-        world.messages_executed.append(self)
-
-    def on_soft_sync_error(self, world):
-        raise AssertionError
-
-    def on_hard_sync_error(self, world):
-        raise AssertionError
-
-
-class DummySoftSyncError (kxg.Message, linersock.test_helpers.Message):
-
-    def __init__(self):
-        super().__init__()
-        self.check_result = True
-
-    def on_check(self, world, sender_id):
-        # Return True the first time, but False after that.
-        retval = self.check_result
-        self.check_result = False
-        return retval
-
-    def on_check_for_soft_sync_error(self, world):
-        return True
-
-    def on_execute(self, world):
-        world.messages_executed.append(self)
-
-    def on_soft_sync_error(self, world):
-        world.soft_errors_handled.append(self)
-
-
-class DummyHardSyncError (kxg.Message, linersock.test_helpers.Message):
-
-    def __init__(self):
-        super().__init__()
-        self.check_result = True
-
-    def on_check(self, world, sender_id):
-        # Return True the first time, but False after that.
-        retval = self.check_result
-        self.check_result = False
-        return retval
-
-    def on_check_for_soft_sync_error(self, world):
-        return False
-
-    def on_execute(self, world):
-        world.messages_executed.append(self)
-
-    def on_soft_sync_error(self, world):
-        raise AssertionError
-
-    def on_hard_sync_error(self, world):
-        world.hard_errors_handled.append(self)
-
 
 
 @contextlib.contextmanager

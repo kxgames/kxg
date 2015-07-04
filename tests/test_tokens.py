@@ -212,7 +212,7 @@ def test_token_serialization():
     # Test the serialization of a message object.  This should not result in 
     # the parent token being copied.
 
-    message = DummyMessage()
+    message = kxg.Message()
     message.token = token_2
     packed_message = serializer.pack(message)
     duplicate_message = deserializer.unpack(packed_message)
@@ -310,17 +310,5 @@ def test_cant_pickle_world():
 
     with raises_api_usage_error("can't pickle the world"):
         pickle.dumps(world)
-
-def test_cant_subscribe_in_ctor():
-
-    class SubscribeInConstructorToken (DummyToken):
-
-        def __init__(self):
-            super().__init__()
-            self.subscribe_to_message(DummyMessage, lambda message: None)
-
-
-    with raises_api_usage_error("can't subscribe to messages now."):
-        token = SubscribeInConstructorToken()
 
 

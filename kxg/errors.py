@@ -252,6 +252,16 @@ The game engine expects {object} to be a {prototype_cls}, but it's missing the
         self.missing_member = missing_member
 
 
+class ObjectIsntMessageSubclass (ApiUsageErrorFactory):
+
+    message = """\
+expected Message subclass, but got {object} instead."""
+
+    def __init__(self, object):
+        try: self.object = object.__name__
+        except: self.object = object
+
+
 class TokenAlreadyHasId (ApiUsageErrorFactory):
 
     message = """\
@@ -384,7 +394,7 @@ bugs on the clients, which are never given reporter objects."""
 class UnhandledSyncError (ApiUsageErrorFactory):
 
     message = """\
-the message {message} was rejected by the server.
+the message {message_} was rejected by the server.
 
 This client attempted to send a {message_cls} message, but it was rejected by 
 the server.  To fix this error, either figure out why the client is getting out 
@@ -392,7 +402,7 @@ of sync with the server or implement a {message_cls}.on_hard_sync_error() that
 undoes everything done in {message_cls}.on_execute()."""
 
     def __init__(self, message):
-        self.message = message
+        self.message_ = message
         self.message_cls = message.__class__.__name__
 
 
