@@ -175,12 +175,23 @@ class Message:
         self.on_soft_sync_error(world)
 
     def _handle_hard_sync_error(self, world):
-        # Deal with the tokens that were created or destroyed.
+        # The tokens in self.tokens_to_add haven't been added to the world yet, 
+        # because the message was copied and pickled before it was executed on 
+        # the server.  We need to access the tokens that are actually in the 
+        # world before we can remove them again.
 
         for token in self.tokens_to_add:
-            world._remove_token(token)
+            real_token = world.get_token(token.id)
+            world._remove_token(real_token)
+
+        # The tokens is self.tokens_to_remove have already been removed from 
+        # the world.  We want to add them back, and we want to make sure they 
+        # end up with the id as before.
 
         for token in self.tokens_to_remove:
+            id = token.id
+            token.reset_registration()
+            token._id = id
             world._add_token(token)
 
         # Let derived classes execute themselves.

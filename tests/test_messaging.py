@@ -309,7 +309,7 @@ def test_multiplayer_token_destruction():
     assert len(test.server_world) == 1
     assert len(test.client_worlds[0]) == 1
 
-def dont_test_multiplayer_token_creation_with_hard_sync_error():
+def test_multiplayer_token_creation_with_hard_sync_error():
     test = DummyMultiplayerGame()
     token = DummyToken()
     message = DummyHardSyncError()
@@ -328,24 +328,29 @@ def dont_test_multiplayer_token_creation_with_hard_sync_error():
     assert token not in test.client_worlds[0]
     assert token not in test.client_worlds[1]
 
-def dont_test_multiplayer_token_destruction_with_hard_sync_error():
+@pytest.mark.xfail
+def test_multiplayer_token_destruction_with_hard_sync_error():
     test = DummyMultiplayerGame()
-    token = test.client_tokens[1]
+    token = test.client_tokens[1]; id = token.id
     message = DummyHardSyncError()
     message.remove_token(token)
+    #pytest.set_trace()
 
-    assert len(test.client_worlds[1]) == 2
+    assert id in test.server_world
+    assert id in test.client_worlds[0]
+    assert id in test.client_worlds[1]
+
     assert test.client_actors[1].send_message(message)
 
-    assert len(test.server_world) == 2
-    assert len(test.client_worlds[0]) == 2
-    assert len(test.client_worlds[1]) == 1
+    assert id in test.server_world
+    assert id in test.client_worlds[0]
+    assert id not in test.client_worlds[1]
 
     test.update()
 
-    assert len(test.server_world) == 2
-    assert len(test.client_worlds[0]) == 2
-    assert len(test.client_worlds[1]) == 2
+    assert id in test.server_world
+    assert id in test.client_worlds[0]
+    assert id in test.client_worlds[1]
 
 def test_unsubscribing_from_messages():
     test = DummyUniplayerGame()

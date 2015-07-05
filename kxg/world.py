@@ -27,8 +27,9 @@ class World (Token):
     def __len__(self):
         return len(self._tokens)
 
-    def __contains__(self, token):
-        return token.id in self._tokens
+    def __contains__(self, token_or_id):
+        id = token_or_id.id if isinstance(token_or_id, Token) else token_or_id
+        return id in self._tokens
 
     def __getstate__(self):
         raise CantPickleWorld()
