@@ -297,3 +297,5 @@ class.  The online documentation describes how to do this in more detail.
         game = MultiplayerDebugger(world, referee, gui, num_players, host, port)
 
     game.play()
+
+

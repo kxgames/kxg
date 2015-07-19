@@ -7,10 +7,10 @@ class DummyAcceptedMessage (DummyMessage):
     def on_check(self, world, sender):
         return True
 
-    def on_soft_sync_error(self, world):
+    def on_sync(self, world, memento):
         raise AssertionError
 
-    def on_hard_sync_error(self, world):
+    def on_undo(self, world):
         raise AssertionError
 
 
@@ -22,10 +22,10 @@ class DummyRejectedMessage (DummyMessage):
     def on_execute(self, world):
         raise AssertionError
 
-    def on_soft_sync_error(self, world):
+    def on_sync(self, world, memento):
         raise AssertionError
 
-    def on_hard_sync_error(self, world):
+    def on_undo(self, world):
         raise AssertionError
 
 
@@ -53,19 +53,16 @@ class DummySyncError (DummyMessage):
 
 class DummySoftSyncError (DummySyncError):
 
-    def on_check_for_soft_sync_error(self, world):
+    def on_prepare_sync(self, world, memento):
         return True
 
-    def on_hard_sync_error(self, world):
+    def on_undo(self, world):
         raise AssertionError
 
 
 class DummyHardSyncError (DummySyncError):
 
-    def on_soft_sync_error(self, world):
-        raise AssertionError
-
-    def on_hard_sync_error(self, world):
+    def on_undo(self, world):
         world.hard_errors_handled.append(self)
 
 
@@ -222,12 +219,21 @@ def test_multiplayer_hard_sync_error_handling():
     assert test.server_world.messages_executed == []
     assert test.server_world.messages_received == []
     assert test.server_referee.messages_received == []
+    assert test.client_worlds[0].soft_errors_received == [message]
+    assert test.client_worlds[0].soft_errors_handled == [message]
+    assert test.client_actors[0].soft_errors_received == [message]
     assert test.client_worlds[0].hard_errors_received == [message]
     assert test.client_worlds[0].hard_errors_handled == [message]
     assert test.client_actors[0].hard_errors_received == [message]
     assert test.client_worlds[1].messages_executed == []
     assert test.client_worlds[1].messages_received == []
     assert test.client_actors[1].messages_received == []
+    assert test.client_worlds[1].soft_errors_received == []
+    assert test.client_worlds[1].soft_errors_handled == []
+    assert test.client_actors[1].soft_errors_received == []
+    assert test.client_worlds[1].hard_errors_received == []
+    assert test.client_worlds[1].hard_errors_handled == []
+    assert test.client_actors[1].hard_errors_received == []
 
 def test_uniplayer_token_management():
     # Add one token:
@@ -328,13 +334,11 @@ def test_multiplayer_token_creation_with_hard_sync_error():
     assert token not in test.client_worlds[0]
     assert token not in test.client_worlds[1]
 
-@pytest.mark.xfail
 def test_multiplayer_token_destruction_with_hard_sync_error():
     test = DummyMultiplayerGame()
     token = test.client_tokens[1]; id = token.id
     message = DummyHardSyncError()
     message.remove_token(token)
-    #pytest.set_trace()
 
     assert id in test.server_world
     assert id in test.client_worlds[0]
@@ -354,7 +358,7 @@ def test_multiplayer_token_destruction_with_hard_sync_error():
 
 def test_unsubscribing_from_messages():
     test = DummyUniplayerGame()
-    message = DummyAcceptedMessage()
+    messages = [DummyAcceptedMessage() for i in range(2)]
 
     assert test.actors[0].messages_received == []
     assert test.actors[1].messages_received == []
@@ -365,63 +369,68 @@ def test_unsubscribing_from_messages():
     class UnrelatedMessage (kxg.Message): pass   # (no fold)
 
     test.actors[1].unsubscribe_from_message(UnrelatedMessage)
-    test.actors[1].send_message(message)
+    test.actors[1].send_message(messages[0])
 
-    assert test.actors[0].messages_received == [message]
-    assert test.actors[1].messages_received == [message]
+    assert test.actors[0].messages_received == messages[0:1]
+    assert test.actors[1].messages_received == messages[0:1]
 
     # Test unsubscribing from the right message class.  This time the handler 
     # should not be called.
 
     test.actors[1].unsubscribe_from_message(DummyMessage)
-    test.actors[1].send_message(message)
+    test.actors[1].send_message(messages[1])
 
-    assert test.actors[0].messages_received == [message, message]
-    assert test.actors[1].messages_received == [message]
+    assert test.actors[0].messages_received == messages[0:2]
+    assert test.actors[1].messages_received == messages[0:1]
 
 def test_unsubscribing_from_soft_sync_errors():
     test = DummyMultiplayerGame()
-    message = DummySoftSyncError()
+    messages = [DummySoftSyncError() for i in range(3)]
 
     assert test.client_actors[0].soft_errors_received == []
     assert test.client_actors[1].soft_errors_received == []
 
     # Make sure soft errors can be handled.
 
-    test.client_actors[1].send_message(message)
+    test.client_actors[1].send_message(messages[0])
     test.update()
-    assert test.client_actors[0].soft_errors_received == [message]
-    assert test.client_actors[1].soft_errors_received == [message]
+    assert test.client_actors[0].soft_errors_received == messages[0:1]
+    assert test.client_actors[1].soft_errors_received == messages[0:1]
 
     # Make sure soft errors can also be ignored.
 
     test.client_actors[1].unsubscribe_from_soft_sync_error(DummyMessage)
-    test.client_actors[1].send_message(message)
+    test.client_actors[1].send_message(messages[1])
     test.update()
-    assert test.client_actors[0].soft_errors_received == [message, message]
-    assert test.client_actors[1].soft_errors_received == [message]
+    assert test.client_actors[0].soft_errors_received == messages[0:2]
+    assert test.client_actors[1].soft_errors_received == messages[0:1]
+
+    test.client_actors[0].send_message(messages[2])
+    test.update()
+    assert test.client_actors[0].soft_errors_received == messages[0:3]
+    assert test.client_actors[1].soft_errors_received == messages[0:1]
 
 def test_unsubscribing_from_hard_sync_errors():
     test = DummyMultiplayerGame()
-    message = DummyHardSyncError()
+    messages = [DummyHardSyncError() for i in range(2)]
 
     assert test.client_actors[0].hard_errors_received == []
     assert test.client_actors[1].hard_errors_received == []
 
     # Make sure hard errors can be handled.
 
-    test.client_actors[1].send_message(message)
+    test.client_actors[1].send_message(messages[0])
     test.update()
     assert test.client_actors[0].hard_errors_received == []
-    assert test.client_actors[1].hard_errors_received == [message]
+    assert test.client_actors[1].hard_errors_received == messages[0:1]
 
     # Make sure hard errors can also be ignored.
 
     test.client_actors[1].unsubscribe_from_hard_sync_error(DummyMessage)
-    test.client_actors[1].send_message(message)
+    test.client_actors[1].send_message(messages[1])
     test.update()
     assert test.client_actors[0].hard_errors_received == []
-    assert test.client_actors[1].hard_errors_received == [message]
+    assert test.client_actors[1].hard_errors_received == messages[0:1]
 
 def test_sending_from_token_extension():
     test = DummyUniplayerGame()
@@ -442,6 +451,14 @@ def test_sending_from_token_extension():
     assert test.referee.messages_received == [message]
     assert test.actors[0].messages_received == [message]
     assert test.actors[1].messages_received == [message]
+
+def test_cant_send_message_twice():
+    test = DummyUniplayerGame()
+    message = DummyAcceptedMessage()
+
+    test.actors[0].send_message(message)
+    with raises_api_usage_error("can't send the same message more than once"):
+        test.actors[0].send_message(message)
 
 def test_cant_use_stale_reporter():
 

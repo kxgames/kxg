@@ -172,6 +172,15 @@ was already reset)."""
         self.token = token
 
 
+class CantReuseMessage (ApiUsageErrorFactory):
+
+    message = """\
+can't send the same message more than once.
+
+It's not safe to send the same message twice because messages can accumulate 
+state as they are executed.  This also breaks the system by which clients can 
+react to responses from the server in multiplayer games.
+"""
 class DebuggingTooManyPlayers (ApiUsageErrorFactory):
 
     message = """\

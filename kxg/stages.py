@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
 from .errors import *
-from .world import require_world
-from .forums import Forum, RemoteForum, require_forum
-from .actors import RemoteActor, require_actors
+from .forums import Forum
+from .multiplayer import ClientForum, ServerActor 
 
 class Stage:
 
@@ -55,6 +54,10 @@ class GameStage (Stage):
 
     def __init__(self, world, forum, actors):
         Stage.__init__(self)
+
+        from .world import require_world
+        from .forums import require_forum
+        from .actors import require_actors
 
         require_world(world)
         require_forum(forum)
@@ -159,7 +162,7 @@ class MultiplayerClientGameStage (Stage):
         super().__init__()
         self.world = world
         self.actor = actor
-        self.forum = RemoteForum(pipe)
+        self.forum = ClientForum(pipe)
 
     def on_enter_stage(self):
         pass
@@ -179,7 +182,7 @@ class MultiplayerServerGameStage (GameStage):
 
     def __init__(self, world, referee, pipes):
         forum = Forum()
-        actors = [referee] + [RemoteActor(x) for x in pipes]
+        actors = [referee] + [ServerActor(x) for x in pipes]
         GameStage.__init__(self, world, forum, actors)
 
 

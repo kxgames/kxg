@@ -179,7 +179,10 @@ class World (Token):
         id = token.id
         del self._tokens[id]
 
-        token._id = None
+        # Don't reset the token's id (e.g. token._id = None) because we might 
+        # need to undo this action and re-add the token to the world (e.g. if 
+        # the server rejects the message that triggered this call).  In order 
+        # to undo that action we need to know the token's original id number.
 
     def _get_nested_observers(self):
         return filter(lambda t: t is not self, self)

@@ -92,7 +92,7 @@ class DummyMessage (kxg.Message, linersock.test_helpers.Message):
     def on_execute(self, world):
         world.messages_executed.append(self)
 
-    def on_soft_sync_error(self, world):
+    def on_sync(self, world, memento):
         world.soft_errors_handled.append(self)
 
 

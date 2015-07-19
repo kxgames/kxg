@@ -26,6 +26,14 @@ class Actor (ForumObserver):
         from .messages import require_message
         require_message(message)
 
+        # Make sure this message hasn't been sent more than once.  This is 
+        # conceptually dangerous because messages can accumulate state as they 
+        # are processed, and practically dangerous because it breaks the sent 
+        # message cache in multiplayer games.
+
+        if message.was_sent():
+            raise CantReuseMessage()
+
         # Indicate that the message was sent by this actor and give the message 
         # a chance to assign id numbers to the tokens it's creating.  This is 
         # done before the message is checked so that the check can make sure 
@@ -74,85 +82,6 @@ class Actor (ForumObserver):
                 for token in self.world if token.has_extension(self))
 
     def _dispatch_message(self, message):
-        pass
-
-
-class RemoteActor (Actor):
-
-    def __init__(self, pipe):
-        super().__init__()
-        self._disable_forum_observation()
-        self.pipe = pipe
-        self.pipe.lock()
-
-    def send_message(self):
-        raise NotImplementedError
-
-    def on_start_game(self):
-        from .tokens import TokenSerializer
-        serializer = TokenSerializer(self.world)
-        self.pipe.push_serializer(serializer)
-
-    def on_update_game(self, dt):
-        # For each message received from the connected client:
-
-        for message in self.pipe.receive():
-
-            # Check the message to make sure it matches the state of the game 
-            # world on the server.  If the message doesn't pass the check, the 
-            # client and server must be out of sync.  Decide whether the sync 
-            # error is recoverable (i.e. soft) or not (i.e. hard).  Soft sync 
-            # errors are relayed on to the rest of the game as usual and are 
-            # given an opportunity to sync all the clients.  Hard sync errors 
-            # are not not relayed and must be somehow undone on the client that 
-            # sent the message.
-            
-            if not message._check(self.world, self._id_factory):
-                message._set_error_state(self.world)
-                self.pipe.send(message)
-
-                if message.has_hard_sync_error():
-                    continue
-
-            # Silently reject the message if it was sent by an actor with a 
-            # different id that this one.  This should absolutely never happen 
-            # because this actor gives its id to its client, so if a mismatch 
-            # is detected we've mostly likely received some sort of malformed 
-            # or malicious packet.
-
-            if not message.was_sent_by(self._id_factory):
-                continue
-
-            # Execute the message if it hasn't been rejected yet.
-
-            self._forum.dispatch_message(message)
-
-        # Deliver any messages waiting to be sent.  This has to be done every 
-        # frame because it sometimes takes more than one try to send a message.
-
-        self.pipe.deliver()
-
-    def on_finish_game(self):
-        self.pipe.pop_serializer()
-
-    def _set_forum(self, forum, id):
-        super()._set_forum(forum, id)
-        self.pipe.send(id)
-
-    def _dispatch_message(self, message):
-        if not message.was_sent_by(self._id_factory):
-            self.pipe.send(message)
-            self.pipe.deliver()
-
-    def _react_to_message(self, message):
-        """
-        Don't ever change the world in response to a message.
-
-        This method is defined is called by the game engine to trigger 
-        callbacks tied by this actor to particular messages.  This is useful 
-        for ordinary actors, but remote actors are only meant to shuttle 
-        message between clients and should never react to individual messages.
-        """
         pass
 
 
