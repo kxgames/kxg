@@ -407,8 +407,8 @@ the message {message_} was rejected by the server.
 
 This client attempted to send a {message_cls} message, but it was rejected by 
 the server.  To fix this error, either figure out why the client is getting out 
-of sync with the server or implement a {message_cls}.on_hard_sync_error() that 
-undoes everything done in {message_cls}.on_execute()."""
+of sync with the server or implement a {message_cls}.on_undo() that undoes 
+everything done in {message_cls}.on_execute()."""
 
     def __init__(self, message):
         self.message_ = message

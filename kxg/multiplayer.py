@@ -44,7 +44,17 @@ class ClientForum (Forum):
                 return True
         return False
 
-    def dispatch_message(self, message):
+    def connect_everyone(self, world, actors):
+        # Make sure that this forum is only connected to one actor.
+
+        assert len(actors) == 1
+        self.actor = actors[0]
+
+        # Connect the forum, world, and actors as usual.
+
+        super().connect_everyone(world, actors)
+
+    def execute_message(self, message):
         # Cache the message and give it an id number the server can reference 
         # in its response.  Messages are cached so they can be undone if they 
         # are rejected by the server.  The id is necessary so the client forum 
@@ -61,38 +71,32 @@ class ClientForum (Forum):
 
         # Have the message update the local world like usual.
 
-        super().dispatch_message(message)
+        super().execute_message(message)
 
-    def dispatch_soft_sync_error(self, message):
+    def execute_sync(self, message):
         """
-        Manage the response when the server reports a soft sync error.
+        Respond when the server indicates that the client is out of sync.
 
-        A soft sync error can happen when this client sends a message that 
-        fails the check on the server.  If the reason for the failure isn't 
+        The server can request a sync when this client sends a message that 
+        fails the check() on the server.  If the reason for the failure isn't 
         very serious, then the server can decide to send it as usual in the 
         interest of a smooth gameplay experience.  When this happens, the 
-        message is flagged as a soft sync error.
-
-        The purpose of a soft sync error is to inform the clients that they 
-        have become slightly out of sync with the server and to give them a 
-        chance to get back in sync.  When a message is marked as a sync error, 
-        it is also given the opportunity to save the information from the 
-        server that would have prevented the error from occurring in the first 
-        place.  Note that sync errors are only handled on clients.
+        server sends out an extra response providing the clients with the
+        information they need to resync themselves.
         """
 
         # Synchronize the world.
 
         with self.world._unlock_temporarily():
             message._sync(self.world)
-            self.world._react_to_soft_sync_error(message)
+            self.world._react_to_sync_response(message)
 
         # Synchronize the tokens.
 
         for actor in self.actors:
-            actor._react_to_soft_sync_error(message)
+            actor._react_to_sync_response(message)
 
-    def dispatch_hard_sync_error(self, message):
+    def execute_undo(self, message):
         """
         Manage the response when the server reports a hard sync error.
 
@@ -108,24 +112,14 @@ class ClientForum (Forum):
 
         with self.world._unlock_temporarily():
             message._undo(self.world)
-            self.world._react_to_hard_sync_error(message)
+            self.world._react_to_undo_response(message)
 
         # Give the actors a chance to react to the error.  For example, a 
         # GUI actor might inform the user that there are connectivity 
         # issues and that their last action was countermanded.
 
         for actor in self.actors:
-            actor._react_to_hard_sync_error(message)
-
-    def connect_everyone(self, world, actors):
-        # Make sure that this forum is only connected to one actor.
-
-        assert len(actors) == 1
-        self.actor = actors[0]
-
-        # Connect the forum, world, and actors as usual.
-
-        super().connect_everyone(world, actors)
+            actor._react_to_undo_response(message)
 
     def on_start_game(self):
         from .tokens import TokenSerializer
@@ -136,8 +130,8 @@ class ClientForum (Forum):
         from .messages import Message
 
         # An attempt is made to immediately deliver any messages passed into 
-        # dispatch_message(), but sometimes it takes more than one try to send 
-        # a message.  So in case there are any messages waiting to be sent, the 
+        # execute_message(), but sometimes it takes more than one try to send a 
+        # message.  So in case there are any messages waiting to be sent, the 
         # code below attempts to clear the queue every frame.
 
         self.pipe.deliver()
@@ -152,10 +146,10 @@ class ClientForum (Forum):
             # reappear here, so we don't need to worry about double-dipping.
 
             if isinstance(packet, Message):
-                super().dispatch_message(packet)
+                super().execute_message(packet)
                 response = packet._get_server_response()
                 if response and response.sync_needed:
-                    self.dispatch_soft_sync_error(packet)
+                    self.execute_sync(packet)
 
             # If the incoming packet is a response to a message sent from this 
             # client, find that message in the "sent message cache" and attach 
@@ -185,11 +179,9 @@ class ClientForum (Forum):
             # rejected by the server.
 
             if response.sync_needed:
-                self.dispatch_soft_sync_error(message)
-                # self._sync_message() ?
+                self.execute_sync(message)
             if response.undo_needed:
-                self.dispatch_hard_sync_error(message)
-                # self._undo_message() ?
+                self.execute_undo(message)
 
             # Now that the message has been fully handled, pop it off the 
             # cache.
@@ -267,7 +259,7 @@ class ServerActor (Actor):
             # on the server and relay it to all the other clients.
 
             if not response.undo_needed:
-                self._forum.dispatch_message(message)
+                self._forum.execute_message(message)
 
         # Deliver any messages waiting to be sent.  This has to be done every 
         # frame because it sometimes takes more than one try to send a message.
@@ -281,7 +273,7 @@ class ServerActor (Actor):
         super()._set_forum(forum, id)
         self.pipe.send(id)
 
-    def _dispatch_message(self, message):
+    def _relay_message(self, message):
         """
         Relay messages from the forum on the server to the client represented 
         by this actor.

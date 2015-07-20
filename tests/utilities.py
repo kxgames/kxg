@@ -93,7 +93,7 @@ class DummyMessage (kxg.Message, linersock.test_helpers.Message):
         world.messages_executed.append(self)
 
     def on_sync(self, world, memento):
-        world.soft_errors_handled.append(self)
+        world.sync_responses_handled.append(self)
 
 
 class DummyObserver:
@@ -101,20 +101,20 @@ class DummyObserver:
     def __init__(self):
         super().__init__()
         self.messages_received = []
-        self.soft_errors_received = []
-        self.hard_errors_received = []
+        self.sync_responses_received = []
+        self.undo_responses_received = []
 
     @kxg.subscribe_to_message(DummyMessage)
-    def on_message(self, message):
+    def on_dummy_message(self, message):
         self.messages_received.append(message)
 
-    @kxg.subscribe_to_soft_sync_error(DummyMessage)
-    def on_soft_sync_error(self, message):
-        self.soft_errors_received.append(message)
+    @kxg.subscribe_to_sync_response(DummyMessage)
+    def on_sync_dummy_message(self, message):
+        self.sync_responses_received.append(message)
 
-    @kxg.subscribe_to_hard_sync_error(DummyMessage)
-    def on_hard_sync_error(self, message):
-        self.hard_errors_received.append(message)
+    @kxg.subscribe_to_undo_response(DummyMessage)
+    def on_undo_dummy_message(self, message):
+        self.undo_responses_received.append(message)
 
 
 class DummyActor (kxg.Actor, DummyObserver):
@@ -140,8 +140,8 @@ class DummyWorld (kxg.World, DummyObserver):
     def __init__(self):
         super().__init__()
         self.messages_executed = []
-        self.soft_errors_handled = []
-        self.hard_errors_handled = []
+        self.sync_responses_handled = []
+        self.undo_responses_handled = []
 
     @kxg.read_only
     def has_game_ended(self):

@@ -54,7 +54,7 @@ class Actor (ForumObserver):
         # relayed on to all the other actors (which may or may not be on 
         # different machines).
 
-        self._forum.dispatch_message(message)
+        self._forum.execute_message(message)
         return True
 
     def on_start_game(self):
@@ -81,7 +81,7 @@ class Actor (ForumObserver):
         return (token.get_extension(self)
                 for token in self.world if token.has_extension(self))
 
-    def _dispatch_message(self, message):
+    def _relay_message(self, message):
         pass
 
 

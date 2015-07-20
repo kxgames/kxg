@@ -2,22 +2,20 @@
 
 from .errors import *
 
-# rename Forum.dispatch_message to Forum.execute_message?
-
 class Forum:
 
     def __init__(self):
         self.world = None
         self.actors = None
 
-    def dispatch_message(self, message):
+    def execute_message(self, message):
         # Relay the messages to clients running on other machines, if this is a 
         # multiplayer game.  Since the tokens referenced in the message might 
         # be changed once the message is executed, the message has to be 
         # relayed before then.
 
         for actor in self.actors:
-            actor._dispatch_message(message)
+            actor._relay_message(message)
 
         # Normally, tokens can only call methods that have been decorated with 
         # @read_only.  This is a precaution to help keep the worlds in sync on 
@@ -115,8 +113,8 @@ class ForumObserver:
 
         self._callbacks = {
                 'message': [],
-                'soft_sync_error': [],
-                'hard_sync_error': [],
+                'sync_response': [],
+                'undo_response': [],
         }
 
         # Create a member variable indicating whether or not the ability to 
@@ -136,11 +134,11 @@ class ForumObserver:
             message_cls = getattr(method, '_kxg_subscribe_to_message', None)
             if message_cls: self.subscribe_to_message(message_cls, method)
 
-            message_cls = getattr(method, '_kxg_subscribe_to_soft_sync_error', None)
-            if message_cls: self.subscribe_to_soft_sync_error(message_cls, method)
+            message_cls = getattr(method, '_kxg_subscribe_to_sync_response', None)
+            if message_cls: self.subscribe_to_sync_response(message_cls, method)
 
-            message_cls = getattr(method, '_kxg_subscribe_to_hard_sync_error', None)
-            if message_cls: self.subscribe_to_hard_sync_error(message_cls, method)
+            message_cls = getattr(method, '_kxg_subscribe_to_undo_response', None)
+            if message_cls: self.subscribe_to_undo_response(message_cls, method)
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -155,29 +153,29 @@ class ForumObserver:
     def subscribe_to_message(self, message_cls, callback):
         self._add_callback('message', message_cls, callback)
 
-    def subscribe_to_soft_sync_error(self, message_cls, callback):
-        self._add_callback('soft_sync_error', message_cls, callback)
+    def subscribe_to_sync_response(self, message_cls, callback):
+        self._add_callback('sync_response', message_cls, callback)
 
-    def subscribe_to_hard_sync_error(self, message_cls, callback):
-        self._add_callback('hard_sync_error', message_cls, callback)
+    def subscribe_to_undo_response(self, message_cls, callback):
+        self._add_callback('undo_response', message_cls, callback)
 
     def unsubscribe_from_message(self, message_cls, callback=None):
         self._drop_callback('message', message_cls, callback)
 
-    def unsubscribe_from_soft_sync_error(self, message_cls, callback=None):
-        self._drop_callback('soft_sync_error', message_cls, callback)
+    def unsubscribe_from_sync_response(self, message_cls, callback=None):
+        self._drop_callback('sync_response', message_cls, callback)
 
-    def unsubscribe_from_hard_sync_error(self, message_cls, callback=None):
-        self._drop_callback('hard_sync_error', message_cls, callback)
+    def unsubscribe_from_undo_response(self, message_cls, callback=None):
+        self._drop_callback('undo_response', message_cls, callback)
 
     def _react_to_message(self, message):
         self._call_callbacks('message', message)
 
-    def _react_to_soft_sync_error(self, message):
-        self._call_callbacks('soft_sync_error', message)
+    def _react_to_sync_response(self, message):
+        self._call_callbacks('sync_response', message)
 
-    def _react_to_hard_sync_error(self, message):
-        self._call_callbacks('hard_sync_error', message)
+    def _react_to_undo_response(self, message):
+        self._call_callbacks('undo_response', message)
 
     def _enable_forum_observation(self):
         self._is_enabled = True
@@ -257,15 +255,16 @@ def subscribe_to_message(message_cls):
         return function
     return decorator
 
-def subscribe_to_soft_sync_error(message_cls):
+def subscribe_to_sync_response(message_cls):
     def decorator(function):
-        function._kxg_subscribe_to_soft_sync_error = message_cls
+        function._kxg_subscribe_to_sync_response = message_cls
         return function
     return decorator
 
-def subscribe_to_hard_sync_error(message_cls):
+def subscribe_to_undo_response(message_cls):
     def decorator(function):
-        function._kxg_subscribe_to_hard_sync_error = message_cls
+        function._kxg_subscribe_to_undo_response = message_cls
         return function
     return decorator
+
 
