@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from utilities import *
+from test_helpers import *
 
 class DummyAcceptedMessage (DummyMessage):
 

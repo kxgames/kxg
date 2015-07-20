@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import kxg
-from utilities import *
+from test_helpers import *
 
 def test_token_creation():
     world = DummyWorld()

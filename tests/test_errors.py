@@ -1,5 +1,5 @@
 import kxg
-from utilities import *
+from test_helpers import *
 
 def test_api_usage_error():
     from kxg.errors import ApiUsageErrorFactory
