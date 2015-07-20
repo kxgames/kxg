@@ -2,6 +2,19 @@
 
 from test_helpers import *
 
+class ReporterToken (kxg.Token):
+
+    def __init__(self, message):
+        super().__init__()
+        self.message = message
+
+    @kxg.read_only
+    def on_report_to_referee(self, reporter):
+        if self.message:
+            reporter.send_message(self.message)
+            self.message = None
+
+
 class DummyAcceptedMessage (DummyMessage):
 
     def on_check(self, world, sender):
@@ -101,6 +114,9 @@ def test_uniplayer_message_handling():
     test = DummyUniplayerGame()
     message = DummyAcceptedMessage()
 
+    with raises_api_usage_error("can't ask who sent a message before it's been sent"):
+        message.was_sent_by(test.actors[0])
+
     assert test.world.messages_executed == []
     assert test.world.messages_received == []
     assert test.token.messages_received == []
@@ -109,6 +125,10 @@ def test_uniplayer_message_handling():
     assert test.actors[1].messages_received == []
 
     assert test.actors[0].send_message(message)
+
+    assert not message.was_sent_by_referee()
+    assert message.was_sent_by(test.actors[0])
+    assert not message.was_sent_by(test.actors[1])
 
     assert test.world.messages_executed == [message]
     assert test.world.messages_received == [message]
@@ -122,10 +142,64 @@ def test_uniplayer_message_rejection():
     message = DummyRejectedMessage()
 
     assert not test.actors[0].send_message(message)
+
     assert test.world.messages_executed == []
     assert test.world.messages_received == []
+    assert test.token.messages_received == []
+    assert test.referee.messages_received == []
     assert test.actors[0].messages_received == []
     assert test.actors[1].messages_received == []
+
+def test_uniplayer_referee_messaging():
+    test = DummyUniplayerGame()
+    message = DummyAcceptedMessage()
+
+    with raises_api_usage_error("can't ask who sent a message before it's been sent"):
+        message.was_sent_by_referee()
+
+    assert test.world.messages_executed == []
+    assert test.world.messages_received == []
+    assert test.token.messages_received == []
+    assert test.referee.messages_received == []
+    assert test.actors[0].messages_received == []
+    assert test.actors[1].messages_received == []
+
+    assert test.referee.send_message(message)
+
+    assert message.was_sent_by_referee()
+    assert not message.was_sent_by(test.actors[0])
+    assert not message.was_sent_by(test.actors[1])
+
+    assert test.world.messages_executed == [message]
+    assert test.world.messages_received == [message]
+    assert test.token.messages_received == [message]
+    assert test.referee.messages_received == [message]
+    assert test.actors[0].messages_received == [message]
+    assert test.actors[1].messages_received == [message]
+
+def test_uniplayer_reporter_messaging():
+    test = DummyUniplayerGame()
+    message = DummyAcceptedMessage()
+    token = ReporterToken(message)
+
+    assert test.world.messages_executed == []
+    assert test.world.messages_received == []
+    assert test.token.messages_received == []
+    assert test.referee.messages_received == []
+    assert test.actors[0].messages_received == []
+    assert test.actors[1].messages_received == []
+
+    force_add_token(test.world, token)
+    test.update()
+
+    assert message.was_sent_by_referee()
+
+    assert test.world.messages_executed == [message]
+    assert test.world.messages_received == [message]
+    assert test.token.messages_received == [message]
+    assert test.referee.messages_received == [message]
+    assert test.actors[0].messages_received == [message]
+    assert test.actors[1].messages_received == [message]
 
 def test_multiplayer_message_handling():
     test = DummyMultiplayerGame()
@@ -138,27 +212,13 @@ def test_multiplayer_message_handling():
 
     test.update()
 
+    assert not message.was_sent_by_referee()
+    assert message.was_sent_by(test.client_actors[0])
+    assert not message.was_sent_by(test.client_actors[1])
+
     assert test.server_world.messages_executed == [message]
     assert test.server_world.messages_received == [message]
     assert test.server_referee.messages_received == [message]
-    assert test.client_worlds[1].messages_executed == [message]
-    assert test.client_worlds[1].messages_received == [message]
-    assert test.client_actors[1].messages_received == [message]
-
-def test_multiplayer_referee_messaging():
-    test = DummyMultiplayerGame()
-    message = DummyAcceptedMessage()
-
-    assert test.server_referee.send_message(message)
-    assert test.server_world.messages_executed == [message]
-    assert test.server_world.messages_received == [message]
-    assert test.server_referee.messages_received == [message]
-
-    test.update()
-
-    assert test.client_worlds[0].messages_executed == [message]
-    assert test.client_worlds[0].messages_received == [message]
-    assert test.client_actors[0].messages_received == [message]
     assert test.client_worlds[1].messages_executed == [message]
     assert test.client_worlds[1].messages_received == [message]
     assert test.client_actors[1].messages_received == [message]
@@ -180,6 +240,48 @@ def test_multiplayer_message_rejection():
     assert test.client_worlds[1].messages_executed == []
     assert test.client_worlds[1].messages_received == []
     assert test.client_actors[1].messages_received == []
+
+def test_multiplayer_referee_messaging():
+    test = DummyMultiplayerGame()
+    message = DummyAcceptedMessage()
+
+    assert test.server_referee.send_message(message)
+    assert test.server_world.messages_executed == [message]
+    assert test.server_world.messages_received == [message]
+    assert test.server_referee.messages_received == [message]
+
+    test.update()
+
+    assert message.was_sent_by_referee()
+    assert not message.was_sent_by(test.client_actors[0])
+    assert not message.was_sent_by(test.client_actors[1])
+
+    assert test.client_worlds[0].messages_executed == [message]
+    assert test.client_worlds[0].messages_received == [message]
+    assert test.client_actors[0].messages_received == [message]
+    assert test.client_worlds[1].messages_executed == [message]
+    assert test.client_worlds[1].messages_received == [message]
+    assert test.client_actors[1].messages_received == [message]
+
+def test_multiplayer_reporter_messaging():
+    test = DummyMultiplayerGame()
+    message = DummyAcceptedMessage()
+    token = ReporterToken(message)
+
+    force_add_token(test.server_world, token)
+    test.update()
+
+    assert message.was_sent_by_referee()
+
+    assert test.server_world.messages_executed == [message]
+    assert test.server_world.messages_received == [message]
+    assert test.server_referee.messages_received == [message]
+    assert test.client_worlds[0].messages_executed == [message]
+    assert test.client_worlds[0].messages_received == [message]
+    assert test.client_actors[0].messages_received == [message]
+    assert test.client_worlds[1].messages_executed == [message]
+    assert test.client_worlds[1].messages_received == [message]
+    assert test.client_actors[1].messages_received == [message]
 
 def test_multiplayer_sync_response():
     test = DummyMultiplayerGame()
@@ -518,4 +620,9 @@ def test_unhandled_undo_response():
     assert test.client_actors[0].send_message(message)
     with raises_api_usage_error("the message", "was rejected by the server"):
         test.update()
+
+def test_messaging_reprs():
+    message = kxg.Message(); message._set_server_response_id(1)
+    assert kxg.ServerResponse(message).__repr__() == 'ServerResponse(sync_needed=False, undo_needed=False)'
+    assert kxg.IdFactory(1, 4).__repr__() == 'IdFactory(offset=1, spacing=4)'
 

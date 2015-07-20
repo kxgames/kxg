@@ -208,6 +208,15 @@ constructor compatible with these arguments."""
         self.extension_cls = extension_cls.__name__
 
 
+class MessageNotYetSent (ApiUsageErrorFactory):
+
+    message = """\
+can't ask who sent a message before it's been sent.
+
+This error means Message.was_sent_by() or Message.was_sent_by_referee() got 
+called on a message that hadn't been sent yet.  Normally you would only call 
+these methods from within Message.on_check()."""
+
 class MessageAlreadySent (ApiUsageErrorFactory):
 
     message = """\

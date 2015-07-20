@@ -90,7 +90,7 @@ class Referee (Actor):
     class Reporter:
         
         def __init__(self, referee):
-            self.referee = None
+            self.referee = referee
             self.is_finished_reporting = False
 
         def __enter__(self):

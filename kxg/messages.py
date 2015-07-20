@@ -48,9 +48,16 @@ class Message:
     def was_sent(self):
         return hasattr(self, 'sender_id')
 
+    def was_sent_by(self, actor_or_id_factory):
+        try: id = actor_or_id_factory.id
+        except AttributeError: id = actor_or_id_factory.get()
+
+        try: return self.sender_id == id
+        except AttributeError: raise MessageNotYetSent()
+
     def was_sent_by_referee(self):
-        try: return self.sender_id == 0
-        except AttributeError: raise MessageNotSentYet()
+        try: return self.sender_id == 1
+        except AttributeError: raise MessageNotYetSent()
 
     def add_token(self, token):
         require_token(token)
@@ -111,9 +118,6 @@ class Message:
 
     def _set_sender_id(self, id_factory):
         self.sender_id = id_factory.get()
-
-    def _was_sent_by(self, id_factory):
-        return self.sender_id == id_factory.get()
 
     def _set_server_response_id(self, id):
         self._server_response_id = id

@@ -6,4 +6,5 @@ from .actors import *
 from .tokens import *
 from .world import *
 from .messages import *
+from .multiplayer import *
 from .errors import *

@@ -4,17 +4,6 @@ from .actors import Actor
 
 class ClientForum (Forum):
 
-    class CachedMessage:
-
-        def __init__(self, message):
-            self.message = message
-            self.response = None
-
-        @property
-        def has_response(self):
-            return self.response is not None
-
-
     def __init__(self, pipe):
         super().__init__()
         self.pipe = pipe
@@ -223,7 +212,7 @@ class ServerActor (Actor):
             # is detected we've mostly likely received some sort of malformed 
             # or malicious packet.
 
-            if not message._was_sent_by(self._id_factory):
+            if not message.was_sent_by(self._id_factory):
                 continue
 
             # Check the message to make sure it matches the state of the game 
@@ -278,7 +267,7 @@ class ServerActor (Actor):
         Relay messages from the forum on the server to the client represented 
         by this actor.
         """
-        if not message._was_sent_by(self._id_factory):
+        if not message.was_sent_by(self._id_factory):
             self.pipe.send(message)
             self.pipe.deliver()
 

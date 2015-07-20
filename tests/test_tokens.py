@@ -221,6 +221,14 @@ def test_token_serialization():
     assert duplicate_message.token.parent is message.token.parent
     assert duplicate_message.token.attribute == message.token.attribute
 
+    # Ensure that both the original token and its clone can both subscribe 
+    # callbacks still.
+
+    force_add_token(world, token_2)
+
+    token_1.subscribe_to_message(DummyMessage, lambda x: None)
+    token_2.subscribe_to_message(DummyMessage, lambda x: None)
+
 def test_token_extensions():
     actor = DummyActor()
     world = DummyWorld()
@@ -311,4 +319,7 @@ def test_cant_pickle_world():
     with raises_api_usage_error("can't pickle the world"):
         pickle.dumps(world)
 
+def test_token_repr():
+    assert DummyToken().__repr__() == 'DummyToken(id=None)'
+    assert DummyWorld().__repr__() == 'DummyWorld(len=1)'
 

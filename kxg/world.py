@@ -18,8 +18,8 @@ class World (Token):
         with self._unlock_temporarily():
             self._add_token(self)
 
-    def __str__(self):
-        return '<World len=%d>' % len(self)
+    def __repr__(self):
+        return '{}(len={})'.format(self.__class__.__name__, len(self))
 
     def __iter__(self):
         yield from self._tokens.values()
