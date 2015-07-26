@@ -206,14 +206,12 @@ class ServerActor (Actor):
 
         for message in self.pipe.receive():
 
-            # Silently reject the message if it was sent by an actor with a 
-            # different id that this one.  This should absolutely never happen 
-            # because this actor gives its id to its client, so if a mismatch 
-            # is detected we've mostly likely received some sort of malformed 
-            # or malicious packet.
+            # Make sure the message wasn't sent by an actor with a different id 
+            # than this one.  This should absolutely never happen because this 
+            # actor gives its id to its client, so if a mismatch is detected 
+            # there's probably a bug in the game engine.
 
-            if not message.was_sent_by(self._id_factory):
-                continue
+            assert message.was_sent_by(self._id_factory)
 
             # Check the message to make sure it matches the state of the game 
             # world on the server.  If the message doesn't pass the check, the 
@@ -267,6 +265,7 @@ class ServerActor (Actor):
         Relay messages from the forum on the server to the client represented 
         by this actor.
         """
+
         if not message.was_sent_by(self._id_factory):
             self.pipe.send(message)
             self.pipe.deliver()
