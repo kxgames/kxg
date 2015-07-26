@@ -242,12 +242,12 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
     @read_only
     def has_extension(self, actor):
         require_actor(actor)
-        return type(actor) in self._extensions
+        return actor in self._extensions
 
     @read_only
     def get_extension(self, actor):
         require_actor(actor)
-        return self._extensions[type(actor)]
+        return self._extensions[actor]
 
     @read_only
     def get_extensions(self):

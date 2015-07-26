@@ -2,6 +2,7 @@ import kxg
 import pytest, contextlib
 import linersock.test_helpers
 from pprint import pprint
+import random; random.seed(0)
 
 class DummyUniplayerGame:
 
@@ -10,60 +11,65 @@ class DummyUniplayerGame:
 
         self.world = DummyWorld()
         self.referee = DummyReferee()
-        self.actors = [DummyActor(), DummyActor()]
+        self.players = [DummyActor(), DummyActor()]
         self.game_stage = kxg.UniplayerGameStage(
-                self.world, self.referee, self.actors)
-        self.game_stage.on_enter_stage()
+                self.world, self.referee, self.players)
 
-        # Add a token to the world.
-        
-        self.token = DummyToken()
-        self.token._give_id(self.referee._id_factory)
+        # Start playing the game.
 
-        force_add_token(self.world, self.token)
+        self.theater = kxg.Theater(self.game_stage)
+        self.update()
 
     def update(self, num_updates=1):
         for i in range(num_updates):
-            self.game_stage.on_update_stage(0.1)
+            self.theater.update(0.1)
+
+    @property
+    def actors(self):
+        yield self.referee
+        yield from self.players
+
+    @property
+    def random_actor(self):
+        self.last_random_actor = random.choice(list(self.actors))
+        return self.last_random_actor
+
+    @property
+    def observers(self):
+        yield from self.actors
+        yield self.world
+        for token in self.world:
+            yield from token.observers
 
 
 class DummyMultiplayerGame:
 
-    def __init__(self):
+    def __init__(self, num_players=2):
         # Create the client and server stages.
 
-        client_pipes, server_pipes = linersock.test_helpers.make_pipes(2)
+        client_pipes, server_pipes = \
+                linersock.test_helpers.make_pipes(num_players)
 
-        self.client_worlds = [DummyWorld(), DummyWorld()]
-        self.client_actors = [DummyActor(), DummyActor()]
-        self.client_connection_stages = [
-                kxg.MultiplayerClientGameStage(
-                    self.client_worlds[0], self.client_actors[0], client_pipes[0]),
-                kxg.MultiplayerClientGameStage(
-                    self.client_worlds[1], self.client_actors[1], client_pipes[1]),
+        self.client_worlds = [DummyWorld() for i in range(num_players)]
+        self.client_actors = [DummyActor() for i in range(num_players)]
+        self.client_theaters = [
+                kxg.Theater(
+                    kxg.MultiplayerClientGameStage(world, actor, pipe))
+                for world, actor, pipe in zip(
+                    self.client_worlds, self.client_actors, client_pipes)
         ]
-
         self.server_world = DummyWorld()
         self.server_referee = DummyReferee()
-        self.server_game_stage = kxg.MultiplayerServerGameStage(
-                self.server_world, self.server_referee, server_pipes)
+        self.server_theater = kxg.Theater(
+                kxg.MultiplayerServerGameStage(
+                    self.server_world, self.server_referee, server_pipes))
 
         # Wait for each client to get an id from the server.
 
-        self.server_game_stage.on_enter_stage()
-        self.client_game_stages = []
-
-        for connection_stage in self.client_connection_stages:
-            connection_stage.on_enter_stage()
-
-            while not connection_stage.is_finished():
-                connection_stage.on_update_stage(0.1)
-                self.server_game_stage.on_update_stage(0.1)
-
-            game_stage = connection_stage.get_successor()
-            game_stage.on_enter_stage()
-
-            self.client_game_stages.append(game_stage)
+        while not all(
+                isinstance(theater.current_stage, kxg.GameStage)
+                for theater in self.client_theaters):
+            self.update()
 
         # Add a token to the game (without sending a message).
 
@@ -82,39 +88,47 @@ class DummyMultiplayerGame:
 
     def update(self, num_updates=2):
         for i in range(num_updates):
-            for game_stage in self.client_game_stages:
-                game_stage.on_update_stage(0.1)
-            self.server_game_stage.on_update_stage(0.1)
+            self.server_theater.update(0.1)
+            for client_theater in self.client_theaters:
+                client_theater.update(0.1)
+
+    def assert_messages_received(self, messages):
+        pass
+
+    def assert_messages_received_locally(self, messages):
+        pass
 
 
 class DummyMessage (kxg.Message, linersock.test_helpers.Message):
 
+    expected_check_result = True
+
     def on_execute(self, world):
-        world.messages_executed.append(self)
+        world.dummy_messages_executed.append(self)
 
     def on_sync(self, world, memento):
-        world.sync_responses_handled.append(self)
+        world.dummy_sync_responses_handled.append(self)
 
 
 class DummyObserver:
     
     def __init__(self):
         super().__init__()
-        self.messages_received = []
-        self.sync_responses_received = []
-        self.undo_responses_received = []
+        self.dummy_messages_received = []
+        self.dummy_sync_responses_received = []
+        self.dummy_undo_responses_received = []
 
     @kxg.subscribe_to_message(DummyMessage)
     def on_dummy_message(self, message):
-        self.messages_received.append(message)
+        self.dummy_messages_received.append(message)
 
     @kxg.subscribe_to_sync_response(DummyMessage)
     def on_sync_dummy_message(self, message):
-        self.sync_responses_received.append(message)
+        self.dummy_sync_responses_received.append(message)
 
     @kxg.subscribe_to_undo_response(DummyMessage)
     def on_undo_dummy_message(self, message):
-        self.undo_responses_received.append(message)
+        self.dummy_undo_responses_received.append(message)
 
 
 class DummyActor (kxg.Actor, DummyObserver):
@@ -139,14 +153,28 @@ class DummyWorld (kxg.World, DummyObserver):
 
     def __init__(self):
         super().__init__()
-        self.messages_executed = []
-        self.sync_responses_handled = []
-        self.undo_responses_handled = []
+        self.dummy_messages_executed = []
+        self.dummy_sync_responses_handled = []
+        self.dummy_undo_responses_handled = []
 
     @kxg.read_only
     def has_game_ended(self):
         return False
 
+    def received_dummy_messages(self, messages):
+        assert super().received_dummy_messages(messages)
+        assert self._dummy_messages
+        assert self._dummy_messages_received == messages
+        assert self._dummy_messages_received == messages
+        return True
+
+    def received_dummy_sync_responses(self, messages):
+        assert self._dummy_sync_responses_received == messages
+        return True
+
+    def received_dummy_undo_responses(self, messages):
+        assert self._dummy_undo_responses_received == messages
+        return True
 
 class DummyToken (kxg.Token, DummyObserver):
 
@@ -160,6 +188,15 @@ class DummyToken (kxg.Token, DummyObserver):
     def __extend__(self):
         return {DummyActor: DummyExtension}
 
+    @property
+    def observers(self):
+        yield self
+        yield from self.get_extensions()
+
+    @kxg.before_world
+    def before_world(self):
+        pass
+
     @kxg.read_only
     def read_only(self):
         pass
@@ -167,11 +204,7 @@ class DummyToken (kxg.Token, DummyObserver):
     def read_write(self):
         pass
 
-    @kxg.before_world
-    def before_world(self):
-        pass
-
-
+    
 class DummyExtension (kxg.TokenExtension, DummyObserver):
     pass
 

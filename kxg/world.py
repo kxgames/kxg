@@ -22,7 +22,7 @@ class World (Token):
         return '{}(len={})'.format(self.__class__.__name__, len(self))
 
     def __iter__(self):
-        yield from self._tokens.values()
+        return (x for x in self._tokens.values() if x is not self)
 
     def __len__(self):
         return len(self._tokens)
@@ -35,7 +35,7 @@ class World (Token):
         raise CantPickleWorld()
 
     def __setstate__(self, state):
-        raise CantPickleWorld()
+        raise CantPickleWorld()     # pragma: no cover
 
     @read_only
     def get_token(self, id):
@@ -76,8 +76,7 @@ class World (Token):
 
     def on_update_game(self, dt):
         for token in self:
-            if token is not self:
-                token.on_update_game(dt)
+            token.on_update_game(dt)
 
     def on_finish_game(self):
         pass
@@ -156,7 +155,7 @@ class World (Token):
                 # Instantiate the extension and store a reference to it.
 
                 extension = extension_class(actor, token)
-                token._extensions[actor_class] = extension
+                token._extensions[actor] = extension
 
         # Finally, give the token a chance to react to it's own creation.
 
@@ -185,7 +184,7 @@ class World (Token):
         # to undo that action we need to know the token's original id number.
 
     def _get_nested_observers(self):
-        return filter(lambda t: t is not self, self)
+        return iter(self)
 
     def _set_actors(self, actors):
         """
@@ -193,6 +192,7 @@ class World (Token):
         information is used to create extensions for new tokens.  
         """
         self._actors = actors
+
 
 
 @debug_only

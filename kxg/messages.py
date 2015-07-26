@@ -15,12 +15,25 @@ from .tokens import require_token
 # on_execute()?  Would it be confusing to only have to reimplement two of the 
 # five methods?  The real problem with this approach is that it will crash the 
 # server if a bad message is received.
-#
-# I could define a method that 
 
-# Don't send the same message more than once, it can mess things up.  the 
-# message will be assigned a new "server response id" and that will mess up the 
-# sent message queue.  It's not really a problem for single player games.  
+# It's not safe for any message class to have a list of tokens it's going to 
+# add or remove from the world.  The reason is that it'd be very easy for a 
+# cheater to retroactively instruct unrelated messages to add or remove tokens.  
+# For example, a cheater could attach 1000 soldiers to a "build outpost" 
+# message and as long as they can afford the outpost (because that's what the 
+# message would check) they would also get the 1000 soldiers.  So this approach 
+# is too vulnerable.
+#
+# Instead I need to make the user responsible for storing the tokens and just 
+# provide methods that they can call in on_execute() and on_undo() that help 
+# manage the tokens.  This makes it more explicit to the user what's going on.  
+# If they call add_token() on something, they better have checked to make sure 
+# that thing should be added.
+
+# Message.on_check() should raise exceptions.
+
+# Message.on_check() probably shouldn't take sender_id as an argument, because 
+# the message should already know that about itself.
 
 class Message:
 
@@ -209,6 +222,7 @@ class Message:
         # Let derived classes execute themselves.
 
         self.on_undo(world)
+
 
 
 @debug_only

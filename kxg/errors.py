@@ -5,10 +5,12 @@ class ApiUsageError (Exception):
     A class for communicating errors to the user.
     """
 
+    message_width = 80
+
     def __init__(self, message):
         import re, textwrap
 
-        width=80
+        width = ApiUsageError.message_width
         message = textwrap.dedent(message)
         tokens = [x.strip() for x in re.split('\n\s*\n', message, 1)]
 
