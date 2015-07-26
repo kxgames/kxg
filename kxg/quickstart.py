@@ -3,29 +3,29 @@
 # Imports (fold)
 import linersock
 from .errors import *
-from .loops import Loop
-from .stages import                                                         \
+from .theater import                                                        \
+        Theater,                                                            \
         Stage,                                                              \
         UniplayerGameStage,                                                 \
         MultiplayerClientGameStage,                                         \
         MultiplayerServerGameStage
 
 
-class UniplayerLoop (Loop):
+class UniplayerTheater (Theater):
 
     def __init__(self, world, referee, *other_actors):
-        game_stage = UniplayerGameStage(world, referee, list(other_actors))
-        Loop.__init__(self, game_stage)
+        Theater.__init__(self, 
+                UniplayerGameStage(world, referee, list(other_actors)))
 
 
-class MultiplayerClientLoop (Loop):
+class MultiplayerClientTheater (Theater):
 
     def __init__(self, world, gui, host, port):
         stage = ClientConnectionStage(world, gui, host, port)
         super().__init__(self, stage)
 
 
-class MultiplayerServerLoop (Loop):
+class MultiplayerServerTheater (Theater):
 
     def __init__(self, world, referee, num_players, host, port):
         stage = ServerConnectionStage(world, referee, num_players, host, port)
@@ -34,8 +34,8 @@ class MultiplayerServerLoop (Loop):
 
 class MultiplayerDebugger:
     """
-    Simultaneously plays any number of different game loops, executing each 
-    loop in its own process.  This greatly facilitates the debugging and 
+    Simultaneously plays any number of different game theaters, executing each 
+    theater in its own process.  This greatly facilitates the debugging and 
     testing multiplayer games.
     """
 
@@ -43,9 +43,9 @@ class MultiplayerDebugger:
 
     class KxgThread(Process):
 
-        def __init__(self, name, loop):
+        def __init__(self, name, theater):
             MultiplayerDebugger.Process.__init__(self, name=name)
-            self.loop = loop
+            self.theater = theater
             self.logger = MultiplayerDebugger.Logger(name)
 
         def __nonzero__(self):
@@ -54,7 +54,7 @@ class MultiplayerDebugger:
         def run(self):
             try:
                 with self.logger:
-                    self.loop.play(50)
+                    self.theater.play(50)
             except KeyboardInterrupt:
                 pass
 
@@ -111,11 +111,11 @@ class MultiplayerDebugger:
         self.threads = []
 
         self.threads.append(self.KxgThread("Server",
-            MultiplayerServerLoop(world, referee, num_players, host, port)))
+            MultiplayerServerTheater(world, referee, num_players, host, port)))
 
         for i in range(num_players):
             self.threads.append(self.KxgThread(names[i],
-                MultiplayerClientLoop(world, gui, host, port)))
+                MultiplayerClientTheater(world, gui, host, port)))
 
     def play(self):
         try:
@@ -140,38 +140,38 @@ class ClientConnectionStage (Stage):
         self.host = host
         self.port = port
 
-        self.update = self.update_connection
+        self.on_update_stage = self.on_update_connection
         self.client = linersock.Client(
-                host, port, callback=self.connection_established)
+                host, port, callback=self.on_connection_established)
 
         self.pipe = None
         self.conversation = None
         self.successor = None
 
-    def setup(self):
+    def on_enter_stage(self):
         print("Seacow client running: {}:{} ({})".format(
             self.host, self.port, self.name))
 
-        window = self.get_loop().get_window()
+        window = self.theater.get_window()
         # Show a "Waiting for clients to connect..." message.
 
-    def update_connection(self, time):
+    def on_update_connection(self, time):
         self.client.connect()
 
-    def connection_established(self, pipe):
+    def on_connection_established(self, pipe):
         message = messages.WelcomeClient(self.name)
         self.conversation = linersock.SimpleSend(pipe, message)
         self.conversation.start()
 
         self.pipe = pipe
-        self.update = self.update_introduction
+        self.on_update_stage = self.on_update_introduction
 
-    def update_introduction(self, time):
+    def on_update_introduction(self, time):
         self.conversation.update()
         if self.conversation.finished():
             self.exit_stage()
 
-    def teardown(self):
+    def on_exit_stage(self):
         pipe = self.pipe
 
         game_stage = MultiplayerClientGameStage(self.world, self.gui, pipe)
@@ -192,13 +192,13 @@ class ServerConnectionStage (Stage):
         self.world, self.referee = world, referee
         self.host, self.port = host, port
         self.server = linersock.Server(
-                host, port, num_players, self.clients_connected)
+                host, port, num_players, self.on_clients_connected)
 
-    def setup(self):
+    def on_enter_stage(self):
         print("kxg server running: {}:{}".format(self.host, self.port))
         self.server.open()
 
-    def update(self, time):
+    def on_update_stage(self, dt):
         if not self.server.finished():
             self.server.accept()
         else:
@@ -210,7 +210,7 @@ class ServerConnectionStage (Stage):
             if not pending_greetings:
                 self.exit_stage()
 
-    def clients_connected(self, pipes):
+    def on_clients_connected(self, pipes):
         for pipe in pipes:
             greeting = linersock.SimpleReceive(
                     pipe, messages.WelcomeClient)
@@ -219,7 +219,7 @@ class ServerConnectionStage (Stage):
             self.pipes.append(pipe)
             self.greetings.append(greeting)
 
-    def teardown(self):
+    def on_exit_stage(self):
         print("Clients connected.  Game starting.")
         pipes = [x.get_pipe() for x in self.greetings]
 
@@ -277,7 +277,7 @@ possible amount of boilerplate code.  However, the clients and servers provided
 by this command are not capable of running a production game.  Once you have 
 written your game and want to give it a polished set of menus and options, 
 you'll have to write new Stage subclasses encapsulating that logic and you'll 
-have to call those stages yourself by interacting more directly with the Loop 
+have to call those stages yourself by interacting more directly with the Theater 
 class.  The online documentation describes how to do this in more detail.
 """.format(**locals()))
 
@@ -285,13 +285,13 @@ class.  The online documentation describes how to do this in more detail.
     host, port = args['--host'], int(args['--port'])
 
     if args['sandbox']:
-        game = UniplayerLoop(world, referee, gui)
+        game = UniplayerTheater(world, referee, gui)
 
     if args['client']:
-        game = MultiplayerClientLoop(world, gui, host, port)
+        game = MultiplayerClientTheater(world, gui, host, port)
 
     if args['server']:
-        game = MultiplayerServerLoop(world, referee, num_players, host, port)
+        game = MultiplayerServerTheater(world, referee, num_players, host, port)
 
     if args['debug']:
         game = MultiplayerDebugger(world, referee, gui, num_players, host, port)
