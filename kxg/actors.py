@@ -11,13 +11,8 @@ class Actor (ForumObserver):
         self._forum = None
         self._id_factory = None
 
-    @property
-    def id(self):
-        assert self._id_factory is not None, "Actor does not have id."
-        return self._id_factory.get()
-
-    def is_referee(self):
-        return isinstance(self, Referee)
+    def __rshift__(self, message):
+        self.send_message(message)
 
     def send_message(self, message):
         # Make sure the user didn't pass the wrong object to this function or 
@@ -56,6 +51,14 @@ class Actor (ForumObserver):
 
         self._forum.execute_message(message)
         return True
+
+    @property
+    def id(self):
+        assert self._id_factory is not None, "Actor does not have id."
+        return self._id_factory.get()
+
+    def is_referee(self):
+        return isinstance(self, Referee)
 
     def on_start_game(self):
         pass
@@ -98,6 +101,9 @@ class Referee (Actor):
 
         def __exit__(self, exc_type, exc_value, traceback):
             self.is_finished_reporting = True
+
+        def __rshift__(self, message):
+            self.send_message(message)
 
         def send_message(self, message):
             if self.is_finished_reporting:
