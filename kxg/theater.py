@@ -5,6 +5,11 @@ from .errors import *
 from .forums import Forum
 from .multiplayer import ClientForum, ServerActor 
 
+# Things to do
+# ============
+# 1. Use the "assigning to self.update" trick to manage the Theater state 
+#    machine.
+
 class Theater:
     """
     Manage whichever stage is currently active.  This involves both
@@ -14,6 +19,7 @@ class Theater:
     def __init__(self, initial_stage=None):
         self._initial_stage = initial_stage
         self._current_stage = None
+        self._is_finished = False
 
     @property
     def initial_stage(self):
@@ -21,15 +27,24 @@ class Theater:
 
     @initial_stage.setter
     def initial_stage(self, stage):
-        if self._current_stage:
-            raise TheaterAlreadyPlaying()
+        require_stage(stage)
+        if not self._is_finished and self._current_stage:
+            raise ApiUsageError("theater already playing; can't set initial stage.")
         self._initial_stage = stage
+        self._is_finished = False
 
     @property
     def current_stage(self):
         return self._current_stage
 
+    @property
+    def is_finished(self):
+        return self._is_finished
+
     def update(self, dt):
+        if self._is_finished:
+            return
+
         if not self._current_stage:
             self._current_stage = self._initial_stage
             self._current_stage.theater = self
@@ -41,15 +56,17 @@ class Theater:
             self._current_stage.on_exit_stage()
             self._current_stage = self._current_stage.successor
 
-            if self._current_stage:
+            if not self._current_stage:
+                self.exit()
+            else:
+                require_stage(self._current_stage)
                 self._current_stage.theater = self
                 self._current_stage.on_enter_stage()
-            else:
-                self.exit()
 
     def exit(self):
         if self._current_stage:
             self._current_stage.on_exit_stage()
+        self._is_finished = True
 
 
 class PygletTheater (Theater):
@@ -198,7 +215,7 @@ class UniplayerGameStage (GameStage):
 
     def __init__(self, world, referee, other_actors):
         forum = Forum()
-        actors = [referee] + other_actors
+        actors = [referee] + list(other_actors)
         GameStage.__init__(self, world, forum, actors)
 
 
@@ -216,11 +233,15 @@ class MultiplayerClientGameStage (Stage):
 
 class MultiplayerServerGameStage (GameStage):
 
-    def __init__(self, world, referee, pipes):
+    def __init__(self, world, referee, actors, pipes):
         forum = Forum()
-        actors = [referee] + [ServerActor(x) for x in pipes]
+        actors = [referee] + actors + [ServerActor(x) for x in pipes]
         GameStage.__init__(self, world, forum, actors)
 
 
+
+@debug_only
+def require_stage(object):
+    require_instance(Stage(), object)
 
 

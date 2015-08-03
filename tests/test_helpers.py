@@ -20,8 +20,9 @@ class DummyUniplayerGame:
         self.theater = kxg.Theater(self.game_stage)
         self.update()
 
-    def update(self):
-        self.theater.update(0.1)
+    def update(self, num_updates=1):
+        for i in range(num_updates):
+            self.theater.update(0.1)
 
     @property
     def actors(self):
@@ -48,10 +49,10 @@ class DummyMultiplayerGame:
         def __init__(self, client_pipe):
             self.world = DummyWorld()
             self.player = DummyActor()
-            self.pipes = [client_pipe]
+            self.pipe = client_pipe
             self.theater = kxg.Theater(
                     kxg.MultiplayerClientGameStage(
-                        self.world, self.player, client_pipe))
+                        self.world, self.player, self.pipe))
 
         @property
         def actors(self):
@@ -118,6 +119,10 @@ class DummyMultiplayerGame:
     def actors(self):
         for participant in self.participants:
             yield from participant.actors
+
+    @property
+    def referee(self):
+        return self.server.referee
 
     @property
     def worlds(self):
