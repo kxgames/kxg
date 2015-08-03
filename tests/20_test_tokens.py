@@ -3,6 +3,20 @@
 import kxg
 from test_helpers import *
 
+def force_add_token(world, token, id=None):
+    if id is not None:
+        token._id = id
+    elif token._id is None:
+        token._id = len(world)
+
+    with world._unlock_temporarily():
+        world._add_token(token)
+
+def force_remove_token(world, token):
+    with world._unlock_temporarily():
+        world._remove_token(token)
+
+
 def test_token_creation():
     world = DummyWorld()
     token = DummyToken()

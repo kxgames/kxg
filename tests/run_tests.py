@@ -7,7 +7,12 @@ signal(SIGPIPE,SIG_DFL)
 #import kxg.errors
 #kxg.errors.ApiUsageError.message_width = 63
 
-import sys, shlex, glob, pytest
-args = shlex.split('-x --color=yes --cov=kxg --cov-report=html')
-tests = sys.argv[1:] or sorted(glob.glob('test_*.py'))
-pytest.main(args + tests)
+import sys, os, re, shlex, pytest
+
+args = shlex.split('-x --color=yes --cov=kxg --cov-report=html') + sys.argv[1:]
+test_pattern = re.compile(r'\d{2}_test_.+\.py')
+if not any(filter(test_pattern.match, args)):
+    args += sorted(filter(test_pattern.match, os.listdir('.')))
+
+print(args)
+pytest.main(args)

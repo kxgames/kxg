@@ -265,16 +265,3 @@ def raises_api_usage_error(*key_phrase_or_phrases):
     for key_phrase in key_phrase_or_phrases:
         assert key_phrase in exc.exconly().replace('\n', ' ')
 
-def force_add_token(world, token, id=None):
-    if id is not None:
-        token._id = id
-    elif token._id is None:
-        token._id = len(world)
-
-    with world._unlock_temporarily():
-        world._add_token(token)
-
-def force_remove_token(world, token):
-    with world._unlock_temporarily():
-        world._remove_token(token)
-
