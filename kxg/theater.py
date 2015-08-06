@@ -213,18 +213,18 @@ class GameStage (Stage):
 
 class UniplayerGameStage (GameStage):
 
-    def __init__(self, world, referee, other_actors):
+    def __init__(self, world, referee, gui_actor, ai_actors=[]):
         forum = Forum()
-        actors = [referee] + list(other_actors)
+        actors = [referee, gui_actor] + list(ai_actors)
         GameStage.__init__(self, world, forum, actors)
 
 
 class MultiplayerClientGameStage (Stage):
 
-    def __init__(self, world, actor, pipe):
+    def __init__(self, world, gui_actor, pipe):
         super().__init__()
         self.forum = ClientForum(pipe)
-        self.successor = GameStage(world, self.forum, [actor])
+        self.successor = GameStage(world, self.forum, [gui_actor])
 
     def on_update_stage(self, dt):
         if self.forum.receive_id_from_server():
@@ -233,9 +233,9 @@ class MultiplayerClientGameStage (Stage):
 
 class MultiplayerServerGameStage (GameStage):
 
-    def __init__(self, world, referee, actors, pipes):
+    def __init__(self, world, referee, ai_actors, pipes):
         forum = Forum()
-        actors = [referee] + actors + [ServerActor(x) for x in pipes]
+        actors = [referee] + [ServerActor(x) for x in pipes] + ai_actors
         GameStage.__init__(self, world, forum, actors)
 
 

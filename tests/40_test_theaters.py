@@ -52,23 +52,47 @@ def run_quickstart_main(*command_lines):
     will be started, but that's not a problem.  Use threads instead of 
     processes for the benefit of the code coverage analysis.  
     """
-    import shlex
+    import queue, shlex
     from concurrent.futures import ThreadPoolExecutor
 
-    worlds = [DummyWorld() for x in command_lines]
-    assert not any(x.is_game_over() for x in worlds)
+    # Catch any exceptions thrown in worker threads and forward them to the 
+    # main thread via a thread-safe queue.  If this isn't done, the exceptions 
+    # would be ignored.  This obviously makes debugging a nightmare.
 
-    with ThreadPoolExecutor(len(command_lines)) as executor:
-        for i, command_line in enumerate(command_lines):
-            executor.submit(
-                    kxg.quickstart.main,
-                        world=worlds[i],
-                        referee=DummyReferee(),
-                        gui_actor=DummyEndGameActor(),
-                        other_actors=[DummyActor()],
-                        argv=shlex.split(command_line),
+    exceptions = queue.Queue()
+
+    def main(i=0):
+        try:
+            kxg.quickstart.main(
+                    world_cls=DummyWorld,
+                    referee_cls=DummyReferee,
+                    gui_actor_cls=DummyEndGameActor,
+                    ai_actor_cls=DummyActor,
+                    argv=shlex.split(command_lines[i]),
             )
-    assert all(x.is_game_over() for x in worlds)
+        except Exception as exception:
+            exceptions.put(exception)
+
+
+    # Run the given command lines.  If more than one command line was given, 
+    # spawn threads to execute them all at once, otherwise they'll get hung up 
+    # waiting for each other.  If only one command line was given, execute it 
+    # without spawning any threads.
+
+    if len(command_lines) == 1:
+        main()
+    else:
+        with ThreadPoolExecutor(len(command_lines)) as executor:
+            for i in range(len(command_lines)):
+                executor.submit(main, i)
+
+            print(executor._threads)
+
+    # Re-raise any exceptions originally raised in the worker threads.
+
+    try: raise exceptions.get_nowait()
+    except queue.Empty: pass
+
 
 def test_stages():
     theater = kxg.Theater()
@@ -157,20 +181,25 @@ def test_multiplayer_game_stage():
     for pipe in test.server.pipes:
         assert not pipe.serializer_stack
 
-def test_quickstart_main():
+def test_quickstart_main(capfd):
     """
     Make sure that quickstart.main() runs without crashing.  The only 
     assertion, made inside run_quickstart_main(), makes sure that the game 
     actually ran and wasn't skipped somehow.  Issues with the game itself 
     should've been caught by previous tests.
     """
-    run_quickstart_main('sandbox')
+    run_quickstart_main('sandbox -v')
+
+    out, err = capfd.readouterr()
+    assert 'INFO: kxg.actors.DummyEndGameActor: sending a message: DummyEndGame()' in err
+    assert 'INFO: kxg.forums.Forum: executing a message: DummyEndGame()' in err
+
     run_quickstart_main('server 2', 'client', 'client')
-    #run_quickstart_main(
-    #        'server 2 --host=localhost --port=12345',
-    #        'client --host=localhost --port=12345',
-    #        'client --host=localhost --port=12345',
-    #)
-    #run_quickstart_main('debug 2')
-    #run_quickstart_main('debug 2 --host=localhost --port=12345')
+
+    out, err = capfd.readouterr()
+    assert 'INFO: kxg.actors.DummyEndGameActor: sending a message: DummyEndGame()' in err
+    assert 'INFO: kxg.multiplayer.ServerActor: received a message: DummyEndGame()' in err
+    assert 'INFO: kxg.forums.ClientForum: executing a message: DummyEndGame()' in err
+
+    run_quickstart_main('debug 1')
 

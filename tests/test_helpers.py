@@ -11,9 +11,10 @@ class DummyUniplayerGame:
 
         self.world = DummyWorld()
         self.referee = DummyReferee()
-        self.dummy_actors = [DummyActor(), DummyActor()]
+        self.gui_actor = DummyActor()
+        self.ai_actors = [DummyActor()]
         self.game_stage = kxg.UniplayerGameStage(
-                self.world, self.referee, self.dummy_actors)
+                self.world, self.referee, self.gui_actor, self.ai_actors)
 
         # Start playing the game.
 
@@ -28,6 +29,11 @@ class DummyUniplayerGame:
     def actors(self):
         yield self.referee
         yield from self.dummy_actors
+
+    @property
+    def dummy_actors(self):
+        yield self.gui_actor
+        yield from self.ai_actors
 
     @property
     def random_actor(self):
@@ -48,15 +54,15 @@ class DummyMultiplayerGame:
 
         def __init__(self, client_pipe):
             self.world = DummyWorld()
-            self.player = DummyActor()
+            self.gui_actor = DummyActor()
             self.pipe = client_pipe
             self.theater = kxg.Theater(
                     kxg.MultiplayerClientGameStage(
-                        self.world, self.player, self.pipe))
+                        self.world, self.gui_actor, self.pipe))
 
         @property
         def actors(self):
-            return [self.player]
+            return [self.gui_actor]
 
         @property
         def observers(self):
@@ -70,15 +76,15 @@ class DummyMultiplayerGame:
         def __init__(self, server_pipes):
             self.world = DummyWorld()
             self.referee = DummyReferee()
-            self.dummy_actors = [DummyActor(), DummyActor()]
+            self.ai_actors = [DummyActor(), DummyActor()]
             self.pipes = server_pipes
             self.theater = kxg.Theater(
                     kxg.MultiplayerServerGameStage(
-                        self.world, self.referee, self.dummy_actors, self.pipes))
+                        self.world, self.referee, self.ai_actors, self.pipes))
 
         @property
         def actors(self):
-            return [self.referee] + self.dummy_actors
+            return [self.referee] + self.ai_actors
 
         @property
         def observers(self):

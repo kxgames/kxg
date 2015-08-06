@@ -14,5 +14,4 @@ test_pattern = re.compile(r'\d{2}_test_.+\.py')
 if not any(filter(test_pattern.match, args)):
     args += sorted(filter(test_pattern.match, os.listdir('.')))
 
-print(args)
 pytest.main(args)
