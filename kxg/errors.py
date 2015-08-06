@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from nonstdlib import log, debug, info, warning, error, critical
+
 class ApiUsageError (Exception):
     """
     A class for communicating errors to the user.
@@ -455,3 +457,4 @@ def require_instance(prototype, object):
             raise ObjectIsntFullyConstructed(prototype, object, member_name)
 
     return object
+

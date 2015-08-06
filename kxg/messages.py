@@ -47,6 +47,9 @@ class Message:
         self.tokens_to_add = []
         self.tokens_to_remove = []
 
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
+
     def __getstate__(self):
         state = self.__dict__.copy()
         if not self.tokens_to_add: del state['tokens_to_add']
