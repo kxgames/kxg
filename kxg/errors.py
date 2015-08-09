@@ -185,19 +185,6 @@ It's not safe to send the same message twice because messages can accumulate
 state as they are executed.  This also breaks the system by which clients can 
 react to responses from the server in multiplayer games.
 """
-class DebuggingTooManyPlayers (ApiUsageErrorFactory):
-
-    message = """\
-multiplayer debugging only supports {num_names} players.
-
-You can increase the number of allowed players by appending names to the 
-MultiplayerDebugger.names list.  The list is only finite so that in the most 
-common case (debugging two players) each player is given a canonical name."""
-
-    def __init__(self, names):
-        self.num_names = len(names)
-
-
 class IllegalTokenExtensionConstructor (ApiUsageErrorFactory):
 
     message = """\

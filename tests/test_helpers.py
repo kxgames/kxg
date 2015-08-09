@@ -23,7 +23,8 @@ class DummyUniplayerGame:
 
     def update(self, num_updates=1):
         for i in range(num_updates):
-            self.theater.update(0.1)
+            if not self.theater.is_finished:
+                self.theater.update()
 
     @property
     def actors(self):
@@ -164,7 +165,8 @@ class DummyMultiplayerGame:
         import time
         for i in range(num_updates):
             for part in self.participants:
-                part.theater.update(0.1)
+                if not part.theater.is_finished:
+                    part.theater.update()
             time.sleep(1/60)
 
 
@@ -177,6 +179,15 @@ class DummyMessage (kxg.Message, linersock.test_helpers.Message):
 
     def on_sync(self, world, memento):
         world.dummy_sync_responses_executed.append(self)
+
+
+class DummyEndGameMessage (kxg.Message):
+
+    def on_check(self, world, sender_id):
+        return True
+
+    def on_execute(self, world):
+        world.end_game()
 
 
 class DummyObserver:
@@ -217,6 +228,13 @@ class DummyActor (kxg.Actor, DummyObserver):
 
 class DummyReferee (kxg.Referee, DummyObserver):
     pass
+
+class DummyEndGameReferee (DummyReferee):
+
+    def on_start_game(self):
+        self >> DummyEndGameMessage()
+
+        
 
 class DummyWorld (kxg.World, DummyObserver):
 
@@ -263,6 +281,15 @@ class DummyToken (kxg.Token, DummyObserver):
 class DummyExtension (kxg.TokenExtension, DummyObserver):
     pass
 
+
+def dummy_main(argv=None):
+    kxg.quickstart.main(
+            world_cls=DummyWorld,
+            referee_cls=DummyEndGameReferee,
+            gui_actor_cls=DummyActor,
+            ai_actor_cls=DummyActor,
+            argv=argv,
+    )
 
 @contextlib.contextmanager
 def raises_api_usage_error(*key_phrase_or_phrases):

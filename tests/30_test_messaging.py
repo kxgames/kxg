@@ -144,7 +144,7 @@ class ReporterToken (DummyToken):
     @kxg.read_only
     def on_report_to_referee(self, reporter):
         if self.message:
-            reporter.send_message(self.message)
+            assert reporter >> self.message
             self.message = None
 
 
@@ -186,7 +186,7 @@ def send_dummy_message(sender, message=None, response=None):
     else:
         raise ValueError("unknown response '{}'".format(response))
 
-    assert sender.send_message(message) == message.expected_check_result
+    assert (sender >> message) == message.expected_check_result
     return message
 
 

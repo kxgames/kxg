@@ -12,7 +12,7 @@ class Actor (ForumObserver):
         self._id_factory = None
 
     def __rshift__(self, message):
-        self.send_message(message)
+        return self.send_message(message)
 
     def send_message(self, message):
         info("sending a message: {message}")
@@ -66,7 +66,7 @@ class Actor (ForumObserver):
         pass
 
     def on_update_game(self, dt):
-        pass
+        pass    # pragma: no cover
 
     def on_finish_game(self):
         pass
@@ -105,13 +105,13 @@ class Referee (Actor):
             self.is_finished_reporting = True
 
         def __rshift__(self, message):
-            self.send_message(message)
+            return self.send_message(message)
 
         def send_message(self, message):
             if self.is_finished_reporting:
                 raise UsingStaleReporter(message)
             else:
-                self.referee.send_message(message)
+                return self.referee.send_message(message)
 
     def on_update_game(self, dt):
         with Referee.Reporter(self) as reporter:

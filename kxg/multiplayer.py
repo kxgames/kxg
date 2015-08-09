@@ -269,6 +269,7 @@ class ServerActor (Actor):
         Relay messages from the forum on the server to the client represented 
         by this actor.
         """
+        info("relaying a message: {message}")
 
         if not message.was_sent_by(self._id_factory):
             self.pipe.send(message)

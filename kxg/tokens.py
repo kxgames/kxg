@@ -359,6 +359,9 @@ class TokenExtension (ForumObserver):
             if hasattr(method, '_kxg_watch_token'):
                 token.watch_method(method_name, method)
 
+    def __rshift__(self, message):
+        return self.send_message(message)
+
     def send_message(self, message):
         return self.actor.send_message(message)
 

@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 
-import pyglet
+import time, pyglet
 from .errors import *
 from .forums import Forum
 from .multiplayer import ClientForum, ServerActor 
-
-# Things to do
-# ============
-# 1. Use the "assigning to self.update" trick to manage the Theater state 
-#    machine.
 
 class Theater:
     """
@@ -19,7 +14,8 @@ class Theater:
     def __init__(self, initial_stage=None):
         self._initial_stage = initial_stage
         self._current_stage = None
-        self._is_finished = False
+        self._current_update = self._update_before_loop
+        self._previous_time = time.time()
 
     @property
     def initial_stage(self):
@@ -28,10 +24,9 @@ class Theater:
     @initial_stage.setter
     def initial_stage(self, stage):
         require_stage(stage)
-        if not self._is_finished and self._current_stage:
+        if self._current_stage:
             raise ApiUsageError("theater already playing; can't set initial stage.")
         self._initial_stage = stage
-        self._is_finished = False
 
     @property
     def current_stage(self):
@@ -39,16 +34,31 @@ class Theater:
 
     @property
     def is_finished(self):
-        return self._is_finished
+        return self._current_update == self._update_after_loop
 
-    def update(self, dt):
-        if self._is_finished:
-            return
+    def update(self, dt=None):
+        self._current_update(dt)
 
-        if not self._current_stage:
-            self._current_stage = self._initial_stage
-            self._current_stage.theater = self
-            self._current_stage.on_enter_stage()
+    def exit(self):
+        if self._current_stage:
+            self._current_stage.on_exit_stage()
+
+        self._current_update = self._update_after_loop
+
+
+    def _update_before_loop(self, dt):
+        self._current_stage = self._initial_stage
+        self._current_stage.theater = self
+        self._current_stage.on_enter_stage()
+
+        self._current_update = self._update_main_loop
+        self._current_update(dt)
+
+    def _update_main_loop(self, dt):
+        if dt is None:
+            current_time = time.time()
+            dt = current_time - self._previous_time
+            self._previous_time = current_time
 
         self._current_stage.on_update_stage(dt)
 
@@ -63,10 +73,8 @@ class Theater:
                 self._current_stage.theater = self
                 self._current_stage.on_enter_stage()
 
-    def exit(self):
-        if self._current_stage:
-            self._current_stage.on_exit_stage()
-        self._is_finished = True
+    def _update_after_loop(self, dt):
+        raise AssertionError("shouldn't update the theater after the game has ended.")
 
 
 class PygletTheater (Theater):
@@ -151,7 +159,6 @@ class GameStage (Stage):
         This method is guaranteed to be called exactly once upon entering the 
         game stage.
         """
-
         with self.world._unlock_temporarily():
             self.forum.connect_everyone(self.world, self.actors)
 

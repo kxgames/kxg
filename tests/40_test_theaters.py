@@ -29,98 +29,120 @@ class DummyStage (kxg.Stage):
         self.called_on_exit_stage = True
 
 
-class DummyEndGame (kxg.Message):
 
-    def on_check(self, world, sender_id):
-        return True
+@pytest.yield_fixture
+def logged_messages():
+    import logging
 
-    def on_execute(self, world):
-        world.end_game()
+    class UnitTestHandler (logging.Handler):
+
+        def __init__(self):
+            super().__init__()
+            self.messages = []
+
+        def emit(self, record):
+            message = self.format(record)
+            self.messages.append(message)
+            print(message)
 
 
-class DummyEndGameActor (kxg.Actor):
+    handler = UnitTestHandler()
+    handler.setFormatter(logging.Formatter(
+        '%(levelname)s: %(processName)s: %(name)s: %(message)s'))
+    handler.setLevel(0)
 
-    def on_start_game(self):
-        self >> DummyEndGame()
+    previous_level = logging.root.level
+    logging.root.setLevel(0)
+    logging.root.addHandler(handler)
 
+    yield handler.messages
 
+    logging.root.setLevel(previous_level)
+    logging.root.removeHandler(handler)
 
-def run_quickstart_main(*command_lines):
+def run_dummy_main(*command_lines):
     """
     Run the specified command lines in threads so that clients and servers 
     can talk to each other if they need to.  In some cases only one thread 
     will be started, but that's not a problem.  Use threads instead of 
     processes for the benefit of the code coverage analysis.  
     """
-    import queue, shlex
-    from concurrent.futures import ThreadPoolExecutor
+    import shlex
 
-    # Catch any exceptions thrown in worker threads and forward them to the 
-    # main thread via a thread-safe queue.  If this isn't done, the exceptions 
-    # would be ignored.  This obviously makes debugging a nightmare.
+    with kxg.quickstart.ProcessPool(time_limit=4) as pool:
+        for command_line in command_lines:
+            name = '"{}"'.format(command_line)
+            pool.start(name, dummy_main, shlex.split(command_line))
 
-    exceptions = queue.Queue()
+def log_something():
+    kxg.info("Hello World!")
 
-    def main(i=0):
-        try:
-            kxg.quickstart.main(
-                    world_cls=DummyWorld,
-                    referee_cls=DummyReferee,
-                    gui_actor_cls=DummyEndGameActor,
-                    ai_actor_cls=DummyActor,
-                    argv=shlex.split(command_lines[i]),
-            )
-        except Exception as exception:
-            exceptions.put(exception)
+def raise_something():
+    raise ZeroDivisionError
 
-
-    # Run the given command lines.  If more than one command line was given, 
-    # spawn threads to execute them all at once, otherwise they'll get hung up 
-    # waiting for each other.  If only one command line was given, execute it 
-    # without spawning any threads.
-
-    if len(command_lines) == 1:
-        main()
-    else:
-        with ThreadPoolExecutor(len(command_lines)) as executor:
-            for i in range(len(command_lines)):
-                executor.submit(main, i)
-
-            print(executor._threads)
-
-    # Re-raise any exceptions originally raised in the worker threads.
-
-    try: raise exceptions.get_nowait()
-    except queue.Empty: pass
+def sleep_forever():
+    import time
+    while True:
+        time.sleep(1)
 
 
 def test_stages():
     theater = kxg.Theater()
-    stages = DummyStage(), DummyStage(), DummyStage()
+    stage_1 = DummyStage()
+    stage_2 = DummyStage()
+    stage_3 = DummyStage()
 
-    for i in range(len(stages) - 1):
-        stages[i].successor = stages[i+1]
+    theater.initial_stage = stage_1
+    stage_1.successor = stage_2
+    stage_2.successor = stage_3
 
-    theater.initial_stage = stages[0]
-    assert theater.initial_stage is stages[0]
+    assert theater.initial_stage is stage_1
+    assert not theater.is_finished
 
-    for i in range(len(stages)):
-        if i > 0:
-            assert theater.current_stage is stages[i]
+    theater.update()
+    
+    assert theater.current_stage is stage_2
+    assert stage_1.called_on_enter_stage
+    assert stage_1.called_on_update_stage
+    assert stage_1.called_on_exit_stage
+    assert stage_2.called_on_enter_stage
+    assert not stage_2.called_on_update_stage
+    assert not stage_2.called_on_exit_stage
+    assert not stage_3.called_on_enter_stage
+    assert not stage_3.called_on_update_stage
+    assert not stage_3.called_on_exit_stage
+    assert not theater.is_finished
 
-        theater.update(0.1)
+    theater.update()
 
-        for stage in stages[:i+1]:
-            assert stage.called_on_enter_stage
-            assert stage.called_on_update_stage
-            assert stage.called_on_exit_stage
+    assert theater.current_stage is stage_3
+    assert stage_1.called_on_enter_stage
+    assert stage_1.called_on_update_stage
+    assert stage_1.called_on_exit_stage
+    assert stage_2.called_on_enter_stage
+    assert stage_2.called_on_update_stage
+    assert stage_2.called_on_exit_stage
+    assert stage_3.called_on_enter_stage
+    assert not stage_3.called_on_update_stage
+    assert not stage_3.called_on_exit_stage
+    assert not theater.is_finished
 
-        for i, stage in enumerate(stages[i+1:]):
-            assert stage.called_on_enter_stage == (i == 0)
-            assert not stage.called_on_update_stage
-            assert not stage.called_on_exit_stage
+    theater.update()
 
+    assert theater.current_stage is None
+    assert stage_1.called_on_enter_stage
+    assert stage_1.called_on_update_stage
+    assert stage_1.called_on_exit_stage
+    assert stage_2.called_on_enter_stage
+    assert stage_2.called_on_update_stage
+    assert stage_2.called_on_exit_stage
+    assert stage_3.called_on_enter_stage
+    assert stage_3.called_on_update_stage
+    assert stage_3.called_on_exit_stage
     assert theater.is_finished
+
+    with pytest.raises(AssertionError):
+        theater.update()
 
 def test_exit_stage():
 
@@ -132,45 +154,31 @@ def test_exit_stage():
 
     theater = kxg.Theater()
     theater.initial_stage = ExitStage()
-    theater.update(0.1)
+    assert not theater.is_finished
+    theater.update()
     assert theater.is_finished
 
 def test_reset_initial_stage():
     theater = kxg.Theater()
     theater.initial_stage = DummyStage('inf')
-    theater.update(0.1)
+    theater.update()
 
     with raises_api_usage_error():
         theater.initial_stage = DummyStage()
 
-    theater.initial_stage.exit_theater()
-    theater.update(0.1)
-
-    assert theater.is_finished
-    theater.initial_stage = DummyStage()
-    assert not theater.is_finished
-
-def test_pyglet_theater():
-    theater = kxg.PygletTheater()
-    theater.initial_stage = DummyStage()
-    theater.play()
-
 def test_uniplayer_game_stage():
-    # The engine doesn't really do anything when the game ends, so this is 
-    # really just a test to make sure nothing crashes.
-
     test = DummyUniplayerGame()
     test.update(10)
-    test.referee.send_message(DummyEndGame())
-    test.update(10)
+    test.referee >> DummyEndGameMessage()
+    test.update()
 
     assert test.theater.is_finished
 
 def test_multiplayer_game_stage():
     test = DummyMultiplayerGame()
     test.update(10)
-    test.referee.send_message(DummyEndGame())
-    test.update(10)
+    test.referee >> DummyEndGameMessage()
+    test.update()
 
     # Make sure the multiplayer forums and actors play release their pipes once 
     # the game ends.  This test is a little gross because it has to reach into 
@@ -181,25 +189,52 @@ def test_multiplayer_game_stage():
     for pipe in test.server.pipes:
         assert not pipe.serializer_stack
 
-def test_quickstart_main(capfd):
-    """
-    Make sure that quickstart.main() runs without crashing.  The only 
-    assertion, made inside run_quickstart_main(), makes sure that the game 
-    actually ran and wasn't skipped somehow.  Issues with the game itself 
-    should've been caught by previous tests.
-    """
-    run_quickstart_main('sandbox -v')
+def test_quickstart_process_pool(logged_messages):
+    # Make sure exceptions raised in worker processes are handled correctly.  
+    # The exception should be re-raised in the main process and all the other 
+    # workers should be immediately terminated.
 
-    out, err = capfd.readouterr()
-    assert 'INFO: kxg.actors.DummyEndGameActor: sending a message: DummyEndGame()' in err
-    assert 'INFO: kxg.forums.Forum: executing a message: DummyEndGame()' in err
+    print('raise')
 
-    run_quickstart_main('server 2', 'client', 'client')
+    with pytest.raises(ZeroDivisionError):
+        with kxg.quickstart.ProcessPool() as pool:
+            pool.start("sleep forever", sleep_forever)
+            pool.start("exception test", raise_something)
 
-    out, err = capfd.readouterr()
-    assert 'INFO: kxg.actors.DummyEndGameActor: sending a message: DummyEndGame()' in err
-    assert 'INFO: kxg.multiplayer.ServerActor: received a message: DummyEndGame()' in err
-    assert 'INFO: kxg.forums.ClientForum: executing a message: DummyEndGame()' in err
+    # Make sure that the pool can shut down processes after they've gone over 
+    # their time limit.
 
-    run_quickstart_main('debug 1')
+    print('time_limit')
+    with pytest.raises(RuntimeError):
+        with kxg.quickstart.ProcessPool(time_limit=0.1) as pool:
+            pool.start("sleep forever", sleep_forever)
+
+    # Make sure that log messages made in the worker processes are correctly 
+    # relayed to the main process.
+
+    print('log')
+    with kxg.quickstart.ProcessPool() as pool:
+        pool.start("logging test", log_something)
+
+    assert 'INFO: logging test: 40_test_theaters.log_something: Hello World!' in logged_messages
+
+@pytest.mark.skip
+def test_quickstart_sandbox(logged_messages):
+    run_dummy_main('sandbox -v')
+    assert 'INFO: "sandbox -v": test_helpers.DummyEndGameReferee: sending a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "sandbox -v": kxg.forums.Forum: executing a message: DummyEndGameMessage()' in logged_messages
+
+def test_quickstart_client_server(logged_messages):
+    run_dummy_main('server 1 -v', 'client -v')
+    assert 'INFO: "server 1 -v": test_helpers.DummyEndGameReferee: sending a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "client -v": kxg.multiplayer.ClientForum: receiving a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "server 1 -v": kxg.forums.Forum: executing a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "client -v": kxg.multiplayer.ClientForum: executing a message: DummyEndGameMessage()' in logged_messages
+
+def test_quickstart_debug(logged_messages):
+    run_dummy_main('debug 2')
+    assert 'INFO: Server: test_helpers.DummyEndGameReferee: sending a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: Server: kxg.forums.Forum: executing a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: Client #1: kxg.multiplayer.ClientForum: receiving a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: Client #1: kxg.multiplayer.ClientForum: executing a message: DummyEndGameMessage()' in logged_messages
 
