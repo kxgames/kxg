@@ -1,6 +1,7 @@
 /docs/build
 /sandbox
 /env
+/tags
 *.pyc
 *.egg-info
 .*.sw*
