@@ -44,8 +44,7 @@ class Actor (ForumObserver):
         # they're trying to buy things.  If the message fails the check, return 
         # False immediately.
 
-        if not message._check(self.world, self._id_factory):
-            return False
+        message._check(self.world)
 
         # Hand the message off to the forum to be applied to the world and 
         # relayed on to all the other actors (which may or may not be on 

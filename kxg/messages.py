@@ -3,37 +3,12 @@
 from .errors import *
 from .tokens import require_token
 
-# Message is still vulnerable because I could create a Message object, fill it 
-# up with tokens, and send it.  The server would execute it no questions asked.  
-# I need to add something somewhere that prevents unspecialized messages from 
-# being executed.  
-# 
-# I could make on_check() etc. raise NotImplementerErrors.  That would make a 
-# kind of sense.  It would make Message a little harder to subclass, but it's 
-# probably the kind of thing every class should be doing anyway.  Should all 5 
-# callbacks need to be reimplemented?  How about just on_check() and 
-# on_execute()?  Would it be confusing to only have to reimplement two of the 
-# five methods?  The real problem with this approach is that it will crash the 
-# server if a bad message is received.
-
-# It's not safe for any message class to have a list of tokens it's going to 
-# add or remove from the world.  The reason is that it'd be very easy for a 
-# cheater to retroactively instruct unrelated messages to add or remove tokens.  
-# For example, a cheater could attach 1000 soldiers to a "build outpost" 
-# message and as long as they can afford the outpost (because that's what the 
-# message would check) they would also get the 1000 soldiers.  So this approach 
-# is too vulnerable.
-#
-# Instead I need to make the user responsible for storing the tokens and just 
-# provide methods that they can call in on_execute() and on_undo() that help 
-# manage the tokens.  This makes it more explicit to the user what's going on.  
-# If they call add_token() on something, they better have checked to make sure 
-# that thing should be added.
-
 # Message.on_check() should raise exceptions.
 
 # Message.on_check() probably shouldn't take sender_id as an argument, because 
-# the message should already know that about itself.
+# the message should already know that about itself.  The point of this 
+# argument is to let the server check that the message is coming from the right 
+# client, but the server can do that on it's own behind the scenes.
 
 class Message:
 
@@ -42,24 +17,8 @@ class Message:
         HARD_SYNC_ERROR = 1
 
 
-    def __init__(self):
-        super().__init__()
-        self.tokens_to_add = []
-        self.tokens_to_remove = []
-
     def __repr__(self):
         return self.__class__.__name__ + '()'
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        if not self.tokens_to_add: del state['tokens_to_add']
-        if not self.tokens_to_remove: del state['tokens_to_remove']
-        return state
-
-    def __setstate__(self, state):
-        Message.__init__(self)
-        self.__dict__.update(state)
-        self._was_sent = True
 
     def was_sent(self):
         return hasattr(self, 'sender_id')
@@ -75,29 +34,21 @@ class Message:
         try: return self.sender_id == 1
         except AttributeError: raise MessageNotYetSent()
 
-    def add_token(self, token):
-        require_token(token)
-        if self.was_sent(): raise MessageAlreadySent()
-        self.tokens_to_add.append(token)
+    def tokens_to_add(self):
+        yield from []
 
-    def add_tokens(self, tokens):
-        if self.was_sent(): raise MessageAlreadySent()
-        self.tokens_to_add.extend(tokens)
+    def tokens_to_remove(self):
+        yield from []
 
-    def remove_token(self, token):
-        require_token(token)
-        if self.was_sent(): raise MessageAlreadySent()
-        self.tokens_to_remove.append(token)
-
-    def remove_tokens(self, tokens):
-        if self.was_sent(): raise MessageAlreadySent()
-        self.tokens_to_remove.extend(tokens)
-
-    def on_check(self, world, sender_id):
-        # Called by the actor.  Normal Actor will not send if this returns 
-        # false.  ServerActor will decide if this is a hard or soft error.  It 
-        # will relay soft errors but cancel hard errors.
-        return True
+    def on_check(self, world):
+        # Called by the actor.  If no MessageCheck exception is raised, the 
+        # message will be sent as usual.  Otherwise, the behavior will depend 
+        # on what kind of actor is handling the message.  Actor (uniplayer and 
+        # multiplayer clients) will Normal Actor will simply not send the 
+        # message.  ServerActor (multiplayer server) will decide if the error 
+        # should be handled by undoing the message or asking the clients to 
+        # sync themselves.
+        raise NotImplementedError
 
     def on_prepare_sync(self, world, memento):
         # Called only by ServerActor if on_check() returns False.  If this 
@@ -156,31 +107,11 @@ class Message:
         # before _check() so that _check() can make sure that valid ids were 
         # assigned.
 
-        for token in self.tokens_to_add:
+        for token in self.tokens_to_add():
             token._give_id(id_factory)
 
-    def _check(self, world, id_factory):
-        # Check all the tokens to create:
-
-        for token in self.tokens_to_add:
-            if token in world:
-                return False
-
-            # Make sure that the token was created by the same actor that's 
-            # checking the message.
-
-            if token.id not in id_factory:
-                return False
-
-        # Check all the tokens to destroy:
-
-        for token in self.tokens_to_remove:
-            if token not in world:
-                return False
-
-        # Let derived classes check themselves:
-
-        return self.on_check(world, id_factory.get())
+    def _check(self, world):
+        self.on_check(world)
 
     def _prepare_sync(self, world, server_response):
         self._set_server_response(server_response)
@@ -189,10 +120,10 @@ class Message:
     def _execute(self, world):
         # Deal with tokens to be created or destroyed.
 
-        for token in self.tokens_to_add:
+        for token in self.tokens_to_add():
             world._add_token(token)
 
-        for token in self.tokens_to_remove:
+        for token in self.tokens_to_remove():
             world._remove_token(token)
 
         # Let derived classes execute themselves.
@@ -203,20 +134,20 @@ class Message:
         self.on_sync(world, self._server_response)
 
     def _undo(self, world):
-        # The tokens in self.tokens_to_add haven't been added to the world yet, 
-        # because the message was copied and pickled before it was executed on 
-        # the server.  We need to access the tokens that are actually in the 
-        # world before we can remove them again.
+        # The tokens in self.tokens_to_add() haven't been added to the world 
+        # yet, because the message was copied and pickled before it was 
+        # executed on the server.  We need to access the tokens that are 
+        # actually in the world before we can remove them again.
 
-        for token in self.tokens_to_add:
+        for token in self.tokens_to_add():
             real_token = world.get_token(token.id)
             world._remove_token(real_token)
 
-        # The tokens in self.tokens_to_remove have already been removed from 
+        # The tokens in self.tokens_to_remove() have already been removed from 
         # the world.  We want to add them back, and we want to make sure they 
         # end up with the id as before.
 
-        for token in self.tokens_to_remove:
+        for token in self.tokens_to_remove():
             old_id = token.id
             token.reset_registration()
             token._id = old_id
@@ -226,6 +157,9 @@ class Message:
 
         self.on_undo(world)
 
+
+class MessageCheck (Exception):
+    pass
 
 
 @debug_only

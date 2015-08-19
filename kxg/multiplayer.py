@@ -205,6 +205,8 @@ class ServerActor (Actor):
         self.pipe.push_serializer(serializer)
 
     def on_update_game(self, dt):
+        from .messages import MessageCheck
+
         # For each message received from the connected client:
 
         for message in self.pipe.receive():
@@ -215,7 +217,9 @@ class ServerActor (Actor):
             # actor gives its id to its client, so if a mismatch is detected 
             # there's probably a bug in the game engine.
 
-            assert message.was_sent_by(self._id_factory)
+            if not message.was_sent_by(self._id_factory):
+                critical("ignoring message from player {self.id} claiming to be from player {message.sender_id}.")
+                continue
 
             # Check the message to make sure it matches the state of the game 
             # world on the server.  If the message doesn't pass the check, the 
@@ -223,8 +227,12 @@ class ServerActor (Actor):
             # just passed on the client.
 
             response = ServerResponse(message)
-            response.sync_needed = not message._check(
-                    self.world, self._id_factory)
+            try:
+                message._check(self.world)
+            except MessageCheck:
+                response.sync_needed = True
+            else:
+                response.sync_needed = False
 
             # Decide if it will be enough for the clients to sync themselves, 
             # or if this message shouldn't be relayed at all (and should be 
