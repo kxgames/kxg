@@ -9,8 +9,8 @@ from test_helpers import *
 
 class TriggerResponse:
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.pass_check = True
 
     def __getstate__(self):
@@ -20,14 +20,15 @@ class TriggerResponse:
         self.__dict__ = state
         self.pass_check = False
 
-    def on_check(self, world, sender_id):
-        return self.pass_check
+    def on_check(self, world):
+        if not self.pass_check:
+            raise kxg.MessageCheck
 
 
 class DummyAcceptedMessage (DummyMessage):
 
-    def on_check(self, world, sender):
-        return True
+    def on_check(self, world):
+        pass
 
     def on_sync(self, world, memento):
         raise AssertionError
@@ -40,8 +41,8 @@ class DummyRejectedMessage (DummyMessage):
 
     expected_check_result = False
 
-    def on_check(self, world, sender):
-        return False
+    def on_check(self, world):
+        raise kxg.MessageCheck
 
     def on_execute(self, world):
         raise AssertionError
@@ -78,29 +79,23 @@ class NonDummyMessage (kxg.Message):
 class AddDummyToken (kxg.Message):
 
     def __init__(self, token):
-        super().__init__()
-        self.add_token(token)
+        self.token = token
 
-    def on_check(self, world, sender_id):
-        return True
+    def tokens_to_add(self):
+        yield self.token
+
+    def on_check(self, world):
+        pass
 
 
-class AddDummyTokenAndSync (TriggerResponse, kxg.Message):
+class AddDummyTokenAndSync (TriggerResponse, AddDummyToken):
     
-    def __init__(self, token):
-        super().__init__()
-        self.add_token(token)
-
     def on_prepare_sync(self, world, memento):
         return True
 
 
-class AddDummyTokenAndUndo (TriggerResponse, kxg.Message):
+class AddDummyTokenAndUndo (TriggerResponse, AddDummyToken):
     
-    def __init__(self, token):
-        super().__init__()
-        self.add_token(token)
-
     def on_undo(self, world):
         pass
 
@@ -108,29 +103,23 @@ class AddDummyTokenAndUndo (TriggerResponse, kxg.Message):
 class RemoveDummyToken (kxg.Message):
 
     def __init__(self, token):
-        super().__init__()
-        self.remove_token(token)
+        self.token = token
 
-    def on_check(self, world, sender_id):
-        return True
+    def tokens_to_remove(self):
+        yield self.token
+
+    def on_check(self, world):
+        pass
 
 
-class RemoveDummyTokenAndSync (TriggerResponse, kxg.Message):
+class RemoveDummyTokenAndSync (TriggerResponse, RemoveDummyToken):
     
-    def __init__(self, token):
-        super().__init__()
-        self.remove_token(token)
-
     def on_prepare_sync(self, world, memento):
         return True
 
 
-class RemoveDummyTokenAndUndo (TriggerResponse, kxg.Message):
+class RemoveDummyTokenAndUndo (TriggerResponse, RemoveDummyToken):
     
-    def __init__(self, token):
-        super().__init__()
-        self.remove_token(token)
-
     def on_undo(self, world):
         pass
 
@@ -190,10 +179,26 @@ def send_dummy_message(sender, message=None, response=None):
     return message
 
 
+def test_id_factory():
+    id = kxg.IdFactory(2, 3)
+
+    assert repr(id) == 'IdFactory(offset=2, spacing=3)'
+
+    assert id.get() == 2
+    assert id.next() == 2
+    assert id.next() == 5
+    assert id.next() == 8
+
+    assert 0 not in id
+    assert 1 not in id
+    assert 2 in id
+    assert 3 not in id
+    assert 4 not in id
+    assert 5 in id
+
 def test_messaging_reprs():
     message = kxg.Message(); message._set_server_response_id(1)
     assert kxg.ServerResponse(message).__repr__() == 'ServerResponse(sync_needed=False, undo_needed=False)'
-    assert kxg.IdFactory(1, 4).__repr__() == 'IdFactory(offset=1, spacing=4)'
 
 def test_message_serialization():
     import pickle
@@ -202,12 +207,7 @@ def test_message_serialization():
     packed_message = pickle.dumps(original_message)
     duplicate_message = pickle.loads(packed_message)
 
-    assert b'tokens_to_add' not in packed_message
-    assert b'tokens_to_remove' not in packed_message
-
     assert original_message.data == duplicate_message.data
-    assert original_message.tokens_to_add == []
-    assert original_message.tokens_to_remove == []
 
 def test_uniplayer_message_sending():
     test = DummyUniplayerGame()
@@ -229,7 +229,13 @@ def test_uniplayer_message_rejection():
     # Make sure that every actor will reject messages that fail the check.
 
     for actor in test.actors:
-        send_dummy_message(actor, DummyRejectedMessage())
+
+        # Make sure the rejected message raise an exception.
+
+        with pytest.raises(kxg.MessageCheck):
+            send_dummy_message(actor, DummyRejectedMessage())
+
+        # Make sure the rejected messages don't affect the game world
 
         for observer in test.observers:
             assert observer.dummy_messages_received == []
@@ -362,7 +368,9 @@ def test_multiplayer_message_rejection():
 
             # Send a message that should be rejected out of hand by the sender.
 
-            send_dummy_message(actor, DummyRejectedMessage())
+            with pytest.raises(kxg.MessageCheck):
+                send_dummy_message(actor, DummyRejectedMessage())
+
             test.update()
 
             # Make sure none of the actors receive the message.
@@ -670,12 +678,6 @@ def test_cant_send_non_message():
 
     with raises_api_usage_error('expected Message, but got str instead'):
         test.random_actor.send_message('not a message')
-
-    with raises_api_usage_error('forgot to call the Message constructor in IncompleteMessage.__init__()'):
-        class IncompleteMessage (kxg.Message):
-            def __init__(self):
-                pass
-        test.random_actor.send_message(IncompleteMessage())
 
 def test_cant_send_message_twice():
     test = DummyUniplayerGame()

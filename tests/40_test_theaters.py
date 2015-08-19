@@ -166,6 +166,23 @@ def test_reset_initial_stage():
     with raises_api_usage_error():
         theater.initial_stage = DummyStage()
 
+def test_id_factory():
+    id = kxg.IdFactory(2, 3)
+    assert repr(id) == 'IdFactory(offset=2, spacing=3)'
+
+    assert id.get() == 2
+    assert id.next() == 2
+    assert id.next() == 5
+    assert id.next() == 8
+
+    assert 0 not in id
+    assert 1 not in id
+    assert 2 in id
+    assert 3 not in id
+    assert 4 not in id
+    assert 5 in id
+
+
 def test_uniplayer_game_stage():
     test = DummyUniplayerGame()
     test.update(10)

@@ -183,8 +183,8 @@ class DummyMessage (kxg.Message, linersock.test_helpers.Message):
 
 class DummyEndGameMessage (kxg.Message):
 
-    def on_check(self, world, sender_id):
-        return True
+    def on_check(self, world):
+        pass
 
     def on_execute(self, world):
         world.end_game()
