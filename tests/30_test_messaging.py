@@ -469,6 +469,29 @@ def test_multiplayer_unhandled_undo_response():
     with raises_api_usage_error("the message", "was rejected by the server"):
         test.update()
 
+def test_multiplayer_malicious_sender_id(capsys):
+    # Make sure the server rejects messages that claim to be from the wrong 
+    # player.  This is mostly to prevent cheating, although I suppose it's also 
+    # a debugging feature.
+
+    test = DummyMultiplayerGame()
+    fake_id = kxg.IdFactory(0,1)
+
+    for cheater in test.clients:
+        message = DummyMessage()
+        message._set_sender_id(fake_id)
+
+        cheater.pipe.send(message)
+        test.update()
+
+        out, err = capsys.readouterr()
+        assert "ignoring message from player {} claiming to be from player 0".format(cheater.gui_actor.id) in err
+
+        for observer in test.observers:
+            assert observer.dummy_messages_received == []
+        for world in test.worlds:
+            assert world.dummy_messages_executed == []
+
 def test_multiplayer_token_management():
     test = DummyMultiplayerGame()
 

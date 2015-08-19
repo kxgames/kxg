@@ -62,6 +62,15 @@ def test_token_creation():
         with raises_api_usage_error("can't add the same token to the world twice"):
             world._add_token(token)
 
+        # Make sure you can't add a token that's been previously removed from 
+        # the game.
+
+        force_remove_token(world, token)
+
+        with raises_api_usage_error("token DummyToken has been removed from the world"):
+            force_add_token(world, token)
+
+
 def test_token_type_checking():
     world = DummyWorld()
 
@@ -116,7 +125,7 @@ def test_illegal_token_usage():
 
     token.read_only()
     token.before_world()
-    with raises_api_usage_error("may have forgotten to add <DummyToken>"):
+    with raises_api_usage_error("may have forgotten to add DummyToken"):
         token.read_write()
     with raises_api_usage_error("can't be reset because it's still being used"):
         token.reset_registration()
@@ -162,7 +171,7 @@ def test_illegal_token_usage():
 
     token.read_only()
     token.before_world()
-    with raises_api_usage_error("may have forgotten to add <DummyToken>"):
+    with raises_api_usage_error("may have forgotten to add DummyToken"):
         token.read_write()
 
     force_add_token(world, token)

@@ -256,7 +256,9 @@ class DummyToken (kxg.Token, DummyObserver):
         self.parent = parent
 
     def __str__(self):
-        return '<DummyToken>'
+        # Overwrite __str__() instead of __repr__() so that we can still test 
+        # Token.__repr__().
+        return self.__class__.__name__
 
     def __extend__(self):
         return {DummyActor: DummyExtension}
