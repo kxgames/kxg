@@ -7,7 +7,7 @@ class ApiUsageError (Exception):
     A class for communicating errors to the user.
     """
 
-    message_width = 80
+    message_width = 79
 
     def __init__(self, message):
         import re, textwrap
@@ -247,11 +247,11 @@ expected {prototype_cls}, but got {object_cls} instead."""
 class ObjectIsntFullyConstructed (ApiUsageErrorFactory):
 
     message = """\
-forgot to call the {prototype_cls} constructor in {object_cls}.__init__()
+forgot to call the {prototype_cls} constructor in {object_cls}.__init__().
 
-The game engine expects {object} to be a {prototype_cls}, but it's missing the 
-'{missing_member}' attribute.  This usually means that you forgot to call the 
-{prototype_cls} constructor in your subclass."""
+The game engine was passed an object that inherits from {prototype_cls} but is 
+missing the '{missing_member}' attribute.  This usually means that you forgot 
+to call the {prototype_cls} constructor in your subclass."""
 
     def __init__(self, prototype, object, missing_member):
         self.prototype = prototype
