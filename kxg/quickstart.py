@@ -280,7 +280,7 @@ def main(world_cls, referee_cls, gui_actor_cls, ai_actor_cls,
 Run a game being developed with the kxg game engine.
 
 Usage:
-    {sys.argv[0]} sandbox [-v...]
+    {sys.argv[0]} sandbox [<num_ais>] [-v...]
     {sys.argv[0]} client [--host HOST] [--port PORT] [-v...]
     {sys.argv[0]} server <num_guis> [<num_ais>] [options] [-v...] 
     {sys.argv[0]} debug <num_guis> [<num_ais>] [options] [-v...]
