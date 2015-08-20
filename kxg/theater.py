@@ -11,11 +11,22 @@ class Theater:
     updating the current stage and handling transitions between stages.
     """
 
-    def __init__(self, initial_stage=None):
+    def __init__(self, initial_stage=None, gui=None):
+        self._gui = gui
         self._initial_stage = initial_stage
         self._current_stage = None
         self._current_update = self._update_before_loop
         self._previous_time = time.time()
+
+    @property
+    def gui(self):
+        return self._gui
+
+    @gui.setter
+    def gui(self, gui):
+        if self._current_stage:
+            raise ApiUsageError("theater already playing; can't set gui.")
+        self._gui = gui
 
     @property
     def initial_stage(self):
@@ -94,6 +105,10 @@ class Stage:
         self.theater = None
         self.successor = None
         self.is_finished = False
+
+    @property
+    def gui(self):
+        return self.theater.gui
 
     def exit_stage(self):
         """
@@ -174,6 +189,10 @@ class GameStage (Stage):
         # 3. Setup the actors.  Because this is done after the forum and the  
         #    world have been setup, this signals to the actors that they can 
         #    send messages and query the game world as usual.
+
+        for actor in self.actors:
+            actor._set_gui(self.gui)
+            actor.on_setup_gui()
 
         for actor in self.actors:
             actor.on_start_game()

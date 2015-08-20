@@ -8,6 +8,7 @@ class Actor (ForumObserver):
     def __init__(self):
         super().__init__()
         self.world = None
+        self.gui = None
         self._forum = None
         self._id_factory = None
 
@@ -61,6 +62,9 @@ class Actor (ForumObserver):
     def is_referee(self):
         return isinstance(self, Referee)
 
+    def on_setup_gui(self):
+        pass
+
     def on_start_game(self):
         pass
 
@@ -70,8 +74,12 @@ class Actor (ForumObserver):
     def on_finish_game(self):
         pass
 
+    def _set_gui(self, gui):
+        assert self.gui is None, "can't set gui twice"
+        self.gui = gui
+
     def _set_world(self, world):
-        assert self.world is None, "Actor already has world."
+        assert self.world is None, "can't set world twice"
         self.world = world
 
     def _set_forum(self, forum, id_factory):

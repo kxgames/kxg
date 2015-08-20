@@ -5,7 +5,6 @@ from test_helpers import *
 # ==============
 # 1. Rejecting bad add/remove token requests.
 # 2. Trying harder to trick the undo machinery.
-# 3. Quickstart.
 
 class DummyStage (kxg.Stage):
 
@@ -18,14 +17,17 @@ class DummyStage (kxg.Stage):
         self.called_on_exit_stage = False
 
     def on_enter_stage(self):
+        super().on_enter_stage()
         self.called_on_enter_stage = True
     
     def on_update_stage(self, dt):
+        super().on_update_stage(dt)
         self.called_on_update_stage += 1
         if self.called_on_update_stage >= self.num_updates:
             self.exit_stage()
     
     def on_exit_stage(self):
+        super().on_exit_stage()
         self.called_on_exit_stage = True
 
 
@@ -88,6 +90,8 @@ def sleep_forever():
 
 def test_stages():
     theater = kxg.Theater()
+    theater.gui = "gui"
+
     stage_1 = DummyStage()
     stage_2 = DummyStage()
     stage_3 = DummyStage()
@@ -100,8 +104,12 @@ def test_stages():
     assert not theater.is_finished
 
     theater.update()
+
+    with raises_api_usage_error("theater already playing; can't set gui"):
+        theater.gui = "new gui"
     
     assert theater.current_stage is stage_2
+    assert theater.current_stage.gui == "gui"
     assert stage_1.called_on_enter_stage
     assert stage_1.called_on_update_stage
     assert stage_1.called_on_exit_stage
@@ -116,6 +124,7 @@ def test_stages():
     theater.update()
 
     assert theater.current_stage is stage_3
+    assert theater.current_stage.gui == "gui"
     assert stage_1.called_on_enter_stage
     assert stage_1.called_on_update_stage
     assert stage_1.called_on_exit_stage
@@ -166,7 +175,6 @@ def test_reset_initial_stage():
     with raises_api_usage_error():
         theater.initial_stage = DummyStage()
 
-
 def test_uniplayer_game_stage():
     test = DummyUniplayerGame()
     test.update(10)
@@ -195,8 +203,6 @@ def test_quickstart_process_pool(logged_messages):
     # The exception should be re-raised in the main process and all the other 
     # workers should be immediately terminated.
 
-    print('raise')
-
     with pytest.raises(ZeroDivisionError):
         with kxg.quickstart.ProcessPool() as pool:
             pool.start("sleep forever", sleep_forever)
@@ -205,7 +211,6 @@ def test_quickstart_process_pool(logged_messages):
     # Make sure that the pool can shut down processes after they've gone over 
     # their time limit.
 
-    print('time_limit')
     with pytest.raises(RuntimeError):
         with kxg.quickstart.ProcessPool(time_limit=0.1) as pool:
             pool.start("sleep forever", sleep_forever)
@@ -213,7 +218,6 @@ def test_quickstart_process_pool(logged_messages):
     # Make sure that log messages made in the worker processes are correctly 
     # relayed to the main process.
 
-    print('log')
     with kxg.quickstart.ProcessPool() as pool:
         pool.start("logging test", log_something)
 

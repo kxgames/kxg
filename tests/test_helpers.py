@@ -283,14 +283,19 @@ class DummyToken (kxg.Token, DummyObserver):
 class DummyExtension (kxg.TokenExtension, DummyObserver):
     pass
 
+class DummyGui:
+    pass
+
 
 def dummy_main(argv=None):
     kxg.quickstart.main(
             world_cls=DummyWorld,
             referee_cls=DummyEndGameReferee,
+            gui_cls=DummyGui,
             gui_actor_cls=DummyActor,
             ai_actor_cls=DummyActor,
             argv=argv,
+
     )
 
 @contextlib.contextmanager

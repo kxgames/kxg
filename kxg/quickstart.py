@@ -26,6 +26,8 @@ class ClientConnectionStage (Stage):
 
     def on_update_stage(self, time):
         self.client.connect()
+        try: self.gui.on_refresh_gui()
+        except: pass
 
     def on_connection_established(self, pipe):
         self.pipe = pipe
@@ -73,12 +75,12 @@ class ServerConnectionStage (Stage):
 
 class PostgameSplashStage (Stage):
     """
-    Display a "Game Over" message and exit once the player hits <Enter>.
+    Until the player closes the window, keep it as it was when the game ended.
     """
 
-    def on_enter_stage(self):
-        print("Game over.")
-        self.exit_stage()
+    def on_update_stage(self, dt):
+        try: self.gui.on_refresh_gui()
+        except: self.exit_stage()
 
 
 class ProcessPool:
@@ -198,10 +200,10 @@ class MultiplayerDebugger:
     testing multiplayer games.
     """
 
-    def __init__(self, world_cls, referee_cls, gui_actor_cls, num_guis=2, 
-            ai_actor_cls=None, num_ais=0, host=default_host, port=default_port, 
-            log_format='%(levelname)s: %(processName)s: %(name)s: %(message)s',
-            theater_cls=PygletTheater):
+    def __init__(self, world_cls, referee_cls, gui_cls, gui_actor_cls,
+            num_guis=2, ai_actor_cls=None, num_ais=0, theater_cls=PygletTheater,
+            host=default_host, port=default_port, log_format=
+            '%(levelname)s: %(processName)s: %(name)s: %(message)s'):
 
         # Members of this class have to be pickle-able, because this object 
         # will be pickled and sent to every process that gets started.  That's 
@@ -215,6 +217,7 @@ class MultiplayerDebugger:
         self.theater_cls = theater_cls
         self.world_cls = world_cls
         self.referee_cls = referee_cls
+        self.gui_cls = gui_cls
         self.gui_actor_cls = gui_actor_cls
         self.num_guis = num_guis
         self.ai_actor_cls = ai_actor_cls
@@ -261,6 +264,7 @@ class MultiplayerDebugger:
         # should be pickled.
 
         theater = self.theater_cls()
+        theater.gui = self.gui_cls()
         theater.initial_stage = ClientConnectionStage(
                 world=self.world_cls(),
                 gui_actor=self.gui_actor_cls(),
@@ -270,12 +274,10 @@ class MultiplayerDebugger:
         theater.play()
 
 
-# args: queue
 
-
-def main(world_cls, referee_cls, gui_actor_cls, ai_actor_cls,
-        default_host=default_host, default_port=default_port,
-        theater_cls=PygletTheater, argv=None):
+def main(world_cls, referee_cls, gui_cls, gui_actor_cls, ai_actor_cls,
+        theater_cls=PygletTheater, default_host=default_host,
+        default_port=default_port, argv=None):
     """
 Run a game being developed with the kxg game engine.
 
@@ -322,6 +324,7 @@ Theater class.  The online documentation has more information on this process.
     num_guis = int(args['<num_guis>'] or 1)
     num_ais = int(args['<num_ais>'] or 0)
     host, port = args['--host'], int(args['--port'])
+
     logging.basicConfig(
             format='%(levelname)s: %(name)s: %(message)s',
             level=nonstdlib.verbosity(args['--verbose']),
@@ -329,26 +332,29 @@ Theater class.  The online documentation has more information on this process.
 
     # Use the given game objects and command line arguments to play a game!
 
-    game = theater_cls()
-    ai_actors = [ai_actor_cls() for i in range(num_ais)]
-
-    if args['sandbox']:
-        game.initial_stage = UniplayerGameStage(
-                world_cls(), referee_cls(), gui_actor_cls(), ai_actors)
-        game.initial_stage.successor = PostgameSplashStage()
-
-    if args['client']:
-        game.initial_stage = ClientConnectionStage(
-                world_cls(), gui_actor_cls(), host, port)
-
-    if args['server']:
-        game.initial_stage = ServerConnectionStage(
-                world_cls(), referee_cls(), num_guis, ai_actors, host, port)
-
     if args['debug']:
         game = MultiplayerDebugger(
-                world_cls, referee_cls, gui_actor_cls, num_guis, ai_actor_cls,
-                num_ais, host, port)
+                world_cls, referee_cls, gui_cls, gui_actor_cls, num_guis,
+                ai_actor_cls, num_ais, theater_cls, host, port)
+    else:
+        game = theater_cls()
+        ai_actors = [ai_actor_cls() for i in range(num_ais)]
+
+        if args['sandbox']:
+            game.gui = gui_cls()
+            game.initial_stage = UniplayerGameStage(
+                    world_cls(), referee_cls(), gui_actor_cls(), ai_actors)
+            game.initial_stage.successor = PostgameSplashStage()
+
+        if args['client']:
+            game.gui = gui_cls()
+            game.initial_stage = ClientConnectionStage(
+                    world_cls(), gui_actor_cls(), host, port)
+
+        if args['server']:
+            game.initial_stage = ServerConnectionStage(
+                    world_cls(), referee_cls(), num_guis, ai_actors,
+                    host, port)
 
     game.play()
 
