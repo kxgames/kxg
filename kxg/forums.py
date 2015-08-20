@@ -133,14 +133,14 @@ class ForumObserver:
         from inspect import getmembers, ismethod
 
         for method_name, method in getmembers(self, ismethod):
-            message_cls = getattr(method, '_kxg_subscribe_to_message', None)
-            if message_cls: self.subscribe_to_message(message_cls, method)
+            for message_cls in getattr(method, '_kxg_subscribe_to_message', []):
+                self.subscribe_to_message(message_cls, method)
 
-            message_cls = getattr(method, '_kxg_subscribe_to_sync_response', None)
-            if message_cls: self.subscribe_to_sync_response(message_cls, method)
+            for message_cls in getattr(method, '_kxg_subscribe_to_sync_response', []):
+                self.subscribe_to_sync_response(message_cls, method)
 
-            message_cls = getattr(method, '_kxg_subscribe_to_undo_response', None)
-            if message_cls: self.subscribe_to_undo_response(message_cls, method)
+            for message_cls in getattr(method, '_kxg_subscribe_to_undo_response', []):
+                self.subscribe_to_undo_response(message_cls, method)
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -254,19 +254,28 @@ def require_forum(object):
 
 def subscribe_to_message(message_cls):
     def decorator(function):
-        function._kxg_subscribe_to_message = message_cls
+        try:
+            function._kxg_subscribe_to_message.append(message_cls)
+        except AttributeError:
+            function._kxg_subscribe_to_message = [message_cls]
         return function
     return decorator
 
 def subscribe_to_sync_response(message_cls):
     def decorator(function):
-        function._kxg_subscribe_to_sync_response = message_cls
+        try:
+            function._kxg_subscribe_to_sync_response.append(message_cls)
+        except AttributeError:
+            function._kxg_subscribe_to_sync_response = [message_cls]
         return function
     return decorator
 
 def subscribe_to_undo_response(message_cls):
     def decorator(function):
-        function._kxg_subscribe_to_undo_response = message_cls
+        try:
+            function._kxg_subscribe_to_undo_response.append(message_cls)
+        except AttributeError:
+            function._kxg_subscribe_to_undo_response = [message_cls]
         return function
     return decorator
 

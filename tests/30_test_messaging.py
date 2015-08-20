@@ -604,6 +604,45 @@ def test_multiplayer_was_sent_by():
             assert received_message.was_sent_by_referee() == isinstance(
                     sender, kxg.Referee)
 
+def test_subscribing_to_multiple_messages():
+    test = DummyUniplayerGame()
+
+    class Message1 (DummyAcceptedMessage):
+        pass
+
+    class Message2 (DummyAcceptedMessage):
+        pass
+
+    class Message3 (DummyAcceptedMessage):
+        pass
+
+    class ListeningToken (kxg.Token):
+
+        def on_add_to_world(self, world):
+            self.messages = []
+
+        @kxg.subscribe_to_message(Message1)
+        @kxg.subscribe_to_message(Message2)
+        def on_either_message(self, message):
+            self.messages.append(message)
+
+
+    token = ListeningToken()
+    message_1 = Message1()
+    message_2 = Message2()
+    message_3 = Message3()
+
+    add_dummy_token(test.random_actor, token)
+
+    test.random_actor >> message_1
+    assert token.messages == [message_1]
+
+    test.random_actor >> message_2
+    assert token.messages == [message_1, message_2]
+
+    test.random_actor >> message_3
+    assert token.messages == [message_1, message_2]
+
 def test_unsubscribing_from_messages():
     test = DummyUniplayerGame()
 

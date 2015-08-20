@@ -93,6 +93,7 @@ class TokenMetaclass (type):
         the token are only called from update methods or messages.
         """
 
+        import functools
         from types import FunctionType
 
         is_method = isinstance(member_value, FunctionType)
@@ -151,6 +152,18 @@ class TokenMetaclass (type):
 
             return member_value(self, *args, **kwargs)
 
+        # Preserve any "forum observer" decorations that have been placed on 
+        # the method.  Also restore the method's original name and module 
+        # strings, to make inspection and debugging a little easier.
+
+        functools.update_wrapper(
+                safety_checked_method, member_value,
+                assigned=functools.WRAPPER_ASSIGNMENTS + (
+                    '_kxg_subscribe_to_message',
+                    '_kxg_subscribe_to_sync_response',
+                    '_kxg_subscribe_to_undo_response',
+                )
+        )
         return safety_checked_method
 
         
