@@ -24,7 +24,7 @@ class Referee (kxg.Referee):
     """
 
     def on_start_game(self):
-        self >> PickNumber(0, 5)
+        self >> PickNumber(0, 5000)
 
 
 class PickNumber (kxg.Message):
