@@ -286,6 +286,28 @@ Usage:
     {sys.argv[0]} client [--host HOST] [--port PORT] [-v...]
     {sys.argv[0]} server <num_guis> [<num_ais>] [options] [-v...] 
     {sys.argv[0]} debug <num_guis> [<num_ais>] [options] [-v...]
+    {sys.argv[0]} --help
+
+Modes:
+    sandbox
+        Play a single-player game with the specified number of AIs.  None of 
+        the multiplayer machinery will be used.
+
+    client
+        Launch a client that will try to connect to a server on the given host 
+        and port.  Once it connects and the game starts, the client will allow 
+        you to play the game against any other connected clients.
+
+    server
+        Launch a server that will manage a game between the given number of 
+        human and AI players.  The human players must connect using this 
+        command's client mode.
+
+    debug
+        Debug a multiplayer game locally.  This command launches a server and 
+        the given number of clients all in different processes, and configures 
+        the logging system such that the output from each process can be easily 
+        distinguished.
 
 Arguments:
     <num_guis>
@@ -333,6 +355,12 @@ Theater class.  The online documentation has more information on this process.
     # Use the given game objects and command line arguments to play a game!
 
     if args['debug']:
+        print("""\
+****************************** KNOWN BUG WARNING ******************************
+In debug mode, every message produced by the logging system gets printed twice.
+I know vaguely why this is happening, but as of yet I've not been able to fix
+it.  In the mean time, don't let this confuse you!
+*******************************************************************************""")
         game = MultiplayerDebugger(
                 world_cls, referee_cls, gui_cls, gui_actor_cls, num_guis,
                 ai_actor_cls, num_ais, theater_cls, host, port)
