@@ -23,5 +23,6 @@ distutils.core.setup(
             'linersock',
             'vecrec',
             'glooey',
+            'pytest',
         ],
 )
