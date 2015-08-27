@@ -288,7 +288,7 @@ Usage:
     {sys.argv[0]} debug <num_guis> [<num_ais>] [options] [-v...]
     {sys.argv[0]} --help
 
-Modes:
+Commands:
     sandbox
         Play a single-player game with the specified number of AIs.  None of 
         the multiplayer machinery will be used.
@@ -316,7 +316,7 @@ Arguments:
 
     <num_ais>
         The number of AI players that will be playing the game.  Only needed by 
-        commands that will launch some sort of multiplayer server.
+        commands that will launch single-player games or multiplayer servers.
 
 Options:
     -x --host HOST          [default: {default_host}]
