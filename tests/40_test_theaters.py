@@ -1,11 +1,6 @@
 import kxg
 from test_helpers import *
 
-# Things to test
-# ==============
-# 1. Rejecting bad add/remove token requests.
-# 2. Trying harder to trick the undo machinery.
-
 class DummyStage (kxg.Stage):
 
     def __init__(self, num_updates=1):

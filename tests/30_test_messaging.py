@@ -2,10 +2,10 @@
 
 from test_helpers import *
 
-# Things to do
-# ============
-# - Test weird undo situations.
-# - Refactor adding and removing tokens.
+# Things to test
+# ==============
+# 1. Rejecting bad add/remove token requests.
+# 2. Trying harder to trick the undo machinery.
 
 class TriggerResponse:
 

@@ -70,7 +70,6 @@ def test_token_creation():
         with raises_api_usage_error("token DummyToken has been removed from the world"):
             force_add_token(world, token)
 
-
 def test_token_type_checking():
     world = DummyWorld()
 
