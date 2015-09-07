@@ -23,16 +23,22 @@ class Message:
     def was_sent(self):
         return hasattr(self, 'sender_id')
 
-    def was_sent_by(self, actor_or_id_factory):
-        try: id = actor_or_id_factory.id
-        except AttributeError: id = actor_or_id_factory.get()
+    def was_sent_by(self, actor_or_id):
+        from .actors import Actor
+        from .forums import IdFactory
+
+        if isinstance(actor_or_id, Actor):
+            id = actor_or_id.id
+        elif isinstance(actor_or_id, IdFactory):
+            id = actor_or_id.get()
+        else:
+            id = actor_or_id
 
         try: return self.sender_id == id
         except AttributeError: raise MessageNotYetSent()
 
     def was_sent_by_referee(self):
-        try: return self.sender_id == 1
-        except AttributeError: raise MessageNotYetSent()
+        return self.was_sent_by(1)
 
     def tokens_to_add(self):
         yield from []

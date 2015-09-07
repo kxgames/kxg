@@ -21,9 +21,6 @@ class ClientConnectionStage (Stage):
         self.client = linersock.Client(
                 host, port, callback=self.on_connection_established)
 
-    def on_enter_stage(self):
-        print("kxg client connecting to {}:{}".format(self.host, self.port))
-
     def on_update_stage(self, time):
         self.client.connect()
         try: self.gui.on_refresh_gui()
@@ -55,7 +52,6 @@ class ServerConnectionStage (Stage):
                 host, port, num_clients, self.on_clients_connected)
 
     def on_enter_stage(self):
-        print("kxg server running on {}:{}".format(self.host, self.port))
         self.server.open()
 
     def on_update_stage(self, dt):
@@ -68,7 +64,6 @@ class ServerConnectionStage (Stage):
         self.pipes += pipes
 
     def on_exit_stage(self):
-        print("Clients connected.  Game starting.")
         self.successor = MultiplayerServerGameStage(
                 self.world, self.referee, self.ai_actors, self.pipes)
 

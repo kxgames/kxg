@@ -3,12 +3,6 @@
 from signal import signal, SIGPIPE, SIG_DFL
 signal(SIGPIPE,SIG_DFL)
 
-# This makes error messages fit in an 80-character terminal without wrapping, 
-# which makes them much easier to read.
-
-import kxg.errors
-kxg.errors.ApiUsageError.message_width = 63
-
 # Run pytest.  All command-lines options are forwarded to pytest.  If one or 
 # more test scripts are specified, only those will be run (and they will be run 
 # in the order specified).  If no tests are specified, they will all be run (in 
