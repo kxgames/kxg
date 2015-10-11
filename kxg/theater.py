@@ -88,7 +88,7 @@ class Theater:
         raise AssertionError("shouldn't update the theater after the game has ended.")
 
 
-class PygletTheater (Theater):
+class PygletTheater(Theater):
 
     def play(self, frames_per_sec=50):
         pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
@@ -152,7 +152,7 @@ class Stage:
         pass
 
 
-class GameStage (Stage):
+class GameStage(Stage):
 
     def __init__(self, world, forum, actors):
         Stage.__init__(self)
@@ -237,15 +237,15 @@ class GameStage (Stage):
             self.world.on_finish_game()
 
 
-class UniplayerGameStage (GameStage):
+class UniplayerGameStage(GameStage):
 
-    def __init__(self, world, referee, gui_actor, ai_actors=[]):
+    def __init__(self, world, referee, gui_actor, ai_actors=None):
         forum = Forum()
-        actors = [referee, gui_actor] + list(ai_actors)
+        actors = [referee, gui_actor] + list(ai_actors or [])
         GameStage.__init__(self, world, forum, actors)
 
 
-class MultiplayerClientGameStage (Stage):
+class MultiplayerClientGameStage(Stage):
 
     def __init__(self, world, gui_actor, pipe):
         super().__init__()
@@ -257,7 +257,7 @@ class MultiplayerClientGameStage (Stage):
             self.exit_stage()
 
 
-class MultiplayerServerGameStage (GameStage):
+class MultiplayerServerGameStage(GameStage):
 
     def __init__(self, world, referee, ai_actors, pipes):
         forum = Forum()

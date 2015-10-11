@@ -3,10 +3,9 @@
 import contextlib
 
 from .errors import *
-from .tokens import Token, read_only, before_world
-from .tokens import require_token, require_active_token
+from .tokens import Token, read_only, require_token, require_active_token
 
-class World (Token):
+class World(Token):
 
     def __init__(self):
         super().__init__()

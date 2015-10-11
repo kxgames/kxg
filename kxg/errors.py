@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+# pylint: disable=unused-import
 
 from nonstdlib import log, debug, info, warning, error, critical
 
-class ApiUsageError (Exception):
+class ApiUsageError(Exception):
     """
     A class for communicating errors to the user.
     """
@@ -14,7 +15,7 @@ class ApiUsageError (Exception):
 
         width = ApiUsageError.message_width
         message = textwrap.dedent(message)
-        tokens = [x.strip() for x in re.split('\n\s*\n', message, 1)]
+        tokens = [x.strip() for x in re.split(r'\n\s*\n', message, 1)]
 
         # Make sure the summary doesn't overflow 80 characters even after 
         # python adds the 'kxg.errors.ApiUsageError: ' prefix.
@@ -35,10 +36,7 @@ class ApiUsageError (Exception):
         else:
             details = ''
 
-        self.message = summary + details
-
-    def __str__(self):
-        return self.message
+        super().__init__(summary + details)
 
 
 class ApiUsageErrorFactory:
@@ -83,7 +81,7 @@ class ApiUsageErrorFactory:
     Note that when you try to construct an instance of an ApiUsageErrorFactory 
     subclass, you are actually returned an ApiUsageError instance.  So:
 
-    >>> class SirRobinRanAway (ApiUsageErrorFactory): pass
+    >>> class SirRobinRanAway(ApiUsageErrorFactory): pass
     >>> type(SirRobinRanAway())
     <class 'kxg.ApiUsageError'>
 
@@ -93,6 +91,8 @@ class ApiUsageErrorFactory:
     to remember that your factory classes are really factories, and that the 
     constructor is the when the exception is created.
     """
+
+    message = "Unknown error."
 
     def __new__(cls, *args, **kwargs):
         factory = object.__new__(cls)
@@ -112,7 +112,7 @@ class ApiUsageErrorFactory:
 
 
 
-class CantModifyTokenIfWorldLocked (ApiUsageErrorFactory):
+class CantModifyTokenIfWorldLocked(ApiUsageErrorFactory):
 
     message = """\
 attempted unsafe invocation of {token_class}.{method_name}().
@@ -130,7 +130,7 @@ with the @kxg.read_only decorator."""
         self.method_name = method_name
 
 
-class CantModifyTokenIfNotInWorld (ApiUsageErrorFactory):
+class CantModifyTokenIfNotInWorld(ApiUsageErrorFactory):
 
     message = """\
 may have forgotten to add {token} to the world.
@@ -148,7 +148,7 @@ before the token has been added to the world (i.e. the method helps setup
         self.method_name = method_name
 
 
-class CantPickleWorld (ApiUsageErrorFactory):
+class CantPickleWorld(ApiUsageErrorFactory):
 
     message = """\
 can't pickle the world.
@@ -160,7 +160,7 @@ this error is more likely to be the symptom of a major bug in the messaging
 system that is preventing it from correctly deciding which tokens need to be 
 pickled."""
 
-class CantResetActiveToken (ApiUsageErrorFactory):
+class CantResetActiveToken(ApiUsageErrorFactory):
 
     message = """\
 token {token} can't be reset because it's still being used.
@@ -176,7 +176,7 @@ was already reset)."""
         self.token = token
 
 
-class CantReuseMessage (ApiUsageErrorFactory):
+class CantReuseMessage(ApiUsageErrorFactory):
 
     message = """\
 can't send the same message more than once.
@@ -185,7 +185,7 @@ It's not safe to send the same message twice because messages can accumulate
 state as they are executed.  This also breaks the system by which clients can 
 react to responses from the server in multiplayer games.
 """
-class IllegalTokenExtensionConstructor (ApiUsageErrorFactory):
+class IllegalTokenExtensionConstructor(ApiUsageErrorFactory):
 
     message = """\
 the {extension_cls} constructor doesn't take the right arguments.
@@ -199,7 +199,7 @@ constructor compatible with these arguments."""
         self.extension_cls = extension_cls.__name__
 
 
-class MessageNotYetSent (ApiUsageErrorFactory):
+class MessageNotYetSent(ApiUsageErrorFactory):
 
     message = """\
 can't ask who sent a message before it's been sent.
@@ -208,7 +208,7 @@ This error means Message.was_sent_by() or Message.was_sent_by_referee() got
 called on a message that hadn't been sent yet.  Normally you would only call 
 these methods from within Message.on_check()."""
 
-class MessageAlreadySent (ApiUsageErrorFactory):
+class MessageAlreadySent(ApiUsageErrorFactory):
 
     message = """\
 messages can't add or remove tokens after they've been sent.
@@ -217,7 +217,7 @@ You get this error if you call Message.add_token() or Message.remove_token()
 after the message has been sent.  Normally you would only call these methods 
 from within the constructors of your message subclasses."""
 
-class NotUsingIdFactory (ApiUsageErrorFactory):
+class NotUsingIdFactory(ApiUsageErrorFactory):
 
     message = """\
 can't use {bad_id} as a token id.
@@ -232,7 +232,7 @@ create all your tokens in a manner that avoids synchronization bugs."""
         self.bad_id = bad_id
 
 
-class ObjectIsntRightType (ApiUsageErrorFactory):
+class ObjectIsntRightType(ApiUsageErrorFactory):
 
     message = """\
 expected {prototype_cls}, but got {object_cls} instead."""
@@ -244,7 +244,7 @@ expected {prototype_cls}, but got {object_cls} instead."""
         self.object_cls = object.__class__.__name__
 
 
-class ObjectIsntFullyConstructed (ApiUsageErrorFactory):
+class ObjectIsntFullyConstructed(ApiUsageErrorFactory):
 
     message = """\
 forgot to call the {prototype_cls} constructor in {object_cls}.__init__().
@@ -261,17 +261,19 @@ to call the {prototype_cls} constructor in your subclass."""
         self.missing_member = missing_member
 
 
-class ObjectIsntMessageSubclass (ApiUsageErrorFactory):
+class ObjectIsntMessageSubclass(ApiUsageErrorFactory):
 
     message = """\
 expected Message subclass, but got {object} instead."""
 
     def __init__(self, object):
-        try: self.object = object.__name__
-        except: self.object = object
+        try:
+            self.object = object.__name__
+        except:
+            self.object = object
 
 
-class TokenAlreadyHasId (ApiUsageErrorFactory):
+class TokenAlreadyHasId(ApiUsageErrorFactory):
 
     message = """\
 token {token} already has an id.
@@ -282,7 +284,7 @@ This error usually means that {token} was added to the world twice."""
         self.token = token
 
 
-class TokenAlreadyInWorld (ApiUsageErrorFactory):
+class TokenAlreadyInWorld(ApiUsageErrorFactory):
 
     message = """\
 can't add the same token to the world twice.
@@ -295,7 +297,7 @@ to the world on without using a message (i.e. CreateToken)."""
         self.token = token
 
 
-class TokenDoesntHaveId (ApiUsageErrorFactory):
+class TokenDoesntHaveId(ApiUsageErrorFactory):
 
     message = """\
 token {token} should have an id, but doesn't.
@@ -308,7 +310,7 @@ assigned an id number.  To correct this, make sure that you're using a message
         self.token = token
 
 
-class TokenCantSubscribeNow (ApiUsageErrorFactory):
+class TokenCantSubscribeNow(ApiUsageErrorFactory):
 
     message = """\
 token {token} can't subscribe to messages now.
@@ -326,7 +328,7 @@ handler methods with the @subscribe_to_message decorator."""
         self.token = token
 
 
-class TokenCantUseStaleReporter (ApiUsageErrorFactory):
+class TokenCantUseStaleReporter(ApiUsageErrorFactory):
     
     message = """\
 tokens can't send messages outside of report().
@@ -336,7 +338,7 @@ reporter that is no longer accepting messages.  This can happen if you save the
 reporter object passed to Token.report() and attempt to use it outside of that 
 method call."""
 
-class TokenHasNoSuchMethodToWatch (ApiUsageErrorFactory):
+class TokenHasNoSuchMethodToWatch(ApiUsageErrorFactory):
 
     message = """\
 {token_cls} has no such method {method_name}() to watch.
@@ -351,7 +353,7 @@ corresponding token class.  Check for typos."""
         self.method_name = method_name
 
 
-class TokenNotInWorld (ApiUsageErrorFactory):
+class TokenNotInWorld(ApiUsageErrorFactory):
 
     message = """\
 token {token} (id={token.id}) not in world.
@@ -365,7 +367,7 @@ reference."""
         self.token = token
 
 
-class UsingRemovedToken (ApiUsageErrorFactory):
+class UsingRemovedToken(ApiUsageErrorFactory):
 
     message = """\
 token {token} has been removed from the world.
@@ -380,7 +382,7 @@ token is accidentally being kept."""
         self.token = token
 
 
-class UsingStaleReporter (ApiUsageErrorFactory):
+class UsingStaleReporter(ApiUsageErrorFactory):
 
     message = """\
 {message_cls} message sent using a stale reporter.
@@ -400,7 +402,7 @@ bugs on the clients, which are never given reporter objects."""
         self.message_cls = message.__class__.__name__
 
 
-class UnhandledSyncError (ApiUsageErrorFactory):
+class UnhandledSyncError(ApiUsageErrorFactory):
 
     message = """\
 the message {message_} was rejected by the server.
@@ -415,7 +417,7 @@ everything done in {message_cls}.on_execute()."""
         self.message_cls = message.__class__.__name__
 
 
-class WorldAlreadyUnlocked (ApiUsageErrorFactory):
+class WorldAlreadyUnlocked(ApiUsageErrorFactory):
 
     message = """\
 tired to unlock the world, but it's already unlocked.
@@ -434,8 +436,6 @@ def debug_only(function):
 
 @debug_only
 def require_instance(prototype, object):
-    from inspect import getmembers
-
     if not isinstance(object, type(prototype)):
         raise ObjectIsntRightType(prototype, object)
 

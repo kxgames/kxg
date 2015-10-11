@@ -132,7 +132,7 @@ class ForumObserver:
 
         from inspect import getmembers, ismethod
 
-        for method_name, method in getmembers(self, ismethod):
+        for _, method in getmembers(self, ismethod):
             for message_cls in getattr(method, '_kxg_subscribe_to_message', []):
                 self.subscribe_to_message(message_cls, method)
 

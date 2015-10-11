@@ -36,17 +36,19 @@ def require_active_token(object):
     token = require_token(object)
 
     if token.world_registration == 'pending':
-        if not token.has_id(): raise TokenDoesntHaveId(token)
-        if not token.has_world(): raise TokenNotInWorld(token)
+        if not token.has_id():
+            raise TokenDoesntHaveId(token)
+        if not token.has_world():
+            raise TokenNotInWorld(token)
     if token.world_registration == 'expired':
         raise UsingRemovedToken(token)
 
     return token
 
 
-class TokenMetaclass (type):
+class TokenMetaclass(type):
 
-    def __new__(meta, name, bases, members):
+    def __new__(mcs, name, bases, members):
         """
         Add checks to make sure token methods are being called safely.
 
@@ -69,19 +71,19 @@ class TokenMetaclass (type):
         """
 
         if __debug__:
-            meta.add_safety_checks(members)
+            mcs.add_safety_checks(members)
 
-        return super().__new__(meta, name, bases, members)
+        return super().__new__(mcs, name, bases, members)
         
 
     @classmethod
-    def add_safety_checks(cls, members):
+    def add_safety_checks(mcs, members):
         """
         Iterate through each member of the class being created and add a 
         safety check to every method that isn't marked as read-only.
         """
         for member_name, member_value in members.items():
-            members[member_name] = cls.add_safety_check(
+            members[member_name] = mcs.add_safety_check(
                     member_name, member_value)
 
     @staticmethod
@@ -168,7 +170,7 @@ class TokenMetaclass (type):
 
         
 
-class Token (ForumObserver, metaclass=TokenMetaclass):
+class Token(ForumObserver, metaclass=TokenMetaclass):
 
     class WatchedMethod:
 
@@ -238,7 +240,8 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         if self._removed_from_world:
             return 'expired'
         elif self.has_world():
-            if not self.has_id(): raise TokenDoesntHaveId(self)
+            if not self.has_id():
+                raise TokenDoesntHaveId(self)
             return 'active'
         else:
             return 'pending'
@@ -346,11 +349,13 @@ class Token (ForumObserver, metaclass=TokenMetaclass):
         client and message handlers cannot be pickled, subscribing at this time 
         would create hard-to-find synchronization bugs.
         """
-        try: super()._check_if_forum_observation_enabled()
-        except AssertionError: raise TokenCantSubscribeNow(self)
+        try:
+            super()._check_if_forum_observation_enabled()
+        except AssertionError:
+            raise TokenCantSubscribeNow(self)
 
 
-class TokenExtension (ForumObserver):
+class TokenExtension(ForumObserver):
 
     def __init__(self, actor, token):
         super().__init__()

@@ -2,7 +2,7 @@ from .errors import *
 from .forums import Forum, IdFactory
 from .actors import Actor
 
-class ClientForum (Forum):
+class ClientForum(Forum):
 
     def __init__(self, pipe):
         super().__init__()
@@ -163,7 +163,8 @@ class ClientForum (Forum):
             # were sent after it have been handled.  This keeps the world in a 
             # sane state for every response.
 
-            if response is None: break
+            if response is None:
+                break
 
             # If the server requested that a message sync or undo itself, then 
             # do that.  Messages coming from any client may need to be synced, 
@@ -188,7 +189,7 @@ class ClientForum (Forum):
         return {self.actor: self.actor_id_factory}
 
 
-class ServerActor (Actor):
+class ServerActor(Actor):
 
     def __init__(self, pipe):
         super().__init__()
@@ -196,7 +197,7 @@ class ServerActor (Actor):
         self.pipe = pipe
         self.pipe.lock()
 
-    def send_message(self):
+    def send_message(self, message):
         raise NotImplementedError
 
     def on_start_game(self):

@@ -6,10 +6,10 @@ import logging, logging.handlers
 from .errors import *
 from .theater import *
 
-default_host = 'localhost'
-default_port = 53351
+DEFAULT_HOST = 'localhost'
+DEFAULT_PORT = 53351
 
-class ClientConnectionStage (Stage):
+class ClientConnectionStage(Stage):
 
     def __init__(self, world, gui_actor, host, port):
         super().__init__()
@@ -21,10 +21,12 @@ class ClientConnectionStage (Stage):
         self.client = linersock.Client(
                 host, port, callback=self.on_connection_established)
 
-    def on_update_stage(self, time):
+    def on_update_stage(self, dt):
         self.client.connect()
-        try: self.gui.on_refresh_gui()
-        except: pass
+        try:
+            self.gui.on_refresh_gui()
+        except AttributeError:
+            pass
 
     def on_connection_established(self, pipe):
         self.pipe = pipe
@@ -37,13 +39,14 @@ class ClientConnectionStage (Stage):
         self.successor = game_stage
 
 
-class ServerConnectionStage (Stage):
+class ServerConnectionStage(Stage):
 
-    def __init__(self, world, referee, num_clients, ai_actors=[], host=default_host, port=default_port):
+    def __init__(self, world, referee, num_clients, ai_actors=None,
+            host=DEFAULT_HOST, port=DEFAULT_PORT):
         super().__init__()
         self.world = world
         self.referee = referee
-        self.ai_actors = ai_actors
+        self.ai_actors = ai_actors or []
         self.host = host
         self.port = port
         self.pipes = []
@@ -68,14 +71,16 @@ class ServerConnectionStage (Stage):
                 self.world, self.referee, self.ai_actors, self.pipes)
 
 
-class PostgameSplashStage (Stage):
+class PostgameSplashStage(Stage):
     """
     Until the player closes the window, keep it as it was when the game ended.
     """
 
     def on_update_stage(self, dt):
-        try: self.gui.on_refresh_gui()
-        except: self.exit_stage()
+        try:
+            self.gui.on_refresh_gui()
+        except AttributeError:
+            self.exit_stage()
 
 
 class ProcessPool:
@@ -150,9 +155,9 @@ class ProcessPool:
 
         try:
             while still_supervising():
-                # When a log message is received, make a logger in this process 
-                # with the same name and use it to re-log the message.  It will 
-                # get handled in this process.
+                # When a log message is received, make a logger with the same 
+                # name in this process and use it to re-log the message.  It 
+                # will get handled in this process.
 
                 try:
                     record = self.log_queue.get_nowait()
@@ -187,7 +192,6 @@ class ProcessPool:
                 process.terminate()
 
 
-
 class MultiplayerDebugger:
     """
     Simultaneously plays any number of different game theaters, executing each 
@@ -197,7 +201,7 @@ class MultiplayerDebugger:
 
     def __init__(self, world_cls, referee_cls, gui_cls, gui_actor_cls,
             num_guis=2, ai_actor_cls=None, num_ais=0, theater_cls=PygletTheater,
-            host=default_host, port=default_port, log_format=
+            host=DEFAULT_HOST, port=DEFAULT_PORT, log_format=
             '%(levelname)s: %(processName)s: %(name)s: %(message)s'):
 
         # Members of this class have to be pickle-able, because this object 
@@ -221,7 +225,7 @@ class MultiplayerDebugger:
         self.port = port
         self.log_format = log_format
 
-    def play(self, executor=None):
+    def play(self):
         # Configure the logging system to print to stderr and include the 
         # process name in all of its messages.
 
@@ -247,7 +251,7 @@ class MultiplayerDebugger:
                 world=self.world_cls(),
                 referee=self.referee_cls(),
                 num_clients=self.num_guis,
-                ai_actors=[ai_actor_cls() for i in range(self.num_ais)],
+                ai_actors=[self.ai_actor_cls() for i in range(self.num_ais)],
                 host=self.host,
                 port=self.port,
         )
@@ -271,8 +275,8 @@ class MultiplayerDebugger:
 
 
 def main(world_cls, referee_cls, gui_cls, gui_actor_cls, ai_actor_cls,
-        theater_cls=PygletTheater, default_host=default_host,
-        default_port=default_port, argv=None):
+        theater_cls=PygletTheater, default_host=DEFAULT_HOST,
+        default_port=DEFAULT_PORT, argv=None):
     """
 Run a game being developed with the kxg game engine.
 
@@ -334,7 +338,7 @@ you'll have to write new Stage subclasses encapsulating that logic and you'll
 have to call those stages yourself by interacting more directly with the 
 Theater class.  The online documentation has more information on this process.
     """
-    import sys, docopt, logging, nonstdlib
+    import sys, docopt, nonstdlib
 
     usage = main.__doc__.format(**locals()).strip()
     args = docopt.docopt(usage, argv or sys.argv[1:])

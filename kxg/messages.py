@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 
 from .errors import *
-from .tokens import require_token
-
-# Message.on_check() should raise exceptions.
-
-# Message.on_check() probably shouldn't take sender_id as an argument, because 
-# the message should already know that about itself.  The point of this 
-# argument is to let the server check that the message is coming from the right 
-# client, but the server can do that on it's own behind the scenes.
 
 class Message:
+    # This class defers initializing all of its members until the appropriate 
+    # setter is called, rather than initializing everything in a constructor.  
+    # This is done to avoid sending unnecessary information over the network.
 
     class ErrorState:
         SOFT_SYNC_ERROR = 0
@@ -34,8 +29,10 @@ class Message:
         else:
             id = actor_or_id
 
-        try: return self.sender_id == id
-        except AttributeError: raise MessageNotYetSent()
+        try:
+            return self.sender_id == id
+        except AttributeError:
+            raise MessageNotYetSent()
 
     def was_sent_by_referee(self):
         return self.was_sent_by(1)
@@ -102,8 +99,10 @@ class Message:
         self._server_response = server_response
 
     def _get_server_response(self):
-        try: return self._server_response
-        except AttributeError: return None
+        try:
+            return self._server_response
+        except AttributeError:
+            return None
 
     def _assign_token_ids(self, id_factory):
         # Called by Actor but not by ServerActor, so it is guaranteed to be 
@@ -164,7 +163,7 @@ class Message:
         self.on_undo(world)
 
 
-class MessageCheck (Exception):
+class MessageCheck(Exception):
     pass
 
 

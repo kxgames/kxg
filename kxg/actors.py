@@ -3,7 +3,7 @@
 from .errors import *
 from .forums import ForumObserver
 
-class Actor (ForumObserver):
+class Actor(ForumObserver):
 
     def __init__(self):
         super().__init__()
@@ -97,7 +97,7 @@ class Actor (ForumObserver):
         pass
 
 
-class Referee (Actor):
+class Referee(Actor):
 
     class Reporter:
         
