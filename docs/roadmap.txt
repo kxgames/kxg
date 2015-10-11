@@ -1,24 +1,46 @@
-Big picture: 
-    Loop -> GameStage -> Actors -> Tokens
+Beginning Users
+===============
+Get someone who is shopping for a game engine libraries up and running as 
+quickly and as easily as possible.
 
-Forum actor overview
+Introduction:
+    What is the library supposed to do
+    Quickstart/Pong demo?
+    How to install
+    What are dependencies
+
+Intermediate Users
+==================
+Explain in prose the various frameworks and mental models that make up the game 
+engine.
+
+"Allied" libraries:
+    vector, pyglet, pygame, glooey, linersock
+
+Big picture:
+    Loop -> GameStage -> Actor -> Token
 
 Loop overview:
     Loop -> stage
     GameStage vs. custom stages
 
 Messaging overview
-    Actors -> forums
-    actors -> messages
-    how a message is propagated.
+    Actor -> Forum
+    Actor -> Message
+    How a message is propagated.
     What to inherit
-    Soft/hard fail
+    Sync and undo responses.
     What the callbacks do.
 
 Token overview:
-    World/token/extensions
-    tokens -> actor relationship
-    error checks
+    World/Token/TokenExtension
+    Token -> Actor
+    Error checks
+
+Advanced Users
+==============
+API documentation
+How to contribute
 
 Devel docs:
-1. Why don't certain alternatice work.
+1. Why don't certain alternatives work.

@@ -1,35 +1,35 @@
-KXG Game Engine Documentation
-=============================
-This library is intended to facilitate the development of reasonably 
-sophisticated computer games.  Towards that ends, it provided components for 
-building graphical interfaces, manipulating moving sprites, performing vector 
-calculations, passing messages across the network, and updating the game loop.  
-These components were designed to allow both the rapid assembly of prototype 
-games and the painless conversion of those prototypes into full-fledged 
-games.
+***************
+KXG Game Engine
+***************
+This library provides a framework for writing multiplayer computer games.  The 
+game engine is easy to use, requires almost no boilerplate code, and scales 
+painlessly from prototypes to full-fledged games.  The engine is driven by a 
+message passing framework that was designed to be intuitive and optimized to 
+avoid lag.  The game engine is also very good at noticing when it's being 
+misused and explaining how it should be used with detailed error messages.  
+This makes it easier to start using the engine and harder to make subtle 
+synchronization bugs that would otherwise be very difficult to track down.
 
-The library can be downloaded from one of two git repositories.  The first 
-repository has can be pushed to, but requires a key on the KXG server.  Your 
-SSH configuration must also contain the appropriate definition of the `kxgames` 
-host.  The second repository is read-only and available to anyone.  
-
-.. code-block:: bash
-    
-    git clone kxgames:git/engine/code
-    git clone git://kxgames.net/engine/code
-
-Note that although the API is functional in many ways, it is not stable.  Until 
-the API stabilizes, the project version number will remain 0.1 and you should 
-test your code carefully after pulling a new version of the library.
-
+Getting Started
+===============
 .. toctree::
-    :maxdepth: 2
-    :numbered:
+   :maxdepth: 1
 
-    engine.rst
-    geometry.rst
-    gui.rst
-    messaging.rst
-    network.rst
-    sprites.rst
-    tools.rst
+   right_for_you
+   installation
+   demos/guess_my_number
+
+Learning More
+=============
+.. toctree::
+   big_picture.rst
+   messaging_overview.rst
+   theater_overview.rst
+   token_overview.rst
+
+Quick Reference
+===============
+.. toctree::
+   api/index.rst
+   contributing.rst
+
