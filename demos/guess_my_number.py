@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# vim: tw=76
 
 import kxg
 import random
@@ -103,8 +104,8 @@ class Gui:
 
 class GuiActor(kxg.Actor):
     """
-    Show the players the range of numbers that haven't been eliminated yet, and 
-    allow the player to guess what the number is.
+    Show the players the range of numbers that haven't been eliminated yet,
+    and allow the player to guess what the number is.
     """
 
     def __init__(self):
