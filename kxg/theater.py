@@ -191,8 +191,7 @@ class GameStage(Stage):
         #    send messages and query the game world as usual.
 
         for actor in self.actors:
-            actor._set_gui(self.gui)
-            actor.on_setup_gui()
+            actor.on_setup_gui(self.gui)
 
         for actor in self.actors:
             actor.on_start_game()

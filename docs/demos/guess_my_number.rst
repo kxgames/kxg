@@ -200,7 +200,7 @@ The game engine itself doesn't care how the GUI is written, so for your own
 games you can use whatever graphics library best fits your needs.  We'll use 
 pyglet in this tutorial, because it offers a good balance between power and 
 ease of use.  If you're not familiar with pyglet, `this brief tutorial`_ covers 
-everything we'll need, which really isn't that much more than "Hello world!"
+everything we'll need, which really isn't much more than "Hello world!"
 
 .. _this brief tutorial:
    http://pyglet-current.readthedocs.org/en/latest/programming_guide/quickstart.html
@@ -250,33 +250,33 @@ may have been changed the game since the last redraw.  The game engine calls
 this method automatically before and after the game, and we'll call it manually 
 during the game itself.
 
-Our second GUI class will be ``GuiActor``. 
-
-Actors are a core part of the game engine and their role is to represent a 
-player in the game.  ``GuiActor`` will represent a human player playing via 
-
-The purpose of this class will be to actually interact with the player during 
-the game, so it will render the screenshot from the beginning of this section 
-and send messages on behalf of the player.  This will be a long class, but I 
-think the best way to work through it will be to show it all at once and to 
-break it down method-by-method afterward::
+Our second GUI class will be ``GuiActor``.  Actors are the components of the 
+game engine that represent individual players.  We will write ``GuiActor`` to 
+represent human players and (in the next section) ``AiActor`` to represent 
+computer players.  To represent human players, ``GuiActor`` will have to render 
+the screenshot from the beginning of this section and send messages on behalf 
+of the player::
 
    import kxg
 
-   class GuiActor (kxg.Actor):
+   class GuiActor(kxg.Actor):
        """
        Show the players the range of numbers that haven't been eliminated yet, 
        and allow the player to guess what the number is.
        """
-
-       def on_setup_gui(self):
+   
+       def __init__(self):
+           super().__init__()
            self.guess = ''
            self.prompt = "{0.lower_bound} < {1} < {0.upper_bound}"
+   
+       def on_setup_gui(self, gui):
+           self.gui = gui
            self.gui.window.set_handlers(self)
-
+   
        def on_draw(self):
            self.gui.on_refresh_gui()
-
+   
        def on_key_press(self, symbol, modifiers):
            # If the user types a number, add that digit to the guess.
            try:
@@ -289,90 +289,100 @@ break it down method-by-method afterward::
            if symbol == pyglet.window.key.BACKSPACE:
                if self.guess:
                    self.guess = self.guess[:-1]
-
+   
            # If the user hits enter, guess the current number.
            if symbol == pyglet.window.key.ENTER:
                if self.guess:
                    self >> GuessNumber(self.id, int(self.guess))
                    self.guess = ''
-
+   
            self.on_update_prompt()
-
+   
        @kxg.subscribe_to_message(PickNumber)
        @kxg.subscribe_to_message(GuessNumber)
        def on_update_prompt(self, message=None):
            self.gui.label.text = self.prompt.format(
                    self.world, self.guess or '???')
-
+   
        def on_finish_game(self):
            self.gui.window.pop_handlers()
-
+   
            if self.world.winner == self.id:
                self.gui.label.text = "You won!"
            else:
                self.gui.label.text = "You lost!"
 
+As usual, the game engine doesn't much care what happens in the constructor.  
+Here we just define two variables that we will use to manage the GUI: 
+``self.guess`` will keep track of the guesses as the player types them and 
+``self.prompt`` will be formatted and displayed to the player on each frame.
 
-The constructor simply defines ``self.guess`` and ``self.prompt``.  The former 
-will keep track of the numbers the user types and the latter will be formatted 
-and displayed to the user each frame.
+The ``on_setup_gui()`` method is called by the game engine to give ``GuiActor`` 
+a chance to store a reference to the ``Gui`` object.  This is how GUI 
+information from outside the game can be used inside the game.  The call to 
+``set_handlers()`` tells pyglet that it should use the ``on_draw()`` and 
+``on_key_press()`` methods to handle draw and keyboard events.  
 
-The ``on_setup_gui()`` method
-formatted a
+The ``on_draw()`` method manually calls ``Gui.on_refresh_gui()``, which causes 
+the window to be cleared and redrawn.  Although ``on_refresh_gui()`` is called 
+automatically before and after the game, is has to be called manually during 
+the game.  The reason is that many games require more complicated draw steps 
+during game than they do before or after it.
 
-an attribute to keep track of what the user has typed and an attribute to v
+The ``on_key_press()`` method handles keyboard input from the player.  If the 
+player types a number, it is added to the guess.  If he or she hits backspace, 
+a digit is removed from the guess.  If he or she hits enter, the guess is made 
+into a message and processed by the game engine.  This last step, sending 
+messages on behalf of the player, is what ``GuiActor`` exists to do.  We use 
+``self.id`` to tell ``GuessNumber`` which player is making the guess.  This id 
+is assigned by the engine as soon as the game starts and is guaranteed to be 
+unique for each actor.  Once the message is ready, we send it using the ``>>`` 
+operator.
 
-The ``on_setup_gui()`` method takes the place of the constructor.  When the 
-game starts, the game engine will call this method after storing a reference to 
-the ``Gui`` object in ``GuiActor.gui``.  The call to ``set_handlers()`` tells 
-pyglet that it should use ``on_draw()`` and ``on_key_press()`` to handle draw 
-and keyboard events.  
+The ``on_update_prompt()`` method shows the player the latest bounds on the 
+number to guess.  The ``kxg.subscribe_to_message()`` decorators tell the game 
+engine to call this method whenever a ``PickNumber`` or ``GuessNumber`` message 
+is received.  There are other ways to subscribe to messages (described in 
+:doc:`/messaging_overview`) but decorators are generally the most readable.
 
-It tells pyglet to search the given object for event handlers, and for 
-``GuiActor`` those are the two handlers it will recognize.
-
-The call to set_handlers() is part of the pyglet API, but it merits some 
-explanation.  It tells pyglet 
-
-
-ais a pyglet feature, but it merits some further explanation.   pyglet to call 
-``on_draw()`` and ``on_key_press()`` when the relevant events fire.  configures 
-
-The assignments to ``self.guess`` and ``self.prompt`` 
-
-The ``on_draw`` and ``on_key_press`` methods are
-
-and will then call 
-``GuiActor.on_setup_gui()``.  The last line 
-of this method instructs pyglet to let ``GuiActor``.  
-
-and The game 
-engine It will be 
-called automatically by the game engine once the game has started and the actor 
-has been given a reference the ``Gui``.
-and the game has started.  
-
-Instead of a constructor, ``GuiActor`` has the ``on_setup_gui()`` method.  This 
-method is called automatically by the game engine once the game starts
-
-   
-The graphical user interface (GUI) will be the longest part of the demo because 
-there's just no way to write a GUI from scratch without writing a fair amount 
-of code.  
-
-The most complicated part of our game will be the graphical user interface 
-(GUI).  To implement the GUI, we will write two classes: ``Gui`` and 
-``GuiActor``.  The ``Gui`` class will store information about the GUI that we 
-will use both inside and outside the game.  For Guess My Number we will only 
-use this information for the game itself and the post-game "You Won/Lost" 
-message, but for bigger games you might also use it for menus, multiplayer 
-lobbies, and things like that.  The ``GuiActor`` class will represent a player 
-in the game.  It will show that player the state of the world and allow that 
-player to interact with the game by sending messages.
+The ``on_finish_game()`` method is called by the game engine once the game has 
+been ended by a ``GuessNumber`` message.  This method removes the game's event 
+handlers from the window and sets the post-game "You Won/Lost!" message.  The 
+id number of the winning player is stored in the world, so we can compare that 
+to ``self.id`` to figure out which message to use.
 
 Making an AI opponent
 =====================
-Coming soon.
+Just like human players, AI players are represented by actors.  AI players are 
+represented by actors just like human players.
+To make an AI player, we'll do pretty much the same thing we did to make a 
+human player.
+The ``AiActor`` class is 
+
+   class AiActor(kxg.Actor):
+       """
+       Wait a random amount of time, then guess a random number within the 
+       remaining range.
+       """
+
+       def __init__(self):
+           super().__init__()
+           self.reset_timer()
+
+       def on_update_game(self, dt):
+           self.timer -= dt
+
+           if self.timer < 0:
+               lower_bound = self.world.lower_bound + 1
+               upper_bound = self.world.upper_bound - 1
+               guess = random.randint(lower_bound, upper_bound)
+               self >> GuessNumber(self.id, guess)
+               self.reset_timer()
+
+       def reset_timer(self):
+           self.timer = random.uniform(1, 3)
+
+
 
 Putting it all together
 =======================

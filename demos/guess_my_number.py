@@ -113,7 +113,8 @@ class GuiActor(kxg.Actor):
         self.guess = ''
         self.prompt = "{0.lower_bound} < {1} < {0.upper_bound}"
 
-    def on_setup_gui(self):
+    def on_setup_gui(self, gui):
+        self.gui = gui
         self.gui.window.set_handlers(self)
 
     def on_draw(self):
