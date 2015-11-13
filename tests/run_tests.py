@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from signal import signal, SIGPIPE, SIG_DFL
-signal(SIGPIPE,SIG_DFL)
+signal(SIGPIPE, SIG_DFL)
 
 # Run pytest.  All command-lines options are forwarded to pytest.  If one or 
 # more test scripts are specified, only those will be run (and they will be run 
