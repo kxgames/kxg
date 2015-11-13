@@ -35,7 +35,7 @@ Dependencies
 ============
 The kxg game engine depends on a handful of libraries and works seamlessly with 
 libraries that facilitate different aspects of writing games.  The engine's 
-biggest dependency is python 3.  It also requires the following libraries:
+biggest dependency is ``python3``.  It also requires the following libraries:
 
    - ``pyglet`` --- A powerful OpenGL API.  The game engine makes use of 
      pyglet's main loop, which is quite full-featured.

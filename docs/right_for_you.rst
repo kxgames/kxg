@@ -24,12 +24,12 @@ game engine only allows the world to be modified in two ways:
       that that message is executed by each participating game.
    
 Having the worlds update themselves is safe, because they should be mostly in 
-sync anyway.  The worlds can drift out of sync due to slight differences in 
-timing and whatnot, but this can be fixed by sending periodic synchronization 
-messages.  Having players initiate changes to the worlds is potentially more 
-dangerous.  The game engine handles this by requiring you to encapsulate these 
-changes in message objects that can be directly relayed to each participating 
-game.  The game engine also does a lot to make sure that:
+sync to start with.  The worlds can drift out of sync due to slight differences 
+in timing and whatnot, but this can be fixed by sending periodic 
+synchronization messages.  Having players initiate changes to the worlds is 
+potentially more dangerous.  The game engine handles this by requiring you to 
+encapsulate these changes in message objects that can be relayed to each 
+participating game.  The game engine also does a lot to make sure that:
 
    1. You can't modify the world in an unsafe way.  If you try to, the engine 
       will display a verbose and explanatory message before crashing your game.
