@@ -11,11 +11,24 @@ writing the game itself, but real enough that we'll be able to see the power of
 the game engine.  For example, our implementation will have both multiplayer 
 and single-player vs. AI modes.
 
-You can download the `complete demo`_ from the demos folder in the kxg 
-repository on GitHub, or you can just follow along with the code snippets on 
-this page.
+Playing the demo
+================
+Before reading this article, you might want to play the demo to get a feel for 
+how it works.  Follow :doc:`these instructions </installation>` to install the 
+game engine if you haven't already, then download the `complete demo`_ from the 
+demos folder in the kxg repository on GitHub.  Run the demo with the ``--help`` 
+flag to see how to play the game in all the single-player and multiplayer modes 
+it supports::
 
-.. _complete demo: https://github.com/kxgames/kxg/blob/master/demos/guess_my_number.py
+   $ python3 guess_my_number.py --help
+
+For example, the command to play a simple single-player game against no one 
+is::
+
+   $ python3 guess_my_number.py sandbox
+
+.. _complete demo: 
+   https://github.com/kxgames/kxg/raw/master/demos/guess_my_number.py
 
 The game architecture
 =====================
@@ -353,11 +366,12 @@ to ``self.id`` to figure out which message to use.
 
 Making an AI opponent
 =====================
-Just like human players, AI players are represented by actors.  AI players are 
-represented by actors just like human players.
-To make an AI player, we'll do pretty much the same thing we did to make a 
-human player.
-The ``AiActor`` class is 
+As mentioned in the previous section, the AI player will be represented by the 
+``AiActor`` class.  Like ``GuiActor``, ``AiActor`` will interact with the rest 
+of the game by sending and receiving messages.  Unlike ``GuiPlayer``, which 
+lets the player make all the interesting decisions, ``AiActor`` will also play 
+the game.  Our AI won't be too complicated.  It will just wait a random amount 
+of time, guess a random number, and repeat until the game ends::
 
    class AiActor(kxg.Actor):
        """
@@ -382,13 +396,26 @@ The ``AiActor`` class is
        def reset_timer(self):
            self.timer = random.uniform(1, 3)
 
-
+The ``on_update_game()`` method is called by the game engine on every frame of 
+the game.  The ``dt`` argument is the amount of time that has elapsed since the 
+last frame.  The AI uses this information to update its internal timer.  When 
+that timer expires, the AI makes a random guess using the same ``GuessNumber`` 
+message as ``GuiActor`` and resets the timer.
 
 Putting it all together
 =======================
-Coming soon.
+We've now written classes that encompass all the logic needed to play Guess My 
+Number.  To tie them together for the game engine so it can play the game, we 
+just need to pass them all to ``quickstart.main()``::
 
+   if __name__ == '__main__':
+       kxg.quickstart.main(World, Referee, Gui, GuiActor, AiActor)
 
+This function runs a no-frills game loop and makes it easy to get started 
+developing and debugging your games.  Once you're done developing and want to 
+make a production game, the game engine can also provide you with complete 
+control over the game loop, but how to do that is beyond the scope of this 
+demo.
 
 Do as I say, not as I do
 ========================
