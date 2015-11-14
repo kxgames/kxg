@@ -17,12 +17,10 @@ distutils.core.setup(
         long_description=open('README.rst').read(),
         keywords=['game', 'network', 'gui', 'pyglet'],
         packages=['kxg'],
-        requires=[
+        install_requires=[
             'pyglet',
             'nonstdlib',
             'linersock',
-            'vecrec',
-            'glooey',
             'pytest',
         ],
 )
