@@ -22,5 +22,6 @@ distutils.core.setup(
             'nonstdlib',
             'linersock',
             'pytest',
+            'docopt',
         ],
 )
