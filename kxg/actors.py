@@ -64,7 +64,7 @@ class Actor(ForumObserver):
     def on_setup_gui(self, gui):
         pass
 
-    def on_start_game(self):
+    def on_start_game(self, num_players):
         pass
 
     def on_update_game(self, dt):

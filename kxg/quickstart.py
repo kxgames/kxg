@@ -281,11 +281,11 @@ def main(world_cls, referee_cls, gui_cls, gui_actor_cls, ai_actor_cls,
 Run a game being developed with the kxg game engine.
 
 Usage:
-    {sys.argv[0]} sandbox [<num_ais>] [-v...]
-    {sys.argv[0]} client [--host HOST] [--port PORT] [-v...]
-    {sys.argv[0]} server <num_guis> [<num_ais>] [options] [-v...] 
-    {sys.argv[0]} debug <num_guis> [<num_ais>] [options] [-v...]
-    {sys.argv[0]} --help
+    {exe_name} sandbox [<num_ais>] [-v...]
+    {exe_name} client [--host HOST] [--port PORT] [-v...]
+    {exe_name} server <num_guis> [<num_ais>] [options] [-v...] 
+    {exe_name} debug <num_guis> [<num_ais>] [options] [-v...]
+    {exe_name} --help
 
 Commands:
     sandbox
@@ -338,8 +338,9 @@ you'll have to write new Stage subclasses encapsulating that logic and you'll
 have to call those stages yourself by interacting more directly with the 
 Theater class.  The online documentation has more information on this process.
     """
-    import sys, docopt, nonstdlib
+    import sys, os, docopt, nonstdlib
 
+    exe_name = os.path.basename(sys.argv[0])
     usage = main.__doc__.format(**locals()).strip()
     args = docopt.docopt(usage, argv or sys.argv[1:])
     num_guis = int(args['<num_guis>'] or 1)

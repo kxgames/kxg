@@ -190,11 +190,13 @@ class GameStage(Stage):
         #    world have been setup, this signals to the actors that they can 
         #    send messages and query the game world as usual.
 
+        num_players = len(self.actors) - 1
+
         for actor in self.actors:
             actor.on_setup_gui(self.gui)
 
         for actor in self.actors:
-            actor.on_start_game()
+            actor.on_start_game(num_players)
 
     def on_update_stage(self, dt):
         """
