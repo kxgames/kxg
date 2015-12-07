@@ -107,11 +107,11 @@ well) and methods to check itself and to apply itself to the world::
            world.lower_bound = self.lower_bound
            world.upper_bound = self.upper_bound
 
-The constructor will only used by us and not by the game engine itself, so it 
-doesn't need to do anything but store the information that the message will use 
-to change the world.  It doesn't even need to call the base class constructor.  
-In this case we only need to store the number to guess and the upper and lower 
-bounds to show the players.
+The constructor will only be used by us and not by the game engine itself, so 
+it doesn't need to do anything but store the information that the message will 
+use to change the world.  It doesn't even need to call the base class 
+constructor.  In this case we only need to store the number to guess and the 
+upper and lower bounds to show the players.
 
 The ``on_check()`` method is called by the game engine the confirm that the 
 message should be allowed given the current state of the world.  If there's a 
