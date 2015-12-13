@@ -160,6 +160,7 @@ class World(Token):
 
         token.on_add_to_world(self)
 
+        info('Added {token} to the world.')
         return token
 
     def _remove_token(self, token):
