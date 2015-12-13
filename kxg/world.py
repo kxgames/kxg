@@ -146,8 +146,8 @@ class World(Token):
                 # arguments: self, actor, token.  If the constructor has a 
                 # different signature, raise an error with a helpful message.
 
-                from inspect import getargspec
-                argspec = getargspec(extension_class.__init__)
+                from inspect import getfullargspec
+                argspec = getfullargspec(extension_class.__init__)
                 if len(argspec.args) != 3:
                     raise IllegalTokenExtensionConstructor(extension_class)
 
