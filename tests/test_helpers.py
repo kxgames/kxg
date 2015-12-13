@@ -231,7 +231,7 @@ class DummyReferee (kxg.Referee, DummyObserver):
 
 class DummyEndGameReferee (DummyReferee):
 
-    def on_start_game(self):
+    def on_start_game(self, num_players):
         self >> DummyEndGameMessage()
 
         

@@ -200,7 +200,7 @@ class ServerActor(Actor):
     def send_message(self, message):
         raise NotImplementedError
 
-    def on_start_game(self):
+    def on_start_game(self, num_players):
         from .tokens import TokenSerializer
         serializer = TokenSerializer(self.world)
         self.pipe.push_serializer(serializer)
