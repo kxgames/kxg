@@ -106,6 +106,7 @@ class TokenMetaclass(type):
             return member_value
 
         def safety_checked_method(self, *args, **kwargs):
+            require_token(self)
 
             if self.world_registration == 'pending':
 
