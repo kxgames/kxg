@@ -15,7 +15,7 @@ class Actor(ForumObserver):
         return self.send_message(message)
 
     def send_message(self, message):
-        info("sending a message: {message}")
+        info("sending message: {message}")
 
         # Make sure the user didn't pass the wrong object to this function or 
         # forget to call the superclass constructor.

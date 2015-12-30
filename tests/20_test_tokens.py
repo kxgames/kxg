@@ -343,5 +343,5 @@ def test_cant_pickle_world():
 
 def test_token_repr():
     assert DummyToken().__repr__() == 'DummyToken(id=None)'
-    assert DummyWorld().__repr__() == 'DummyWorld(len=1)'
+    assert DummyWorld().__repr__() == 'DummyWorld()'
 

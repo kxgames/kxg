@@ -73,7 +73,7 @@ class ClientForum(Forum):
         server sends out an extra response providing the clients with the
         information they need to resync themselves.
         """
-        info("synchronizing a message: {message}")
+        info("synchronizing message: {message}")
 
         # Synchronize the world.
 
@@ -97,7 +97,7 @@ class ClientForum(Forum):
         sync error, a hard sync error is only reported to the client that sent 
         the offending message.
         """
-        info("undoing a message: {message}")
+        info("undoing message: {message}")
 
         # Roll back changes that the original message made to the world.
 
@@ -137,7 +137,7 @@ class ClientForum(Forum):
             # reappear here, so we don't need to worry about double-dipping.
 
             if isinstance(packet, Message):
-                info("receiving a message: {packet}")
+                info("receiving message: {packet}")
                 super().execute_message(packet)
                 response = packet._get_server_response()
                 if response and response.sync_needed:
@@ -211,7 +211,7 @@ class ServerActor(Actor):
         # For each message received from the connected client:
 
         for message in self.pipe.receive():
-            info("received a message: {message}")
+            info("received message: {message}")
 
             # Make sure the message wasn't sent by an actor with a different id 
             # than this one.  This should absolutely never happen because this 
@@ -278,7 +278,7 @@ class ServerActor(Actor):
         Relay messages from the forum on the server to the client represented 
         by this actor.
         """
-        info("relaying a message: {message}")
+        info("relaying message: {message}")
 
         if not message.was_sent_by(self._id_factory):
             self.pipe.send(message)

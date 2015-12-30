@@ -197,8 +197,7 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
         self._disable_forum_observation()
 
     def __repr__(self):
-        return '{}(id={})'.format(
-                self.__class__.__name__, getattr(self, 'id', None))
+        return '{}(id={})'.format(self.__class__.__name__, self._id)
 
     def __getstate__(self):
         state = super().__getstate__()

@@ -9,7 +9,7 @@ class Forum:
         self.actors = None
 
     def execute_message(self, message):
-        info("executing a message: {message}")
+        info("executing message: {message}")
 
         # Relay the messages to clients running on other machines, if this is a 
         # multiplayer game.  Since the tokens referenced in the message might 

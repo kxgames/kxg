@@ -18,7 +18,7 @@ class World(Token):
             self._add_token(self)
 
     def __repr__(self):
-        return '{}(len={})'.format(self.__class__.__name__, len(self))
+        return '{}()'.format(self.__class__.__name__)
 
     def __iter__(self):
         return (x for x in self._tokens.values() if x is not self)
@@ -160,7 +160,7 @@ class World(Token):
 
         token.on_add_to_world(self)
 
-        info('Added {token} to the world.')
+        info('adding token to world: {token}')
         return token
 
     def _remove_token(self, token):
