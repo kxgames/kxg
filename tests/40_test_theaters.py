@@ -221,20 +221,20 @@ def test_quickstart_process_pool(logged_messages):
 @pytest.mark.skip
 def test_quickstart_sandbox(logged_messages):
     run_dummy_main('sandbox -v 1')
-    assert 'INFO: "sandbox -v 1": test_helpers.DummyEndGameReferee: sending a message: DummyEndGameMessage()' in logged_messages
-    assert 'INFO: "sandbox -v 1": kxg.forums.Forum: executing a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "sandbox -v 1": test_helpers.DummyEndGameReferee: sending message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "sandbox -v 1": kxg.forums.Forum: executing message: DummyEndGameMessage()' in logged_messages
 
 def test_quickstart_client_server(logged_messages):
     run_dummy_main('server 1 1 -v', 'client -v')
-    assert 'INFO: "server 1 1 -v": test_helpers.DummyEndGameReferee: sending a message: DummyEndGameMessage()' in logged_messages
-    assert 'INFO: "client -v": kxg.multiplayer.ClientForum: receiving a message: DummyEndGameMessage()' in logged_messages
-    assert 'INFO: "server 1 1 -v": kxg.forums.Forum: executing a message: DummyEndGameMessage()' in logged_messages
-    assert 'INFO: "client -v": kxg.multiplayer.ClientForum: executing a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "server 1 1 -v": test_helpers.DummyEndGameReferee: sending message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "client -v": kxg.multiplayer.ClientForum: receiving message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "server 1 1 -v": kxg.forums.Forum: executing message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: "client -v": kxg.multiplayer.ClientForum: executing message: DummyEndGameMessage()' in logged_messages
 
 def test_quickstart_debug(logged_messages):
     run_dummy_main('debug 2')
-    assert 'INFO: Server: test_helpers.DummyEndGameReferee: sending a message: DummyEndGameMessage()' in logged_messages
-    assert 'INFO: Server: kxg.forums.Forum: executing a message: DummyEndGameMessage()' in logged_messages
-    assert 'INFO: Client #1: kxg.multiplayer.ClientForum: receiving a message: DummyEndGameMessage()' in logged_messages
-    assert 'INFO: Client #1: kxg.multiplayer.ClientForum: executing a message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: Server: test_helpers.DummyEndGameReferee: sending message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: Server: kxg.forums.Forum: executing message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: Client #1: kxg.multiplayer.ClientForum: receiving message: DummyEndGameMessage()' in logged_messages
+    assert 'INFO: Client #1: kxg.multiplayer.ClientForum: executing message: DummyEndGameMessage()' in logged_messages
 
