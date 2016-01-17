@@ -117,6 +117,7 @@ class Referee(Actor):
 
     def on_update_game(self, dt):
         with Referee.Reporter(self) as reporter:
+            self.world.on_report_to_referee(reporter)
             for token in self.world:
                 token.on_report_to_referee(reporter)
 
