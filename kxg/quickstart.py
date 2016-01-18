@@ -283,8 +283,8 @@ Run a game being developed with the kxg game engine.
 Usage:
     {exe_name} sandbox [<num_ais>] [-v...]
     {exe_name} client [--host HOST] [--port PORT] [-v...]
-    {exe_name} server <num_guis> [<num_ais>] [options] [-v...] 
-    {exe_name} debug <num_guis> [<num_ais>] [options] [-v...]
+    {exe_name} server <num_guis> [<num_ais>] [--host HOST] [--port PORT] [-v...] 
+    {exe_name} debug <num_guis> [<num_ais>] [--host HOST] [--port PORT] [-v...]
     {exe_name} --help
 
 Commands:
