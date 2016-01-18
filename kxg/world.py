@@ -21,7 +21,12 @@ class World(Token):
         return '{}()'.format(self.__class__.__name__)
 
     def __iter__(self):
-        return (x for x in self._tokens.values() if x is not self)
+        # The reason for making a copy of self._tokens.values() is that it's 
+        # possible for tokens to be added or removed from the world while the 
+        # world is being iterated through.  Concretely, this can happen when a 
+        # token extension sends a message to add or remove a token during 
+        # on_update_game().
+        return (x for x in list(self._tokens.values()) if x is not self)
 
     def __len__(self):
         return len(self._tokens)
