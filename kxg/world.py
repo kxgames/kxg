@@ -116,17 +116,16 @@ class World(Token):
 
     def _add_token(self, token):
         require_token(token)
-        if token.world_registration == 'pending' and not token.has_id():
+        if token.world_participation == 'pending' and not token.has_id():
             raise TokenDoesntHaveId(token)
-        if token.world_registration == 'active':
+        if token.world_participation == 'active':
             raise TokenAlreadyInWorld(token)
-        if token.world_registration == 'expired':
+        if token.world_participation == 'expired':
             raise UsingRemovedToken(token)
 
         # Add the token to the world.  This means adding it to the world's list 
-        # of tokens, giving it a reference to the world (which allows it to 
-        # use methods that haven't been marked with @before_setup), and 
-        # allowing it to subscribe to messages from the forum.
+        # of tokens, giving it a reference to the world, and allowing it to 
+        # subscribe to messages from the forum.
 
         id = token.id
         self._tokens[id] = token
