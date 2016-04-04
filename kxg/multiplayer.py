@@ -77,9 +77,8 @@ class ClientForum(Forum):
 
         # Synchronize the world.
 
-        with self.world._unlock_temporarily():
-            message._sync(self.world)
-            self.world._react_to_sync_response(message)
+        message._sync(self.world)
+        self.world._react_to_sync_response(message)
 
         # Synchronize the tokens.
 
@@ -88,22 +87,21 @@ class ClientForum(Forum):
 
     def execute_undo(self, message):
         """
-        Manage the response when the server reports a hard sync error.
+        Manage the response when the server rejects a message.
 
-        A hard sync error is produced when this client sends a message that the 
-        server refuses to pass on to the other clients playing the game.  In 
-        this case, the client must either undo the changes that the message 
-        made to the world before being sent or crash.  Note that unlike a soft 
-        sync error, a hard sync error is only reported to the client that sent 
-        the offending message.
+        An undo is when required this client sends a message that the server 
+        refuses to pass on to the other clients playing the game.  When this 
+        happens, the client must undo the changes that the message made to the 
+        world before being sent or crash.  Note that unlike sync requests, undo 
+        requests are only reported to the client that sent the offending 
+        message.
         """
         info("undoing message: {message}")
 
         # Roll back changes that the original message made to the world.
 
-        with self.world._unlock_temporarily():
-            message._undo(self.world)
-            self.world._react_to_undo_response(message)
+        message._undo(self.world)
+        self.world._react_to_undo_response(message)
 
         # Give the actors a chance to react to the error.  For example, a 
         # GUI actor might inform the user that there are connectivity 

@@ -174,8 +174,7 @@ class GameStage(Stage):
         This method is guaranteed to be called exactly once upon entering the 
         game stage.
         """
-        with self.world._unlock_temporarily():
-            self.forum.connect_everyone(self.world, self.actors)
+        self.forum.connect_everyone(self.world, self.actors)
 
         # 1. Setup the forum.
 
@@ -183,8 +182,7 @@ class GameStage(Stage):
 
         # 2. Setup the world.
 
-        with self.world._unlock_temporarily():
-            self.world.on_start_game()
+        self.world.on_start_game()
 
         # 3. Setup the actors.  Because this is done after the forum and the  
         #    world have been setup, this signals to the actors that they can 
@@ -208,11 +206,9 @@ class GameStage(Stage):
             actor.on_update_game(dt)
 
         self.forum.on_update_game()
+        self.world.on_update_game(dt)
 
-        with self.world._unlock_temporarily():
-            self.world.on_update_game(dt)
-
-        if self.world.is_game_over():
+        if self.world.has_game_ended():
             self.exit_stage()
 
     def on_exit_stage(self):
@@ -234,8 +230,7 @@ class GameStage(Stage):
 
         # 3. Let the world react to the end of the game.
 
-        with self.world._unlock_temporarily():
-            self.world.on_finish_game()
+        self.world.on_finish_game()
 
 
 class UniplayerGameStage(GameStage):

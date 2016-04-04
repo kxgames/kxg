@@ -130,7 +130,6 @@ class ReporterToken (DummyToken):
         super().__init__()
         self.message = message
 
-    @kxg.read_only
     def on_report_to_referee(self, reporter):
         if self.message:
             assert reporter >> self.message
@@ -469,7 +468,7 @@ def test_multiplayer_unhandled_undo_response():
     with raises_api_usage_error("the message", "was rejected by the server"):
         test.update()
 
-def test_multiplayer_malicious_sender_id(capsys):
+def test_multiplayer_malicious_sender_id(caplog):
     # Make sure the server rejects messages that claim to be from the wrong 
     # player.  This is mostly to prevent cheating, although I suppose it's also 
     # a debugging feature.
@@ -484,8 +483,7 @@ def test_multiplayer_malicious_sender_id(capsys):
         cheater.pipe.send(message)
         test.update()
 
-        out, err = capsys.readouterr()
-        assert "ignoring message from player {} claiming to be from player 0".format(cheater.gui_actor.id) in err
+        assert "ignoring message from player {} claiming to be from player 0".format(cheater.gui_actor.id) in caplog.text()
 
         for observer in test.observers:
             assert observer.dummy_messages_received == []
@@ -757,7 +755,6 @@ def test_cant_use_stale_reporter():
             super().__init__()
             self.reporter = None
 
-        @kxg.read_only
         def on_report_to_referee(self, reporter):
             self.reporter = reporter
 

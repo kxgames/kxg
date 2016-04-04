@@ -112,42 +112,6 @@ class ApiUsageErrorFactory:
 
 
 
-class CantModifyTokenIfWorldLocked(ApiUsageErrorFactory):
-
-    message = """\
-attempted unsafe invocation of {token_class}.{method_name}().
-
-This error brings attention to situations that might cause synchronization 
-issues in multiplayer games.  The {method_name}() method is not marked as 
-read-only, but it was invoked from outside the context of a message.  This 
-means that if {method_name}() makes any changes to the world, those changes 
-will not be propagated.  If {method_name}() is actually read-only, label it 
-with the @kxg.read_only decorator."""
-
-    def __init__(self, token, method_name):
-        self.token = token
-        self.token_class = token.__class__.__name__
-        self.method_name = method_name
-
-
-class CantModifyTokenIfNotInWorld(ApiUsageErrorFactory):
-
-    message = """\
-may have forgotten to add {token} to the world.
-
-The {token_class}.{method_name}() method was invoked on a token that had not 
-yet been added to the game world.  This is usually a sign that you forgot to 
-add the token in question was to the game world.  Label the {method_name}() 
-method with the @kxg.before_world decorator if you really do need to call it 
-before the token has been added to the world (i.e. the method helps setup 
-{token_class} tokens)."""
-
-    def __init__(self, token, method_name):
-        self.token = token
-        self.token_class = token.__class__.__name__
-        self.method_name = method_name
-
-
 class CantPickleWorld(ApiUsageErrorFactory):
 
     message = """\
@@ -417,16 +381,6 @@ everything done in {message_cls}.on_execute()."""
         self.message_cls = message.__class__.__name__
 
 
-class WorldAlreadyUnlocked(ApiUsageErrorFactory):
-
-    message = """\
-tired to unlock the world, but it's already unlocked.
-
-You can't get this error unless you manually call World._unlock_temporarily(), 
-which you should never do.  This method is intended to be used by the game 
-engine, which was carefully designed to allow the world to be modified only 
-when safe.  Calling this method yourself disables an important safety check.
-"""
 
 def debug_only(function):
     if __debug__:

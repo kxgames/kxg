@@ -244,10 +244,6 @@ class DummyWorld (kxg.World, DummyObserver):
         self.dummy_sync_responses_executed = []
         self.dummy_undo_responses_executed = []
 
-    @kxg.read_only
-    def has_game_ended(self):
-        return False
-
 
 class DummyToken (kxg.Token, DummyObserver):
 
@@ -268,15 +264,10 @@ class DummyToken (kxg.Token, DummyObserver):
         yield self
         yield from self.get_extensions()
 
-    @kxg.before_world
-    def before_world(self):
+    def dummy_method_1(self, *args, **kwargs):
         pass
 
-    @kxg.read_only
-    def read_only(self):
-        pass
-
-    def read_write(self):
+    def dummy_method_2(self, *args, **kwargs):
         pass
 
     

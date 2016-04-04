@@ -218,7 +218,6 @@ def test_quickstart_process_pool(logged_messages):
 
     assert 'INFO: logging test: 40_test_theaters.log_something: Hello World!' in logged_messages
 
-@pytest.mark.skip
 def test_quickstart_sandbox(logged_messages):
     run_dummy_main('sandbox -v 1')
     assert 'INFO: "sandbox -v 1": test_helpers.DummyEndGameReferee: sending message: DummyEndGameMessage()' in logged_messages

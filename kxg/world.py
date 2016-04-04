@@ -3,7 +3,7 @@
 import contextlib
 
 from .errors import *
-from .tokens import Token, read_only, require_token, require_active_token
+from .tokens import Token, require_token, require_active_token
 
 class World(Token):
 
@@ -12,10 +12,8 @@ class World(Token):
         self._id = 0
         self._tokens = {}
         self._actors = []
-        self._is_locked = True
-        self._is_game_over = False
-        with self._unlock_temporarily():
-            self._add_token(self)
+        self._has_game_ended = False
+        self._add_token(self)
 
     def __repr__(self):
         return '{}()'.format(self.__class__.__name__)
@@ -41,7 +39,6 @@ class World(Token):
     def __setstate__(self, state):
         raise CantPickleWorld()     # pragma: no cover
 
-    @read_only
     def get_token(self, id):
         """
         Return the token with the given id.  If no token with the given id is 
@@ -49,7 +46,6 @@ class World(Token):
         """
         return self._tokens[id]
 
-    @read_only
     def get_last_id(self):
         """
         Return the largest token id registered with the world.  If no tokens 
@@ -58,22 +54,14 @@ class World(Token):
         """
         return max(self._tokens)
 
-    @read_only
-    def is_locked(self):
-        """
-        Return whether or not the world is currently allowed to be modified.
-        """
-        return self._is_locked
+    def end_game(self):
+        self._has_game_ended = True
 
-    @read_only
-    def is_game_over(self):
+    def has_game_ended(self):
         """
         Return true if the game has ended.
         """
-        return self._is_game_over
-
-    def end_game(self):
-        self._is_game_over = True
+        return self._has_game_ended
 
     def on_start_game(self):
         pass
@@ -85,42 +73,13 @@ class World(Token):
     def on_finish_game(self):
         pass
 
-    @contextlib.contextmanager
-    def _unlock_temporarily(self):
-        """
-        Allow tokens to modify the world for the duration of a with-block.
-
-        It's important that tokens only modify the world at appropriate times, 
-        otherwise the changes they make may not be communicated across the 
-        network to other clients.  To help catch and prevent these kinds of 
-        errors, the game engine keeps the world locked most of the time and 
-        only briefly unlocks it (using this method) when tokens are allowed to 
-        make changes.  When the world is locked, token methods that aren't 
-        marked as being read-only can't be called. only allows token methods 
-        When the world is unlocked, any token method can be called.  These 
-        checks can be disabled by running python with optimization enabled.
-
-        You should never call this method manually from within your own game.  
-        This method is intended to be used by the game engine, which was 
-        carefully designed to allow the world to be modified only when safe.  
-        Calling this method yourself disables an important safety check.
-        """
-        if not self._is_locked:
-            yield
-        else:
-            try:
-                self._is_locked = False
-                yield
-            finally:
-                self._is_locked = True
-
     def _add_token(self, token):
         require_token(token)
         if token.world_participation == 'pending' and not token.has_id():
             raise TokenDoesntHaveId(token)
         if token.world_participation == 'active':
             raise TokenAlreadyInWorld(token)
-        if token.world_participation == 'expired':
+        if token.world_participation == 'removed':
             raise UsingRemovedToken(token)
 
         # Add the token to the world.  This means adding it to the world's list 

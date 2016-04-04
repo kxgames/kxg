@@ -19,23 +19,15 @@ class Forum:
         for actor in self.actors:
             actor._relay_message(message)
 
-        # Normally, tokens can only call methods that have been decorated with 
-        # @read_only.  This is a precaution to help keep the worlds in sync on 
-        # all the clients.  This restriction is lifted when the tokens are 
-        # handling messages and enforced again once the actors are handling 
-        # messages.
+        # First, let the message update the state of the game world.
 
-        with self.world._unlock_temporarily():
+        message._execute(self.world)
 
-            # First, let the message update the state of the game world.
+        # Second, let the world react to the message.  The main effect of 
+        # the message should have already been carried out above.  These 
+        # callbacks should take care of more peripheral effects.
 
-            message._execute(self.world)
-
-            # Second, let the world react to the message.  The main effect of 
-            # the message should have already been carried out above.  These 
-            # callbacks should take care of more peripheral effects.
-
-            self.world._react_to_message(message)
+        self.world._react_to_message(message)
 
         # Third, let the actors and the extensions react to the message.  This 
         # step is carried out last so that the actors can be sure that the 

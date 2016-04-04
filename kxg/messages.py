@@ -154,7 +154,7 @@ class Message:
 
         for token in self.tokens_to_remove():
             old_id = token.id
-            token.reset_registration()
+            token.reset_participation()
             token._id = old_id
             world._add_token(token)
 

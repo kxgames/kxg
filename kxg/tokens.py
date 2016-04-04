@@ -41,7 +41,7 @@ def require_active_token(object):
             raise TokenDoesntHaveId(token)
         if not token.has_world():
             raise TokenNotInWorld(token)
-    if token.world_participation == 'expired':
+    if token.world_participation == 'removed':
         raise UsingRemovedToken(token)
 
     return token
@@ -49,7 +49,7 @@ def require_active_token(object):
 
 class Token(ForumObserver):
     """
-    ...
+    Brief description...
 
     Tokens do not take direct responsibility for making sure they're being used 
     safely, but they do keep some information about their current participation 
@@ -114,12 +114,12 @@ class Token(ForumObserver):
         'pending', which means that the token has not yet been added to the 
         world (although it may have been assigned an id).  The second is 
         'active', which means that the token is fully participating in the 
-        world.  The third is 'expired', which means that the token has been 
+        world.  The third is 'removed', which means that the token has been 
         removed from the world and should no longer be in use.  These statuses 
         are mostly used for internal checks within the game engine.
         """
         if self._removed_from_world:
-            return 'expired'
+            return 'removed'
         elif self.has_world():
             return 'active'
         else:
@@ -186,13 +186,8 @@ class Token(ForumObserver):
         associated with this token, because a new set will be created once this 
         token is added back to the world.
         """
-        if self.world_participation != 'expired':
+        if self.world_participation != 'removed':
             raise CantResetActiveToken(self)
-
-        for member_name, member_value in self.__dict__.items():
-            try: self.__dict__[member_name] = member_value._kxg_original_method
-            except AttributeError: pass
-
         Token.__init__(self)
 
     def on_add_to_world(self, world):
@@ -232,26 +227,6 @@ class Token(ForumObserver):
             super()._check_if_forum_observation_enabled()
         except AssertionError:
             raise TokenCantSubscribeNow(self)
-
-    def _expire_registration(self):
-        """
-        Make sure the token isn't still being used after it's been removed from 
-        the world.
-        """
-
-        def warning_factory(method):
-            def expired_token_warning():
-                raise UsingRemovedToken(self)
-            expired_token_warning._kxg_original_method = method
-            return expired_token_warning
-
-        for member_name, member_value in self.__dict__.items():
-            if not isinstance(member_value, FunctionType):
-                continue
-            if member_name == 'reset_participation':
-                continue
-            self.__dict__[member_name] = warning_factory(member_value)
-
 
 
 class TokenExtension(ForumObserver):
@@ -297,12 +272,12 @@ class TokenSerializer:
 
         def persistent_id(token):
             if isinstance(token, Token):
-                if token.world_registration == 'pending':
+                if token.world_participation == 'pending':
                     return None
-                if token.world_registration == 'active':
+                if token.world_participation == 'active':
                     require_active_token(token)
                     return token.id
-                if token.world_registration == 'expired':
+                if token.world_participation == 'removed':
                     raise UsingRemovedToken(token)
 
         delegate.persistent_id = persistent_id

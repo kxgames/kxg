@@ -9,93 +9,88 @@ def force_add_token(world, token, id=None):
     elif token._id is None:
         token._id = len(world)
 
-    with world._unlock_temporarily():
-        world._add_token(token)
+    world._add_token(token)
 
 def force_remove_token(world, token):
-    with world._unlock_temporarily():
-        world._remove_token(token)
+    world._remove_token(token)
 
+
+class NonTokenClass:
+    pass
+
+class UninitializedTokenClass(DummyToken):
+    def __init__(self):
+        pass
+
+
+def test_token_repr():
+    assert DummyWorld().__repr__() == 'DummyWorld()'
+    assert DummyToken().__repr__() == 'DummyToken(id=None)'
 
 def test_token_creation():
     world = DummyWorld()
     token = DummyToken()
 
-    with world._unlock_temporarily():
+    # Make sure you can't add a non-token to the world.
 
-        # Make sure you can't add a non-token to the world.
+    with raises_api_usage_error("expected Token, but got NonTokenClass instead"):
+        world._add_token(NonTokenClass())
 
-        with raises_api_usage_error("expected Token, but got str instead"):
-            world._add_token("not a token")
+    # Make sure the game engine give a helpful error message when you 
+    # forget to call Token.__init__() in a Token subclass.
+    
+    with raises_api_usage_error("forgot to call the Token constructor"):
+        world._add_token(UninitializedTokenClass())
 
-        # Make sure the game engine give a helpful error message when you 
-        # forget to call Token.__init__() in a Token subclass.
-        
-        class MyToken (kxg.Token):  # (no fold)
-            def __init__(self):
-                pass
+    # Make sure you can't add a token without an id to the world.
 
-        with raises_api_usage_error("forgot to call the Token constructor"):
-            world._add_token(MyToken())
+    with raises_api_usage_error("should have an id, but doesn't"):
+        world._add_token(token)
 
-        # Make sure you can't add a token without an id to the world.
+    # Make sure Token._give_id() rejects raw id numbers.
 
-        with raises_api_usage_error("should have an id, but doesn't"):
-            world._add_token(token)
+    with raises_api_usage_error("can't use 1 as a token id"):
+        token._give_id(1)
 
-        # Make sure Token._give_id() rejects raw id numbers.
+    # Make sure the token can actually be added to the world.
 
-        with raises_api_usage_error("can't use 1 as a token id"):
-            token._give_id(1)
+    force_add_token(world, token)
 
-        # Make sure the token can actually be added to the world.
+    # Make sure you can't assign the token an id twice.
 
+    with raises_api_usage_error("already has an id"):
+        token._give_id(kxg.IdFactory(1, 1))
+
+    # Make sure you can't add the same token to the world twice.
+
+    with raises_api_usage_error("can't add the same token to the world twice"):
+        world._add_token(token)
+
+    # Make sure you can't add a token that's been previously removed from 
+    # the game.
+
+    force_remove_token(world, token)
+
+    with raises_api_usage_error("token DummyToken has been removed from the world"):
         force_add_token(world, token)
-
-        # Make sure you can't assign the token an id twice.
-
-        with raises_api_usage_error("already has an id"):
-            token._give_id(kxg.IdFactory(1, 1))
-
-        # Make sure you can't add the same token to the world twice.
-
-        with raises_api_usage_error("can't add the same token to the world twice"):
-            world._add_token(token)
-
-        # Make sure you can't add a token that's been previously removed from 
-        # the game.
-
-        force_remove_token(world, token)
-
-        with raises_api_usage_error("token DummyToken has been removed from the world"):
-            force_add_token(world, token)
 
 def test_token_type_checking():
     world = DummyWorld()
-
-    class UninitializedTokenClass(DummyToken):
-        def __init__(self):
-            pass
-
-    class NonTokenClass:
-        pass
-
-
     pending_token = DummyToken()
     pending_with_id_token = DummyToken(); \
             pending_with_id_token._id = 1
     active_token = DummyToken(); \
             force_add_token(world, active_token)
-    expired_token = DummyToken(); \
-            force_add_token(world, expired_token); \
-            force_remove_token(world, expired_token)
+    removed_token = DummyToken(); \
+            force_add_token(world, removed_token); \
+            force_remove_token(world, removed_token)
     uninitialized_token = UninitializedTokenClass()
     non_token = NonTokenClass()
 
     kxg.require_token(active_token)
     kxg.require_token(pending_token)
     kxg.require_token(pending_with_id_token)
-    kxg.require_token(expired_token)
+    kxg.require_token(removed_token)
 
     with raises_api_usage_error("forgot to call the Token constructor"):
         kxg.require_token(uninitialized_token)
@@ -109,95 +104,58 @@ def test_token_type_checking():
     with raises_api_usage_error("not in world"):
         kxg.require_active_token(pending_with_id_token)
     with raises_api_usage_error("has been removed from the world"):
-        kxg.require_active_token(expired_token)
+        kxg.require_active_token(removed_token)
     with raises_api_usage_error("forgot to call the Token constructor"):
         kxg.require_token(uninitialized_token)
     with raises_api_usage_error("expected Token, but got NonTokenClass"):
         kxg.require_token(non_token)
 
-def test_illegal_token_usage():
+def test_token_participation():
     world = DummyWorld()
     token = DummyToken()
 
-    # Make sure only read-only and specially marked "before world" methods can 
-    # be called before the token is added to the world.
+    # Make sure that tokens are in the 'pending' state before they're added to 
+    # the world, and that 'pending' tokens can't be reset.
 
-    token.read_only()
-    token.before_world()
-    with raises_api_usage_error("may have forgotten to add DummyToken"):
-        token.read_write()
+    assert token.world_participation == 'pending'
     with raises_api_usage_error("can't be reset because it's still being used"):
-        token.reset_registration()
+        token.reset_participation()
 
-    # Manually add the token to the world.
+    # Make sure that tokens are in the 'active' state after they've been added 
+    # to the world, and that 'active' tokens can't be reset.
 
     force_add_token(world, token)
 
-    # Make sure only read-only methods can be called when the world is locked.
-
-    token.read_only()
-    with raises_api_usage_error("unsafe invocation", "DummyToken.before_world()"):
-        token.before_world()
-    with raises_api_usage_error("unsafe invocation", "DummyToken.read_write()"):
-        token.read_write()
+    assert token.world_participation == 'active'
     with raises_api_usage_error("can't be reset because it's still being used"):
-        token.reset_registration()
+        token.reset_participation()
 
-    # Make sure any methods can be called when the world is unlocked.
-
-    with world._unlock_temporarily():
-        token.read_only()
-        token.before_world()
-        token.read_write()
-
-    # Make sure only read-only methods can be called after the token is removed 
-    # from the world.
+    # Make sure that tokens are in the 'removed' state after they've been 
+    # removed from the world.
 
     force_remove_token(world, token)
-
-    token.read_only()
-    with raises_api_usage_error("has been removed from the world"):
-        token.before_world()
-    with raises_api_usage_error("has been removed from the world"):
-        token.read_write()
+    assert token.world_participation == 'removed'
 
     # Make sure that tokens can be reused once they've been reset.
 
-    token.reset_registration()
+    token.reset_participation()
 
+    assert token.world_participation == 'pending'
     with raises_api_usage_error("can't be reset because it's still being used"):
-        token.reset_registration()
-
-    token.read_only()
-    token.before_world()
-    with raises_api_usage_error("may have forgotten to add DummyToken"):
-        token.read_write()
+        token.reset_participation()
 
     force_add_token(world, token)
 
-    token.read_only()
-    with raises_api_usage_error("unsafe invocation of", "DummyToken.before_world()"):
-        token.before_world()
-    with raises_api_usage_error("unsafe invocation of", "DummyToken.read_write()"):
-        token.read_write()
-
-    with world._unlock_temporarily():
-        token.read_only()
-        token.before_world()
-        token.read_write()
+    assert token.world_participation == 'active'
+    with raises_api_usage_error("can't be reset because it's still being used"):
+        token.reset_participation()
 
     force_remove_token(world, token)
-
-    token.read_only()
-    with raises_api_usage_error("has been removed from the world"):
-        token.before_world()
-    with raises_api_usage_error("has been removed from the world"):
-        token.read_write()
 
 def test_token_serialization():
     world = DummyWorld()
     token_1 = DummyToken(); force_add_token(world, token_1)
-    token_2 = DummyToken(token_1)
+    token_2 = DummyToken(parent=token_1)
     token_2.attribute = "blue"
 
     serializer = kxg.TokenSerializer(world)
@@ -253,10 +211,7 @@ def test_token_serialization():
 
 def test_token_extensions():
     actor = DummyActor()
-    world = DummyWorld()
-
-    with world._unlock_temporarily():
-        world._set_actors([actor])
+    world = DummyWorld(); world._set_actors([actor])
 
     # Make sure a nice error is raised if the user forgets to write an 
     # appropriate constructor for their extension class.
@@ -304,44 +259,46 @@ def test_token_extensions():
 
         def __init__(self, actor, token):
             super().__init__(actor, token)
-            self.read_only_calls = 0
-            self.read_write_calls = 0
+            self.method_1_calls = []
+            self.method_2_calls = []
 
         @kxg.watch_token
-        def read_only(self):
-            self.read_only_calls += 1
+        def dummy_method_1(self, *args, **kwargs):
+            self.method_1_calls.append((args, kwargs))
 
         @kxg.watch_token
-        def read_write(self):
-            self.read_write_calls += 1
+        def dummy_method_2(self, *args, **kwargs):
+            self.method_2_calls.append((args, kwargs))
 
 
     token_1 = WatchMethodToken()
     force_add_token(world, token_1)
     extension_1 = token_1.get_extension(actor)
 
-    assert extension_1.read_only_calls == 0
-    assert extension_1.read_write_calls == 0
-    pprint(token_1.get_extensions())
+    assert extension_1.method_1_calls == []
+    assert extension_1.method_2_calls == []
     assert token_1.get_extensions() == [extension_1]
 
-    token_1.read_only()
-    assert extension_1.read_only_calls == 1
-    assert extension_1.read_write_calls == 0
+    token_1.dummy_method_1(1, a=2)
+    assert extension_1.method_1_calls == [((1,),{'a':2})]
+    assert extension_1.method_2_calls == []
 
-    with world._unlock_temporarily():
-        token_1.read_write()
-    assert extension_1.read_only_calls == 1
-    assert extension_1.read_write_calls == 1
-    
+    token_1.dummy_method_2(3, b=4)
+    assert extension_1.method_1_calls == [((1,),{'a':2})]
+    assert extension_1.method_2_calls == [((3,),{'b':4})]
+
+    token_1.dummy_method_1(5, 6)
+    assert extension_1.method_1_calls == [((1,),{'a':2}), ((5,6),{})]
+    assert extension_1.method_2_calls == [((3,),{'b':4})]
+
+    token_1.dummy_method_2(7, 8)
+    assert extension_1.method_1_calls == [((1,),{'a':2}), ((5,6),{})]
+    assert extension_1.method_2_calls == [((3,),{'b':4}), ((7,8),{})]
+
 def test_cant_pickle_world():
     import pickle
     world = DummyWorld()
 
     with raises_api_usage_error("can't pickle the world"):
         pickle.dumps(world)
-
-def test_token_repr():
-    assert DummyToken().__repr__() == 'DummyToken(id=None)'
-    assert DummyWorld().__repr__() == 'DummyWorld()'
 
