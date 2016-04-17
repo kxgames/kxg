@@ -1,19 +1,35 @@
 #!/usr/bin/env python3
 # pylint: disable=unused-import
 
+from nonstdlib import MagicFormatter, fmt
 from nonstdlib import log, debug, info, warning, error, critical
+from pprint import pprint
 
 class ApiUsageError(Exception):
     """
-    A class for communicating errors to the user.
+    Tell the user when they're misusing the game engine and suggest how they 
+    should be using it instead.
     """
-
     message_width = 79
 
-    def __init__(self, message):
+    def __init__(self, message, *args, **kwargs):
         import re, textwrap
 
-        width = ApiUsageError.message_width
+        # Normally, we want to lowercase the first letter in every error 
+        # message to force adherence to the recommended python style.  The 
+        # exception is if the first character in the unformatted message is a 
+        # brace, which means that the message probably begins with some 
+        # identifier name.  In that case we don't want to change anything.
+
+        if not message.startswith('{'):
+            message = message[0].lower() + message[1:]
+
+        # Format the message with the given arguments, plus any variable in the 
+        # local scope in which the message was defined.  Then remove any 
+        # extraneous whitespace and try to separate the summary sentence from 
+        # the details paragraph.
+
+        message = message | MagicFormatter(args, kwargs, 2)
         message = textwrap.dedent(message)
         tokens = [x.strip() for x in re.split(r'\n\s*\n', message, 1)]
 
@@ -25,14 +41,17 @@ class ApiUsageError(Exception):
                 self.__class__.__name__ + ': '
         )
         summary = textwrap.fill(
-                tokens.pop(0), width=width, initial_indent=' ' * len(prefix),
+                tokens.pop(0),
+                width=ApiUsageError.message_width,
+                initial_indent=' ' * len(prefix),
         ).strip()
 
         # If a details paragraph was given, wrap it to fit in 80 characters.
 
         if tokens:
             details = tokens.pop(0).replace('\n', '')
-            details = '\n\n' + textwrap.fill(details, width=width)
+            details = '\n\n' + textwrap.fill(
+                    details, width=ApiUsageError.message_width)
         else:
             details = ''
 
@@ -52,9 +71,8 @@ class ApiUsageErrorFactory:
 
     However, the engine still needs an easy way to raise API usage errors with 
     different error messages.  The solution to this problem is this class: 
-    ApiUsageErrorFactory.  This class is meant to be subclassed.  Each subclass 
-    represents a single type of error and knows both how to describe that error 
-    and when to raise that error.
+    ApiUsageErrorFactory.  This class is meant to be subclassed such that each 
+    subclass describes a single type of error.
 
     To define a new type of error, start by making a new ApiUsageErrorFactory 
     subclass.  You can overload the get_message() method to return a message 
@@ -72,12 +90,6 @@ class ApiUsageErrorFactory:
     description should elaborate on that and should suggest the most likely 
     causes and solutions.
 
-    You can also implement the error_condition() method to return whether or 
-    not the error in question should be raised.  This method is used by the 
-    raise_if_warranted() method to decide whether or not the exception should 
-    be raised.  I also think it's good practice to keep description of the 
-    error and the logic for raising the error in the same place.
-
     Note that when you try to construct an instance of an ApiUsageErrorFactory 
     subclass, you are actually returned an ApiUsageError instance.  So:
 
@@ -89,26 +101,14 @@ class ApiUsageErrorFactory:
     meant to cut down on boilerplate.  But I can also see it being confusing 
     if you're looking at things closely.  The best way to think about this is 
     to remember that your factory classes are really factories, and that the 
-    constructor is the when the exception is created.
+    constructor is when the exception is created.
     """
-
     message = "Unknown error."
 
     def __new__(cls, *args, **kwargs):
         factory = object.__new__(cls)
         factory.__init__(*args, **kwargs)
-        message = factory.message.format(**factory.__dict__)
-
-        # Normally, we want to lowercase the first letter in every error 
-        # message to force adherence to the recommended python style.  The 
-        # exception is if the first character in the unformatted message is a 
-        # brace, which means that the message probably begins with some 
-        # identifier name.  In that case we don't want to change anything.
-
-        if not factory.message.startswith('{'):
-            message = message[0].lower() + message[1:]
-
-        return ApiUsageError(message)
+        return ApiUsageError(factory.message, **factory.__dict__)
 
 
 
@@ -279,19 +279,6 @@ class TokenAlreadyHasId(ApiUsageErrorFactory):
 token {token} already has an id.
 
 This error usually means that {token} was added to the world twice."""
-
-    def __init__(self, token):
-        self.token = token
-
-
-class TokenAlreadyInWorld(ApiUsageErrorFactory):
-
-    message = """\
-can't add the same token to the world twice.
-
-Token {token} can't be added to the world, because the world already contains a 
-token with the id={token.id}.  You can get this error if you try to add a token 
-to the world on without using a message (i.e. CreateToken)."""
 
     def __init__(self, token):
         self.token = token
