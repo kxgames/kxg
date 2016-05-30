@@ -33,25 +33,18 @@ class ApiUsageError(Exception):
     def __init__(self, message, *args, **kwargs):
         import re, textwrap
 
-        # Normally, we want to lowercase the first letter in every error 
-        # message to force adherence to the recommended python style.  The 
-        # exception is if the first character in the unformatted message is a 
-        # brace, which means that the message probably begins with some 
-        # identifier name.  In that case we don't want to change anything.
+        # Lowercase the first letter of the error message, to enforce the 
+        # recommended style.  Note that this won't have any effect if the 
+        # message starts with a template argument (e.g. {}), which is actually 
+        # intentional.  Template arguments are often identifier names, and we 
+        # don't want to change those.
 
-        if not message.startswith('{'):
-            message = message[0].lower() + message[1:]
-
-        # Format the message with the given arguments, plus any variable in the 
-        # local scope in which the message was defined.  Then remove any 
-        # extraneous whitespace and try to separate the summary sentence from 
-        # the details paragraph.
-
-        message = message | MagicFormatter(args, kwargs, 2)
         message = textwrap.dedent(message)
+        message = message[0].lower() + message[1:]
+        message = message | MagicFormatter(args, kwargs, 2)
         tokens = [x.strip() for x in re.split(r'\n\s*\n', message, 1)]
 
-        # Make sure the summary doesn't overflow 80 characters even after 
+        # Make sure the summary doesn't overflow its allocated space even after 
         # python adds the 'kxg.errors.ApiUsageError: ' prefix.
 
         prefix = (
