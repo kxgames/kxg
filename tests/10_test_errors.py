@@ -13,6 +13,15 @@ def test_one_line_message():
     assert exc.exconly() == '''\
 kxg.errors.ApiUsageError: lorem ipsum'''
 
+def test_dedent_one_line_message():
+    with raises_api_usage_error() as exc:
+        raise ApiUsageError('''\
+                Lorem ipsum
+        ''')
+
+    assert exc.exconly() == '''\
+kxg.errors.ApiUsageError: lorem ipsum'''
+
 def test_wrapping_no_description():
     with raises_api_usage_error() as exc:
         raise ApiUsageError('''\
@@ -63,6 +72,15 @@ blandit tempus. Nam lectus justo, adipiscing vitae ultricies
 egestas, porta nec diam. Aenean ac neque tortor. Cras tempus
 lacus nec leo ultrices suscipit. Etiam sed aliquam tortor. Duis
 lacus metus, euismod ut viverra sit amet, pulvinar sed urna.''' 
+
+def test_too_many_spaces():
+    # This is a real-life error message that was getting two spaces where the 
+    # line wrapped, e.g. "an  id" instead of "an id".
+
+    with raises_api_usage_error("because it doesn't have an id"):
+        raise ApiUsageError("""\
+                Can't add DummyToken to the world because it doesn't have an 
+                id.""")
 
 def test_formating_with_args():
     with raises_api_usage_error() as exc:

@@ -52,12 +52,13 @@ class ApiUsageError(Exception):
                 self.__class__.__name__ + ': '
         )
         summary = textwrap.fill(
-                tokens.pop(0),
+                tokens.pop(0).replace('\n', ''),
                 width=ApiUsageError.message_width,
                 initial_indent=' ' * len(prefix),
         ).strip()
 
-        # If a details paragraph was given, wrap it to fit in 80 characters.
+        # If a details paragraph was given, wrap it to fit within the allocated 
+        # space.
 
         if tokens:
             details = tokens.pop(0).replace('\n', '')
