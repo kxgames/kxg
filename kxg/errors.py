@@ -5,6 +5,24 @@ from nonstdlib import MagicFormatter, fmt
 from nonstdlib import log, debug, info, warning, error, critical
 from pprint import pprint
 
+# Anatomy of an error message
+# ===========================
+# 1. One line that succinctly states what the problem is.  Be mindful that 
+#    errors can be raised in situations you might not have thought of, so try 
+#    to phrase this line in a way that doesn't make assumptions and that won't 
+#    mislead the user if it's triggered in an unexpected way.
+#
+# 2. In a separate paragraph, a few sentences that elaborate on the problem.  
+#    In particular, try to cover the following points:
+#
+#   - Explain the most likely cause of the problem.  This is in slight contrast 
+#     to the first line, which should strive to be context-neutral.
+#
+#   - Explain why this is a problem, or in other words, why the engine had to 
+#     raise an exception when it encountered this scenario.
+#
+#   - Suggest a way to solve the problem.
+
 class ApiUsageError(Exception):
     """
     Tell the user when they're misusing the game engine and suggest how they 
