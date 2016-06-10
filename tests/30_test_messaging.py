@@ -209,6 +209,70 @@ def test_message_serialization():
 
     assert original_message.data == duplicate_message.data
 
+def test_message_tokens_referenced():
+    # Create a handful of tokens with different properties. ``t1`` and ``t2`` 
+    # don't contain any references to tokens; ``t3`` and ``t4`` do.  ``t1`` and 
+    # ``t3`` haven't been added to the world; ``t2`` and ``t4`` seem like they 
+    # have because their private ``_id`` attributes have been set (the value 
+    # doesn't matter, as long as it's not None).
+    t1 = DummyToken()
+    t2 = DummyToken(); t2._id = 2
+    t3 = DummyToken();             t3.t1 = t1; t3.t2 = t2
+    t4 = DummyToken(); t4._id = 4; t4.t1 = t1; t4.t2 = t2
+
+    # Find zero token attributes.
+    m = kxg.Message()
+    m.attr = "not a token"
+    assert not m.tokens_referenced()
+
+    # Find one token attribute.
+    m = kxg.Message()
+    m.attr = t1
+    assert m.tokens_referenced() == {t1}
+
+    # Find two token attributes.
+    m = kxg.Message()
+    m.attr1 = t1
+    m.attr2 = t2
+    assert m.tokens_referenced() == {t1, t2}
+
+    # Don't double count tokens.
+    m = kxg.Message()
+    m.dup1 = t1
+    m.dup2 = t1
+    assert m.tokens_referenced() == {t1}
+
+    # Find tokens in the basic data structures.
+    m = kxg.Message()
+    m.list = [t1, t2]
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.tuple = (t1, t2)
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.dict = {'t1': t1, 't2': t2}
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.set = {t1, t2}
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.nested = [[[[[t1]]], [[[t2]]]]]
+    assert m.tokens_referenced() == {t1, t2}
+
+    # Recurse into tokens that haven't been assigned ids.
+    m = kxg.Message()
+    m.attr = t3
+    assert m.tokens_referenced() == {t1, t2, t3}
+
+    # Don't recurse into tokens that haven't been assigned ids.
+    m = kxg.Message()
+    m.attr = t4
+    assert m.tokens_referenced() == {t4}
+
 def test_uniplayer_message_sending():
     test = DummyUniplayerGame()
     messages = []
