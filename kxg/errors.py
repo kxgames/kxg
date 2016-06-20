@@ -33,6 +33,10 @@ class ApiUsageError(Exception):
     def __init__(self, message, *args, **kwargs):
         import re, textwrap
 
+        if not message:
+            super().__init__()
+            return
+
         # Lowercase the first letter of the error message, to enforce the 
         # recommended style.  Note that this won't have any effect if the 
         # message starts with a template argument (e.g. {}), which is actually 
@@ -42,7 +46,7 @@ class ApiUsageError(Exception):
         message = textwrap.dedent(message)
         message = message[0].lower() + message[1:]
         message = message | MagicFormatter(args, kwargs, 2)
-        tokens = [x.strip() for x in re.split(r'\n\s*\n', message, 1)]
+        paragraphs = [x.strip() for x in re.split(r'\n\s*\n', message)]
 
         # Make sure the summary doesn't overflow its allocated space even after 
         # python adds the 'kxg.errors.ApiUsageError: ' prefix.
@@ -52,20 +56,30 @@ class ApiUsageError(Exception):
                 self.__class__.__name__ + ': '
         )
         summary = textwrap.fill(
-                tokens.pop(0).replace('\n', ''),
+                paragraphs.pop(0).replace('\n', ''),
                 width=ApiUsageError.message_width,
                 initial_indent=' ' * len(prefix),
         ).strip()
 
         # If a details paragraph was given, wrap it to fit within the allocated 
-        # space.
+        # space.  Take care to preserve the indentation of each paragraph, 
+        # which may be organizing lists and things like that.
 
-        if tokens:
-            details = tokens.pop(0).replace('\n', '')
-            details = '\n\n' + textwrap.fill(
-                    details, width=ApiUsageError.message_width)
-        else:
-            details = ''
+        details = ''
+
+        if paragraphs:
+            for paragraph in paragraphs:
+                lines = paragraph.split('\n')
+                indent_pattern = re.compile('\s*')
+                initial_indent = indent_pattern.match(lines[0]).group()
+                subsequent_indent = indent_pattern.match(lines[-1]).group()
+
+                details += '\n\n' + textwrap.fill(
+                        paragraph.replace('\n', ''),
+                        width=ApiUsageError.message_width,
+                        initial_indent=initial_indent,
+                        subsequent_indent=subsequent_indent,
+                )
 
         super().__init__(summary + details)
 
