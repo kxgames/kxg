@@ -16,7 +16,7 @@ synchronization bugs that would otherwise be very difficult to track down.
    :target: https://pypi.python.org/pypi/kxg
 
 .. image:: https://img.shields.io/travis/kalekundert/kxg.svg
-   :target: https://travis-ci.org/kalekundert/kxg
+   :target: https://travis-ci.org/kxgames/kxg
 
 .. image:: https://img.shields.io/coveralls/kalekundert/kxg.svg
-   :target: https://coveralls.io/github/kalekundert/kxg?branch=master
+   :target: https://coveralls.io/github/kxgames/kxg?branch=master

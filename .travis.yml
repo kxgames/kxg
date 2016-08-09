@@ -1,6 +1,5 @@
 language: python
 python:
-<<<<<<< HEAD
 - '3.3'
 - '3.4'
 - '3.5'
