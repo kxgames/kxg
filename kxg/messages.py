@@ -32,7 +32,13 @@ class Message:
         try:
             return self.sender_id == id
         except AttributeError:
-            raise MessageNotYetSent()
+            raise ApiUsageError("""\
+                    Can't ask who sent a message before it's been sent.
+
+                    This error means Message.was_sent_by() or 
+                    Message.was_sent_by_referee() got called on a message that 
+                    hadn't been sent yet.  Normally you would only call these 
+                    methods from within Message.on_check().""")
 
     def was_sent_by_referee(self):
         return self.was_sent_by(1)
@@ -42,6 +48,48 @@ class Message:
 
     def tokens_to_remove(self):
         yield from []
+
+    def tokens_referenced(self):
+        """
+        Return a list of all the tokens that are referenced (i.e. contained in) 
+        this message.  Tokens that haven't been assigned an id yet are searched 
+        recursively for tokens.  So this method may return fewer results after 
+        the message is sent.  This information is used by the game engine to 
+        catch mistakes like forgetting to add a token to the world or keeping a 
+        stale reference to a token after its been removed.
+        """
+        tokens = set()
+
+        # Use the pickle machinery to find all the tokens contained at any 
+        # level of this message.  When an object is being pickled, the Pickler 
+        # calls its persistent_id() method for each object it encounters.  We  
+        # hijack this method to add every Token we encounter to a list.
+
+        # This definitely feels like a hacky abuse of the pickle machinery, but 
+        # that notwithstanding this should be quite robust and quite fast.
+
+        def persistent_id(obj):
+            from .tokens import Token
+
+            if isinstance(obj, Token):
+                tokens.add(obj)
+
+                # Recursively descend into tokens that haven't been assigned an 
+                # id yet, but not into tokens that have.
+
+                return obj.id
+
+        from pickle import Pickler
+        from io import BytesIO
+
+        # Use BytesIO to basically ignore the serialized data stream, since we 
+        # only care about visiting all the objects that would be pickled.
+
+        pickler = Pickler(BytesIO())
+        pickler.persistent_id = persistent_id
+        pickler.dump(self)
+
+        return tokens
 
     def on_check(self, world):
         # Called by the actor.  If no MessageCheck exception is raised, the 
@@ -84,7 +132,15 @@ class Message:
         # far out of sync with the world on the server, and that the message 
         # needs to be undone on this client.  Only the ClientForum that sent 
         # the offending message will call this method.
-        raise UnhandledSyncError(self)
+        message_cls = self.__class__.__name__
+        raise ApiUsageError("""\
+                The message {self} was rejected by the server.
+
+                This client attempted to send a {message_cls} message, but it 
+                was rejected by the server.  To fix this error, either figure 
+                out why the client is getting out of sync with the server or 
+                implement a {message_cls}.on_undo() that undoes everything done 
+                in {message_cls}.on_execute().""")
 
     def _set_sender_id(self, id_factory):
         self.sender_id = id_factory.get()
@@ -105,13 +161,18 @@ class Message:
             return None
 
     def _assign_token_ids(self, id_factory):
-        # Called by Actor but not by ServerActor, so it is guaranteed to be 
-        # called exactly once.  Not really different from the constructor, 
-        # except that the id_factory object is nicely provided.  That's useful 
-        # for adding tokens but probably nothing else.  This method is called 
-        # before _check() so that _check() can make sure that valid ids were 
-        # assigned.
+        """
+        Assign id numbers to any tokens that will be added to the world by this 
+        message.
 
+        This method is called by Actor but not by ServerActor, so it's 
+        guaranteed to be called exactly once.  In fact, this method is not 
+        really different from the constructor, except that the id_factory 
+        object is nicely provided.  That's useful for assigning ids to tokens 
+        but probably nothing else.  This method is called before _check() so 
+        that _check() can make sure that valid ids were assigned (although by 
+        default it doesn't).
+        """
         for token in self.tokens_to_add():
             token._give_id(id_factory)
 
@@ -128,7 +189,12 @@ class Message:
         for token in self.tokens_to_add():
             world._add_token(token)
 
+        # Save the id numbers for the tokens we're removing so we can restore 
+        # them if we need to undo this message.
+
+        self._removed_token_ids = {}
         for token in self.tokens_to_remove():
+            self._removed_token_ids[token] = token.id
             world._remove_token(token)
 
         # Let derived classes execute themselves.
@@ -153,9 +219,7 @@ class Message:
         # end up with the id as before.
 
         for token in self.tokens_to_remove():
-            old_id = token.id
-            token.reset_participation()
-            token._id = old_id
+            token._id = self._removed_token_ids[token]
             world._add_token(token)
 
         # Let derived classes execute themselves.
@@ -174,5 +238,8 @@ def require_message(object):
 @debug_only
 def require_message_cls(cls):
     if not isinstance(cls, type) or not issubclass(cls, Message):
-        raise ObjectIsntMessageSubclass(cls)
+        try: wrong_thing = cls.__name__
+        except: wrong_thing = cls
+        raise ApiUsageError("""\
+                expected Message subclass, but got {wrong_thing} instead.""")
 

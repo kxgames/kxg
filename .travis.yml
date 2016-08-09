@@ -10,6 +10,7 @@ before_script:
 - sleep 3
 install:
 - pip install .
+- pip install pytest pytest-capturelog
 script:
 - py.test tests
 deploy:

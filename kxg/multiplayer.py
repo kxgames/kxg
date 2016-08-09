@@ -77,8 +77,9 @@ class ClientForum(Forum):
 
         # Synchronize the world.
 
-        message._sync(self.world)
-        self.world._react_to_sync_response(message)
+        with self.world._unlock_temporarily():
+            message._sync(self.world)
+            self.world._react_to_sync_response(message)
 
         # Synchronize the tokens.
 
@@ -100,8 +101,9 @@ class ClientForum(Forum):
 
         # Roll back changes that the original message made to the world.
 
-        message._undo(self.world)
-        self.world._react_to_undo_response(message)
+        with self.world._unlock_temporarily():
+            message._undo(self.world)
+            self.world._react_to_undo_response(message)
 
         # Give the actors a chance to react to the error.  For example, a 
         # GUI actor might inform the user that there are connectivity 
@@ -111,8 +113,7 @@ class ClientForum(Forum):
             actor._react_to_undo_response(message)
 
     def on_start_game(self):
-        from .tokens import TokenSerializer
-        serializer = TokenSerializer(self.world)
+        serializer = MessageSerializer(self.world)
         self.pipe.push_serializer(serializer)
 
     def on_update_game(self):
@@ -199,8 +200,7 @@ class ServerActor(Actor):
         raise NotImplementedError
 
     def on_start_game(self, num_players):
-        from .tokens import TokenSerializer
-        serializer = TokenSerializer(self.world)
+        serializer = MessageSerializer(self.world)
         self.pipe.push_serializer(serializer)
 
     def on_update_game(self, dt):
@@ -305,4 +305,66 @@ class ServerResponse:
         return "{}(sync_needed={}, undo_needed={})".format(
                 self.__class__.__name__, self.sync_needed, self.undo_needed)
     
+
+class MessageSerializer:
+    """
+    Pickle messages before they are sent over the network, and unpickle them 
+    when they are received.  Tokens that have been added to the world are 
+    serialized using their ID, then replaced with the corresponding token from 
+    the remote world when the message is deserialized.
+    """
+
+    def __init__(self, world):
+        self.world = world
+
+    def pack(self, message):
+        from pickle import Pickler
+        from io import BytesIO
+        from .tokens import Token
+        from .messages import Message, require_message
+
+        buffer = BytesIO()
+        delegate = Pickler(buffer)
+
+        def persistent_id(token):
+            if isinstance(token, Token):
+                assert isinstance(message, Message), msg("""\
+                        Both Message and ServerResponse objects can be 
+                        serialized, but only Messages can contain tokens.""")
+
+                assert token.id, msg("""\
+                        Every token should have an id by now.  Tokens that are 
+                        in the world should always have an id, and tokens that 
+                        are being added to the world should've been assigned an 
+                        id by Actor.send_message().""")
+
+                if token in self.world:
+                    assert token not in message.tokens_to_add(), msg("""\
+                            Actor.send_message() should've refused to send a 
+                            message that would add a token that's already in 
+                            the world.""")
+                    return token.id
+
+                else:
+                    assert token in message.tokens_to_add(), msg("""\
+                            Actor.send_message() should've refused to send a 
+                            message referencing tokens that aren't in the world 
+                            and aren't being added to the world.""")
+                    return None
+
+        delegate.persistent_id = persistent_id
+        delegate.dump(message)
+
+        return buffer.getvalue()
+
+    def unpack(self, packet):
+        from pickle import Unpickler
+        from io import BytesIO
+
+        buffer = BytesIO(packet)
+        delegate = Unpickler(buffer)
+
+        delegate.persistent_load = lambda id: self.world.get_token(int(id))
+        return delegate.load()
+
 

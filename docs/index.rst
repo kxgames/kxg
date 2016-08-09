@@ -31,5 +31,6 @@ Quick Reference
 ===============
 .. toctree::
    api/index.rst
+   common_mistakes.rst
    contributing.rst
 

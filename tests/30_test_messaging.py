@@ -39,8 +39,6 @@ class DummyAcceptedMessage (DummyMessage):
 
 class DummyRejectedMessage (DummyMessage):
 
-    expected_check_result = False
-
     def on_check(self, world):
         raise kxg.MessageCheck
 
@@ -130,10 +128,47 @@ class ReporterToken (DummyToken):
         super().__init__()
         self.message = message
 
+    @kxg.read_only
     def on_report_to_referee(self, reporter):
         if self.message:
-            assert reporter >> self.message
+            reporter >> self.message
             self.message = None
+
+
+
+class Message1 (DummyAcceptedMessage):
+    pass
+
+class Message2 (DummyAcceptedMessage):
+    pass
+
+class Message3 (DummyAcceptedMessage):
+    pass
+
+class ListeningToken (kxg.Token):
+
+    def on_add_to_world(self, world):
+        self.messages = []
+
+    @kxg.subscribe_to_message(Message1)
+    @kxg.subscribe_to_message(Message2)
+    def on_either_message(self, message):
+        self.messages.append(message)
+
+
+class StaleReporterToken (kxg.Token):
+
+    def __init__(self):
+        super().__init__()
+        self.reporter = None
+
+    @kxg.read_only
+    def on_report_to_referee(self, reporter):
+        self.reporter = reporter
+
+    def on_update_game(self, dt):
+        if self.reporter:
+            self.reporter.send_message(DummyMessage())
 
 
 
@@ -174,7 +209,7 @@ def send_dummy_message(sender, message=None, response=None):
     else:
         raise ValueError("unknown response '{}'".format(response))
 
-    assert (sender >> message) == message.expected_check_result
+    sender >> message
     return message
 
 
@@ -199,28 +234,165 @@ def test_messaging_reprs():
     message = kxg.Message(); message._set_server_response_id(1)
     assert kxg.ServerResponse(message).__repr__() == 'ServerResponse(sync_needed=False, undo_needed=False)'
 
+def test_message_tokens_referenced():
+    # Create a handful of tokens with different properties. ``t1`` and ``t2`` 
+    # don't contain any references to tokens; ``t3`` and ``t4`` do.  ``t1`` and 
+    # ``t3`` haven't been added to the world; ``t2`` and ``t4`` have.
+    world = DummyWorld()
+    t1 = DummyToken(); t1.attr = 1;
+    t2 = DummyToken(); t2.attr = 2;
+    t3 = DummyToken(); t3.attr = 3; t3.t1 = t1; t3.t2 = t2
+    t4 = DummyToken(); t4.attr = 4; t4.t1 = t1; t4.t2 = t2
+
+    force_add_token(world, t2);
+    force_add_token(world, t4);
+
+    # Find zero token attributes.
+    m = kxg.Message()
+    m.attr = "not a token"
+    assert not m.tokens_referenced()
+
+    # Find one token attribute.
+    m = kxg.Message()
+    m.attr = t1
+    assert m.tokens_referenced() == {t1}
+
+    # Find two token attributes.
+    m = kxg.Message()
+    m.attr1 = t1
+    m.attr2 = t2
+    assert m.tokens_referenced() == {t1, t2}
+
+    # Don't double count tokens.
+    m = kxg.Message()
+    m.dup1 = t1
+    m.dup2 = t1
+    assert m.tokens_referenced() == {t1}
+
+    # Find tokens in the basic data structures.
+    m = kxg.Message()
+    m.list = [t1, t2]
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.tuple = (t1, t2)
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.dict = {'t1': t1, 't2': t2}
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.set = {t1, t2}
+    assert m.tokens_referenced() == {t1, t2}
+
+    m = kxg.Message()
+    m.nested = [[[[[t1]]], [[[t2]]]]]
+    assert m.tokens_referenced() == {t1, t2}
+
+    # Recurse into tokens that haven't been assigned ids.
+    m = kxg.Message()
+    m.attr = t3
+    assert m.tokens_referenced() == {t1, t2, t3}
+
+    # Don't recurse into tokens that haven't been assigned ids.
+    m = kxg.Message()
+    m.attr = t4
+    assert m.tokens_referenced() == {t4}
+
 def test_message_serialization():
-    import pickle
+    # Create a handful of tokens with different properties. ``t1`` and ``t2`` 
+    # don't contain any references to tokens; ``t3`` and ``t4`` do.  ``t1`` and 
+    # ``t3`` haven't been added to the world; ``t2`` and ``t4`` have.
+    world = DummyWorld()
+    t1 = DummyToken(); t1.attr = 1;
+    t2 = DummyToken(); t2.attr = 2;
+    t3 = DummyToken(); t3.attr = 3; t3.t1 = t1; t3.t2 = t2
+    t4 = DummyToken(); t4.attr = 4; t4.t1 = t1; t4.t2 = t2
 
-    original_message = DummyAcceptedMessage()
-    packed_message = pickle.dumps(original_message)
-    duplicate_message = pickle.loads(packed_message)
+    t1._id = 1
+    force_add_token(world, t2, 2);
+    t3._id = 3
+    force_add_token(world, t4, 4);
 
-    assert original_message.data == duplicate_message.data
+    serializer = kxg.MessageSerializer(world)
+    deserializer = kxg.MessageSerializer(world)
+    pack_unpack = lambda m: deserializer.unpack(serializer.pack(m))
+
+    # Serialize standard python data structures.
+    m = kxg.Message()
+    m.attr = "not a token"
+    p = pack_unpack(m)
+    assert m is not p
+    assert m.attr == p.attr
+
+    # Serialize a token that's not in the world.
+    m = DummyMessage()
+    m.t1 = t1
+    m.add = [t1]
+    p = pack_unpack(m)
+    assert m.t1.attr == p.t1.attr
+
+    # Serialize a token that's in the world.
+    m = DummyMessage()
+    m.t2 = t2
+    p = pack_unpack(m)
+    assert m.t2 is m.t2
+
+    # Serialize two tokens at once.
+    m = DummyMessage()
+    m.t1 = t1
+    m.t2 = t2
+    m.add = [t1]
+    p = pack_unpack(m)
+    assert m.t1.attr == p.t1.attr
+    assert m.t2 is p.t2
+
+    # Serialize a nested token that's not in the world.
+    m = DummyMessage()
+    m.t3 = t3
+    m.add = [t1, t3]
+    p = pack_unpack(m)
+    assert m.t3.attr == p.t3.attr
+    assert m.t3.t1.attr == p.t3.t1.attr
+    assert m.t3.t2 is p.t3.t2
+
+    # Serialize a nested token that is in the world.
+    m = DummyMessage()
+    m.t4 = t4
+    m.add = [t1]
+    p = pack_unpack(m)
+    assert m.t4 is m.t4
+
+    # Make sure tokens can subscribe to callbacks after being serialized 
+    # (without an exception being raised).
+    m = DummyMessage()
+    m.t5 = DummyToken()
+    m.t5._id = 5
+    m.add = [m.t5]
+    p = pack_unpack(m)
+    force_add_token(world, p.t5)
+    p.t5.subscribe_to_message(DummyMessage, lambda x: None)
 
 def test_uniplayer_message_sending():
     test = DummyUniplayerGame()
     messages = []
 
-    # Make sure every actor can send and receive messages.
-
     for actor in test.actors:
+        # Make sure every actor can send and receive messages.
+
         message = send_dummy_message(actor)
         messages.append(message)
 
         for observer in test.observers:
             assert observer.dummy_messages_received == messages
         assert test.world.dummy_messages_executed == messages
+
+        # Make sure you get a good error if you try to send something that's 
+        # not a message.
+
+        with raises_api_usage_error():
+            actor >> "not a message"
 
 def test_uniplayer_message_rejection():
     test = DummyUniplayerGame()
@@ -604,27 +776,6 @@ def test_multiplayer_was_sent_by():
 
 def test_subscribing_to_multiple_messages():
     test = DummyUniplayerGame()
-
-    class Message1 (DummyAcceptedMessage):
-        pass
-
-    class Message2 (DummyAcceptedMessage):
-        pass
-
-    class Message3 (DummyAcceptedMessage):
-        pass
-
-    class ListeningToken (kxg.Token):
-
-        def on_add_to_world(self, world):
-            self.messages = []
-
-        @kxg.subscribe_to_message(Message1)
-        @kxg.subscribe_to_message(Message2)
-        def on_either_message(self, message):
-            self.messages.append(message)
-
-
     token = ListeningToken()
     message_1 = Message1()
     message_2 = Message2()
@@ -743,25 +894,11 @@ def test_cant_send_message_twice():
     test = DummyUniplayerGame()
     message = send_dummy_message(test.random_actor)
 
-    with raises_api_usage_error("can't send the same message more than once"):
+    with raises_api_usage_error("has already been sent"):
         test.random_actor.send_message(message)
 
 def test_cant_use_stale_reporter():
     test = DummyUniplayerGame()
-
-    class StaleReporterToken (kxg.Token):
-
-        def __init__(self):
-            super().__init__()
-            self.reporter = None
-
-        def on_report_to_referee(self, reporter):
-            self.reporter = reporter
-
-        def on_update_game(self, dt):
-            if self.reporter:
-                self.reporter.send_message(DummyMessage())
-
 
     add_dummy_token(test.referee, StaleReporterToken())
 

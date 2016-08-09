@@ -19,15 +19,23 @@ class Forum:
         for actor in self.actors:
             actor._relay_message(message)
 
-        # First, let the message update the state of the game world.
+        # Normally, tokens can only call methods that have been decorated with 
+        # @read_only.  This is a precaution to help keep the worlds in sync on 
+        # all the clients.  This restriction is lifted when the tokens are 
+        # handling messages and enforced again once the actors are handling 
+        # messages.
 
-        message._execute(self.world)
+        with self.world._unlock_temporarily():
 
-        # Second, let the world react to the message.  The main effect of 
-        # the message should have already been carried out above.  These 
-        # callbacks should take care of more peripheral effects.
+            # First, let the message update the state of the game world.
 
-        self.world._react_to_message(message)
+            message._execute(self.world)
+
+            # Second, let the world react to the message.  The main effect of 
+            # the message should have already been carried out above.  These 
+            # callbacks should take care of more peripheral effects.
+
+            self.world._react_to_message(message)
 
         # Third, let the actors and the extensions react to the message.  This 
         # step is carried out last so that the actors can be sure that the 
@@ -178,7 +186,9 @@ class ForumObserver:
         self._is_enabled = False
 
     def _check_if_forum_observation_enabled(self):
-        assert self._is_enabled, "{} has disabled forum observation.".format(self)
+        if not self._is_enabled:
+            raise ApiUsageError("""\
+                    {self} has disabled forum observation.""")
 
     def _add_callback(self, event, message_cls, callback):
         from .messages import require_message_cls

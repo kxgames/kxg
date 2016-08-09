@@ -180,6 +180,12 @@ class DummyMessage (kxg.Message, linersock.test_helpers.Message):
     def on_sync(self, world, memento):
         world.dummy_sync_responses_executed.append(self)
 
+    def tokens_to_add(self):
+        yield from getattr(self, 'add', [])
+
+    def tokens_to_remove(self):
+        yield from getattr(self, 'remove', [])
+
 
 class DummyEndGameMessage (kxg.Message):
 
@@ -245,7 +251,7 @@ class DummyWorld (kxg.World, DummyObserver):
         self.dummy_undo_responses_executed = []
 
 
-class DummyToken (kxg.Token, DummyObserver):
+class DummySuperToken (kxg.Token, DummyObserver):
 
     def __init__(self, parent=None):
         super().__init__()
@@ -264,13 +270,37 @@ class DummyToken (kxg.Token, DummyObserver):
         yield self
         yield from self.get_extensions()
 
-    def dummy_method_1(self, *args, **kwargs):
+    @kxg.read_only
+    def safe_super_method(self, x):
         pass
 
-    def dummy_method_2(self, *args, **kwargs):
+    def unsafe_super_method(self, x):
         pass
 
+
+class DummyToken (DummySuperToken):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._value = None
     
+    @property
+    def safe_property(self):
+        return self._value
+
+    @safe_property.setter
+    def safe_property(self, value):
+        self._value = value
+
+    @kxg.read_only
+    def safe_method(self, x):
+        pass
+
+    def unsafe_method(self, x):
+        """ Docstring. """
+        pass
+
+
 class DummyExtension (kxg.TokenExtension, DummyObserver):
     pass
 
@@ -288,6 +318,19 @@ def dummy_main(argv=None):
             argv=argv,
 
     )
+
+def force_add_token(world, token, id=None):
+    if id is not None:
+        token._id = id
+    elif token._id is None:
+        token._id = len(world)
+
+    with world._unlock_temporarily():
+        world._add_token(token)
+
+def force_remove_token(world, token):
+    with world._unlock_temporarily():
+        world._remove_token(token)
 
 @contextlib.contextmanager
 def raises_api_usage_error(*key_phrase_or_phrases):
