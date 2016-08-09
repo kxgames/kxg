@@ -2,4 +2,5 @@
 exclude_lines =
     assert
     raise AssertionError
+    pragma: no cover
     raise NotImplementedError

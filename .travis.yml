@@ -1,5 +1,6 @@
 language: python
 python:
+<<<<<<< HEAD
 - '3.3'
 - '3.4'
 - '3.5'
@@ -10,13 +11,9 @@ before_script:
 - sleep 3
 install:
 - pip install .
-- pip install pytest pytest-capturelog
+- pip install pytest pytest-capturelog pytest-cov python-coveralls
 script:
 - py.test tests
-deploy:
-  provider: pypi
-  user: kalekundert
-  password:
-    secure: OrslJNW9fnCNZRC3QJOhU6GVxGSuvqSbR0eBpOgWaK294d+vXRiaPofAyr/gbEyNPSAtMtDcA3S94CW2Td6nK0CHoPWWvk1OTy4g3meEzxEboLiU5nTHPdPX4ZX+IGD5vR6QJONQK2/nUbL1aXYEXu2b6/1YLmJfwlGBf8cDx5UoraWz2oB6To2TEp0daH2ou3U4g4jrlbn9Tt0DlUhCiwy+AlsxriNyXB/QJ51RBsU55CubarvKGzXGg20QLqmY4QFUGsEwII+rYAitC/EXzh5g9SysFxNV7U61CJv67wDGAcvUngVLP8Xn3PTpzPNBmuYVLDwtjNb9ltY/9ipmwnvg5UbumD7KYsPm3oCM3sDK2YzmwjQdSYBtbHyT3OYjqR3AT3dMfSrbIoVlfpmtvYWrB4uEnX35kLJdUhTgeG3fixdMk5m16DfCE8CY5QcQR81Ko3PBILsT4yefUNZZGhK5cBrHE3SLzhgge2CYC/6wwXu9a2IdBrD39cAqXqX9E9i8EVc0FfClXmp1DbuzbcEYjAsyloffnDVZGiAJ9NrAs/thQJAh6pSTz38eqsGaFRW+g2M8yF2qGrzN1BfORizNa+W8dVICNu7/O7c+1xAZi/UnIwcZx7kV6nFfqH7V1kRM7P6S9XVcFNPXZLMJgp9O5TNGKLBAz00eUWfKrSY=
-  on:
-    tags: true
+- py.test tests --cov kxg
+after_success:
+- coveralls
