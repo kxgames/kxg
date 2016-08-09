@@ -186,7 +186,9 @@ class ForumObserver:
         self._is_enabled = False
 
     def _check_if_forum_observation_enabled(self):
-        assert self._is_enabled, "{} has disabled forum observation.".format(self)
+        if not self._is_enabled:
+            raise ApiUsageError("""\
+                    {self} has disabled forum observation.""")
 
     def _add_callback(self, event, message_cls, callback):
         from .messages import require_message_cls

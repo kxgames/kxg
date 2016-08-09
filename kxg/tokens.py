@@ -8,10 +8,6 @@ def read_only(method):
     setattr(method, '_kxg_read_only', True)
     return method
 
-def before_world(method):
-    setattr(method, '_kxg_before_world', True)
-    return method
-
 def watch_token(method):
     """
     Mark a token extension method that should automatically be called when a 
@@ -29,26 +25,53 @@ def watch_token(method):
 
 @debug_only
 def require_token(object):
-    return require_instance(Token(), object)
+    """
+    Raise an ApiUsageError if the given object is not a fully constructed 
+    instance of a Token subclass.
+    """
+    require_instance(Token(), object)
 
 @debug_only
 def require_active_token(object):
-    token = require_token(object)
+    """
+    Raise an ApiUsageError if the given object is not a token that is currently 
+    participating in the game.  To be participating in the game, the given 
+    token must have an id number and be associated with the world.
+    """
+    require_token(object)
+    require_id_and_world(object)
 
-    if token.world_registration == 'pending':
-        if not token.has_id():
-            raise TokenDoesntHaveId(token)
-        if not token.has_world():
-            raise TokenNotInWorld(token)
-    if token.world_registration == 'expired':
-        raise UsingRemovedToken(token)
+@debug_only
+def require_id_and_world(token):
+    """
+    Make sure the given token has an id and a reference to the world, but don't 
+    confirm that it is actually a token.  The require_active_token() utility 
+    makes both of these checks and is more appropriate for general use, but 
+    this function is useful if you know the object in question is a properly 
+    initialized token (e.g. if you already called require_token() on it).
+    """
+    if not token.has_id:
+        raise ApiUsageError("""\
+                token {token} should have an id, but doesn't.
 
-    return token
+                This error usually means that a token was added to the world 
+                without being assigned an id number.  To correct this, make 
+                sure that you're using a message (i.e. CreateToken) to create 
+                all of your tokens.""")
+
+    if not token.has_world:
+        raise ApiUsageError("""\
+                token {token} (id={token.id}) not in world.
+
+                You can get this error if you try to remove the same token from 
+                the world twice.  This might happen is you don't get rid of 
+                every reference to a token after it's removed the first time, 
+                then later on you try to remove the stale reference.""")
 
 
-class TokenMetaclass(type):
+class TokenSafetyChecks(type):
 
-    def __new__(mcs, name, bases, members):
+    def __new__(meta, name, bases, members):
         """
         Add checks to make sure token methods are being called safely.
 
@@ -69,95 +92,84 @@ class TokenMetaclass(type):
         incur significant computational expense.  By invoking python with 
         optimization enabled (i.e. passing -O) these checks are skipped.
         """
-
         if __debug__:
-            mcs.add_safety_checks(members)
+            meta.add_safety_checks(members)
 
-        return super().__new__(mcs, name, bases, members)
+        return super().__new__(meta, name, bases, members)
         
 
     @classmethod
-    def add_safety_checks(mcs, members):
+    def add_safety_checks(meta, members):
         """
         Iterate through each member of the class being created and add a 
         safety check to every method that isn't marked as read-only.
         """
         for member_name, member_value in members.items():
-            members[member_name] = mcs.add_safety_check(
+            members[member_name] = meta.add_safety_check(
                     member_name, member_value)
 
     @staticmethod
     def add_safety_check(member_name, member_value):
         """
-        If the given member is a method that hasn't been marked as read-only, 
-        return a version of it that will complain if invoked in a dangerous 
-        way.  This mostly means checking to make sure that methods that alter 
-        the token are only called from update methods or messages.
+        If the given member is a method that is public (i.e. doesn't start with 
+        an underscore) and hasn't been marked as read-only, replace it with a 
+        version that will check to make sure the world is locked.  This ensures 
+        that methods that alter the token are only called from update methods 
+        or messages.
         """
-
         import functools
         from types import FunctionType
 
+        # Bail if the given member is read-only, private, or not a method.
+
         is_method = isinstance(member_value, FunctionType)
         is_read_only = hasattr(member_value, '_kxg_read_only')
-        is_engine_helper = member_name.startswith('_')
+        is_private = member_name.startswith('_')
 
-        if not is_method or is_read_only or is_engine_helper:
+        if not is_method or is_read_only or is_private:
             return member_value
 
         def safety_checked_method(self, *args, **kwargs):
-            require_token(self)
+            """
+            Make sure that the token the world is locked before a non-read-only 
+            method is called.
+            """
+            # Because these checks are pretty magical, I want to be really 
+            # careful to avoid raising any exceptions other than the check 
+            # itself (which comes with a very clear error message).  Here, that 
+            # means using getattr() to make sure the world attribute actually 
+            # exists.  For example, there's nothing wrong with the following 
+            # code, but it does call a safety-checked method before the world 
+            # attribute is defined:
+            #
+            # class MyToken(kxg.Token):
+            #     def __init__(self):
+            #         self.init_helper()
+            #         super().__init__()
 
-            if self.world_registration == 'pending':
+            world = getattr(self, 'world', None)
+            if world and world.is_locked():
+                nonlocal member_name
+                raise ApiUsageError("""\
+                        attempted unsafe invocation of 
+                        {self.__class__.__name__}.{member_name}().
 
-                # Calling a non-read-only method before on a token before 
-                # adding it to the world isn't inherently a synchronization 
-                # issue, because until a token is added to the world only 
-                # one client knows about it.  However, this happens most 
-                # often when the user forgets to add a token to the world 
-                # in the first place.  To catch these bugs, non-read-only 
-                # token methods can't be called before the token has been 
-                # added to the world unless they are explicitly labeled 
-                # with the kxg.before_world() decorator.
+                        This error brings attention to situations that might 
+                        cause synchronization issues in multiplayer games.  The 
+                        {member_name}() method is not marked as read-only, but 
+                        it was invoked from outside the context of a message.  
+                        This means that if {member_name}() makes any changes to 
+                        the world, those changes will not be propagated.  If 
+                        {member_name}() is actually read-only, label it with 
+                        the @kxg.read_only decorator.""")
 
-                if not hasattr(member_value, '_kxg_before_world'):
-                    raise CantModifyTokenIfNotInWorld(self, member_name)
-
-            if self.world_registration == 'active':
-
-                # If the token has already been added to the world, make 
-                # sure that the token seems properly set up (specifically 
-                # that it has all the attributes that tokens should have 
-                # and that it's id isn't null) and that the world is 
-                # unlocked.
-
-                require_active_token(self)
-
-                if self.world.is_locked():
-                    raise CantModifyTokenIfWorldLocked(self, member_name)
-
-            if self.world_registration == 'expired':
-
-                # Once a token has been removed from the world, almost 
-                # anything you do with it will raise an exception.  This 
-                # behavior is meant to prevent bugs that happen when you 
-                # accidentally keep stale references to removed tokens.  If 
-                # you need to add a removed token again, you can call its 
-                # reset_registration() method, which will allow you to add 
-                # it to the world again in the usual way (i.e. by sending a 
-                # message).
-
-                if member_name != 'reset_registration':
-                    raise UsingRemovedToken(self)
-
-            # After all the checks have been carried out, call the method 
-            # as usual.
+            # After making that check, call the method as usual.
 
             return member_value(self, *args, **kwargs)
 
         # Preserve any "forum observer" decorations that have been placed on 
-        # the method.  Also restore the method's original name and module 
-        # strings, to make inspection and debugging a little easier.
+        # the method and restore the method's original name and module strings, 
+        # to make inspection and debugging a little easier.
 
         functools.update_wrapper(
                 safety_checked_method, member_value,
@@ -171,7 +183,7 @@ class TokenMetaclass(type):
 
         
 
-class Token(ForumObserver, metaclass=TokenMetaclass):
+class Token(ForumObserver, metaclass=TokenSafetyChecks):
 
     class WatchedMethod:
 
@@ -192,7 +204,6 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
         super().__init__()
         self._id = None
         self._world = None
-        self._removed_from_world = False
         self._extensions = {}
         self._disable_forum_observation()
 
@@ -202,7 +213,6 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
     def __getstate__(self):
         state = super().__getstate__()
         del state['_world']
-        del state['_removed_from_world']
         del state['_extensions']
         return state
 
@@ -214,45 +224,22 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
         return {}
 
     @property
-    @read_only
     def id(self):
         return self._id
 
     @property
-    @read_only
     def world(self):
         return self._world
 
     @property
-    @read_only
-    def world_registration(self):
-        """
-        Return the status of this token's registration with the world.
-
-        There are three possible world registration statuses.  The first is 
-        'pending', which means that the token has not yet been added to the 
-        world (although it may have been assigned an id).  The second is 
-        'active', which means that the token is fully participating in the 
-        game.  The third is 'expired', which means that the token has been 
-        removed from the world and should no longer be in use.  These statuses 
-        are mostly used for internal checks within the game engine.
-        """
-        if self._removed_from_world:
-            return 'expired'
-        elif self.has_world():
-            if not self.has_id():
-                raise TokenDoesntHaveId(self)
-            return 'active'
-        else:
-            return 'pending'
-
-    @read_only
     def has_id(self):
         return self.id is not None
 
-    @read_only
+    @property
     def has_world(self):
-        assert (not self.world) or (self in self.world)
+        assert (not self.world) or (self in self.world), msg("""\
+                If a token has a reference to the world, it should be in the 
+                world.""")
         return self.world is not None
 
     @read_only
@@ -283,7 +270,14 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
         try:
             method = getattr(self, method_name)
         except AttributeError:
-            raise TokenHasNoSuchMethodToWatch(self, method_name)
+            raise ApiUsageError("""\
+                    {self.__class__.__name__} has no such method 
+                    {method_name}() to watch.
+
+                    This error usually means that you used the @watch_token 
+                    decorator on a method of a token extension class that 
+                    didn't match the name of any method in the corresponding 
+                    token class.  Check for typos.""")
 
         # Wrap the method in a WatchedMethod object, if that hasn't already 
         # been done.  This object manages a list of callback method and takes 
@@ -297,23 +291,6 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
         # Add the given callback to the watched method.
 
         method.add_watcher(callback)
-
-    @read_only
-    def reset_registration(self):
-        """
-        Allow the token to be added to the world again.
-
-        Once a token has been removed from the world, almost anything you do 
-        with it will raise an exception.  This behavior is meant to prevent 
-        bugs that happen when you accidentally keep stale references to removed 
-        tokens.  Calling this method circumvents those checks behavior and 
-        allows you to add a removed token back into the world.  Note that this 
-        method does not actually add the token to the world, it just allows you 
-        to do that in the usual way (i.e. by sending a message).  
-        """
-        if self.world_registration != 'expired':
-            raise CantResetActiveToken(self)
-        Token.__init__(self)
 
     def on_add_to_world(self, world):
         pass
@@ -329,14 +306,21 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
         pass
 
     def _give_id(self, id_factory):
-        from .forums import IdFactory
-
         require_token(self)
 
-        if self.has_id():
-            raise TokenAlreadyHasId(self)
-        if not isinstance(id_factory, IdFactory):
-            raise NotUsingIdFactory(id_factory)
+        from .forums import IdFactory
+        assert isinstance(id_factory, IdFactory), msg("""\
+                The argument to Token._give_id() should be an IdFactory.  This 
+                method should also only be caled by the game engine itself.""")
+
+        if self.has_id:
+            raise ApiUsageError("""\
+                can't give {self} an id because it already has one.
+
+                This error usually means that you tried to add the same token 
+                to the world twice.  The first part of that process is 
+                assigning an id to the token, and that doesn't make sense if 
+                the token already has an id.""")
 
         self._id = id_factory.next()
 
@@ -351,8 +335,79 @@ class Token(ForumObserver, metaclass=TokenMetaclass):
         """
         try:
             super()._check_if_forum_observation_enabled()
-        except AssertionError:
-            raise TokenCantSubscribeNow(self)
+        except ApiUsageError:
+            raise ApiUsageError("""\
+                    Token {self} can't subscribe to messages now.
+
+                    Tokens must be added to the world before they can subscribe 
+                    to (or unsubscribe from) messages, because subscriptions 
+                    can't be pickled and sent over the network.  So any 
+                    subscriptions a token makes while it's not part of the 
+                    world won't be communicated to each machine playing the 
+                    game.  You are most likely getting this error because you 
+                    tried to subscribe to messages in the constructor of a 
+                    Token subclass.  You can't do that, but instead you can 
+                    either make your subscriptions in the on_add_to_world() 
+                    callback or you can label your handler methods with the 
+                    @subscribe_to_message decorator.""")
+
+    def _add_to_world(self, world, actors):
+        self._world = world
+        self._enable_forum_observation()
+        self._create_extensions(actors)
+        self.on_add_to_world(world)
+
+    def _create_extensions(self, actors):
+        self._extensions = {}
+        extension_classes = self.__extend__()
+
+        for actor in actors:
+            actor_class = type(actor)
+            extension_class = extension_classes.get(actor_class)
+
+            if extension_class:
+
+                # Raise an easy-to-understand error if the extension class's 
+                # constructor takes something other than (self, actor, token).  
+                # An error would be raised anyway as soon as we try to 
+                # instantiate the extension, but that error would be hard to 
+                # understand because it wouldn't contain the name of the 
+                # offending extension and would come from pretty deep in the 
+                # game engine.
+
+                from inspect import getfullargspec
+                argspec = getfullargspec(extension_class.__init__)
+                if len(argspec.args) != 3:
+                    raise ApiUsageError("""\
+                            the {extension_class.__name__} constructor doesn't 
+                            take the right arguments.
+
+                            Token extension constructors must take exactly 
+                            three arguments: self, actor, and token.  These are 
+                            the arguments provided by tokens when they 
+                            automatically instantiate their extensions.  Fix 
+                            this error by making the {extension_class} 
+                            constructor compatible with these arguments.""")
+
+                # Instantiate the extension and store a reference to it.
+
+                extension = extension_class(actor, self)
+                self._extensions[actor] = extension
+
+    def _remove_from_world(self):
+        """
+        Clear all the internal data the token needed while it was part of 
+        the world.
+
+        Note that this method doesn't actually remove the token from the 
+        world.  That's what World._remove_token() does.  This method is just 
+        responsible for setting the internal state of the token being removed.
+        """
+        self.on_remove_from_world()
+        self._extensions = {}
+        self._disable_forum_observation()
+        self._world = None
+        self._id = None
 
 
 class TokenExtension(ForumObserver):
@@ -382,44 +437,6 @@ class TokenExtension(ForumObserver):
 
     def send_message(self, message):
         return self.actor.send_message(message)
-
-
-class TokenSerializer:
-
-    def __init__(self, world):
-        self.world = world
-
-    def pack(self, message):
-        from pickle import Pickler
-        from io import BytesIO
-
-        buffer = BytesIO()
-        delegate = Pickler(buffer)
-
-        def persistent_id(token):
-            if isinstance(token, Token):
-                if token.world_registration == 'pending':
-                    return None
-                if token.world_registration == 'active':
-                    require_active_token(token)
-                    return token.id
-                if token.world_registration == 'expired':
-                    raise UsingRemovedToken(token)
-
-        delegate.persistent_id = persistent_id
-        delegate.dump(message)
-
-        return buffer.getvalue()
-
-    def unpack(self, packet):
-        from pickle import Unpickler
-        from io import BytesIO
-
-        buffer = BytesIO(packet)
-        delegate = Unpickler(buffer)
-
-        delegate.persistent_load = lambda id: self.world.get_token(int(id))
-        return delegate.load()
 
 
 

@@ -32,7 +32,13 @@ class Message:
         try:
             return self.sender_id == id
         except AttributeError:
-            raise MessageNotYetSent()
+            raise ApiUsageError("""\
+                    Can't ask who sent a message before it's been sent.
+
+                    This error means Message.was_sent_by() or 
+                    Message.was_sent_by_referee() got called on a message that 
+                    hadn't been sent yet.  Normally you would only call these 
+                    methods from within Message.on_check().""")
 
     def was_sent_by_referee(self):
         return self.was_sent_by(1)
@@ -126,7 +132,15 @@ class Message:
         # far out of sync with the world on the server, and that the message 
         # needs to be undone on this client.  Only the ClientForum that sent 
         # the offending message will call this method.
-        raise UnhandledSyncError(self)
+        message_cls = self.__class__.__name__
+        raise ApiUsageError("""\
+                The message {self} was rejected by the server.
+
+                This client attempted to send a {message_cls} message, but it 
+                was rejected by the server.  To fix this error, either figure 
+                out why the client is getting out of sync with the server or 
+                implement a {message_cls}.on_undo() that undoes everything done 
+                in {message_cls}.on_execute().""")
 
     def _set_sender_id(self, id_factory):
         self.sender_id = id_factory.get()
@@ -147,13 +161,18 @@ class Message:
             return None
 
     def _assign_token_ids(self, id_factory):
-        # Called by Actor but not by ServerActor, so it is guaranteed to be 
-        # called exactly once.  Not really different from the constructor, 
-        # except that the id_factory object is nicely provided.  That's useful 
-        # for adding tokens but probably nothing else.  This method is called 
-        # before _check() so that _check() can make sure that valid ids were 
-        # assigned.
+        """
+        Assign id numbers to any tokens that will be added to the world by this 
+        message.
 
+        This method is called by Actor but not by ServerActor, so it's 
+        guaranteed to be called exactly once.  In fact, this method is not 
+        really different from the constructor, except that the id_factory 
+        object is nicely provided.  That's useful for assigning ids to tokens 
+        but probably nothing else.  This method is called before _check() so 
+        that _check() can make sure that valid ids were assigned (although by 
+        default it doesn't).
+        """
         for token in self.tokens_to_add():
             token._give_id(id_factory)
 
@@ -170,7 +189,12 @@ class Message:
         for token in self.tokens_to_add():
             world._add_token(token)
 
+        # Save the id numbers for the tokens we're removing so we can restore 
+        # them if we need to undo this message.
+
+        self._removed_token_ids = {}
         for token in self.tokens_to_remove():
+            self._removed_token_ids[token] = token.id
             world._remove_token(token)
 
         # Let derived classes execute themselves.
@@ -195,9 +219,7 @@ class Message:
         # end up with the id as before.
 
         for token in self.tokens_to_remove():
-            old_id = token.id
-            token.reset_registration()
-            token._id = old_id
+            token._id = self._removed_token_ids[token]
             world._add_token(token)
 
         # Let derived classes execute themselves.
@@ -216,5 +238,8 @@ def require_message(object):
 @debug_only
 def require_message_cls(cls):
     if not isinstance(cls, type) or not issubclass(cls, Message):
-        raise ObjectIsntMessageSubclass(cls)
+        try: wrong_thing = cls.__name__
+        except: wrong_thing = cls
+        raise ApiUsageError("""\
+                expected Message subclass, but got {wrong_thing} instead.""")
 
