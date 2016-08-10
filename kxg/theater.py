@@ -157,7 +157,7 @@ class GameStage(Stage):
     def __init__(self, world, forum, actors):
         Stage.__init__(self)
 
-        from .world import require_world; require_world(world)
+        from .tokens import require_world; require_world(world)
         from .forums import require_forum; require_forum(forum)
         from .actors import require_actors; require_actors(actors)
 

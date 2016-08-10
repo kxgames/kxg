@@ -9,5 +9,4 @@ from .actors import *
 from .multiplayer import *
 from .messages import *
 from .tokens import *
-from .world import *
 from .errors import *
