@@ -13,6 +13,6 @@ install:
 - pip install pytest pytest-catchlog pytest-cov python-coveralls
 script:
 - cd tests
-- py.test tests --cov kxg
+- py.test --cov kxg
 after_success:
 - coveralls
