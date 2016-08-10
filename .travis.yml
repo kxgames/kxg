@@ -12,7 +12,7 @@ install:
 - pip install .
 - pip install pytest pytest-catchlog pytest-cov python-coveralls
 script:
-- py.test tests
+- cd tests
 - py.test tests --cov kxg
 after_success:
 - coveralls
