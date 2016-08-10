@@ -655,7 +655,7 @@ def test_multiplayer_malicious_sender_id(caplog):
         cheater.pipe.send(message)
         test.update()
 
-        assert "ignoring message from player {} claiming to be from player 0".format(cheater.gui_actor.id) in caplog.text()
+        assert "ignoring message from player {} claiming to be from player 0".format(cheater.gui_actor.id) in caplog.text
 
         for observer in test.observers:
             assert observer.dummy_messages_received == []

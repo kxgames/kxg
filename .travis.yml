@@ -10,7 +10,7 @@ before_script:
 - sleep 3
 install:
 - pip install .
-- pip install pytest pytest-capturelog pytest-cov python-coveralls
+- pip install pytest pytest-catchlog pytest-cov python-coveralls
 script:
 - py.test tests
 - py.test tests --cov kxg
