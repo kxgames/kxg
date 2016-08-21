@@ -1,42 +1,183 @@
 #!/usr/bin/env python3
 
 import linersock
+import time, pyglet
 import multiprocessing, queue
 import logging, logging.handlers
+
 from .errors import *
-from .theater import *
+from .game import *
+from .forums import Forum
+from .multiplayer import ClientForum, ServerActor 
 
 DEFAULT_HOST = 'localhost'
 DEFAULT_PORT = 53351
 
-class ClientConnectionStage(Stage):
+class Theater:
+    """
+    Manage whichever stage is currently active.  This involves both
+    updating the current stage and handling transitions between stages.
+    """
 
-    def __init__(self, world, gui_actor, host, port):
-        super().__init__()
-        self.world = world
-        self.gui_actor = gui_actor
-        self.host = host
-        self.port = port
-        self.pipe = None
-        self.client = linersock.Client(
-                host, port, callback=self.on_connection_established)
+    def __init__(self, initial_stage=None, gui=None):
+        self._gui = gui
+        self._initial_stage = initial_stage
+        self._current_stage = None
+        self._current_update = self._update_before_loop
+        self._previous_time = time.time()
+
+    @property
+    def gui(self):
+        return self._gui
+
+    @gui.setter
+    def gui(self, gui):
+        if self._current_stage:
+            raise ApiUsageError("theater already playing; can't set gui.")
+        self._gui = gui
+
+    @property
+    def initial_stage(self):
+        return self._initial_stage
+
+    @initial_stage.setter
+    def initial_stage(self, stage):
+        require_stage(stage)
+        if self._current_stage:
+            raise ApiUsageError("theater already playing; can't set initial stage.")
+        self._initial_stage = stage
+
+    @property
+    def current_stage(self):
+        return self._current_stage
+
+    @property
+    def is_finished(self):
+        return self._current_update == self._update_after_loop
+
+    def update(self, dt=None):
+        self._current_update(dt)
+
+    def exit(self):
+        if self._current_stage:
+            self._current_stage.on_exit_stage()
+
+        self._current_update = self._update_after_loop
+
+
+    def _update_before_loop(self, dt):
+        self._current_stage = self._initial_stage
+        self._current_stage.theater = self
+        self._current_stage.on_enter_stage()
+
+        self._current_update = self._update_main_loop
+        self._current_update(dt)
+
+    def _update_main_loop(self, dt):
+        if dt is None:
+            current_time = time.time()
+            dt = current_time - self._previous_time
+            self._previous_time = current_time
+
+        self._current_stage.on_update_stage(dt)
+
+        if self._current_stage.is_finished:
+            self._current_stage.on_exit_stage()
+            self._current_stage = self._current_stage.successor
+
+            if not self._current_stage:
+                self.exit()
+            else:
+                require_stage(self._current_stage)
+                self._current_stage.theater = self
+                self._current_stage.on_enter_stage()
+
+    def _update_after_loop(self, dt):
+        raise AssertionError("shouldn't update the theater after the game has ended.")
+
+
+class PygletTheater(Theater):
+
+    def play(self, frames_per_sec=50):
+        pyglet.clock.schedule_interval(self.update, 1/frames_per_sec)
+        pyglet.app.run()
+
+    def exit(self):
+        super().exit()
+        pyglet.app.exit()
+
+
+class Stage:
+
+    def __init__(self):
+        self.theater = None
+        self.successor = None
+        self.is_finished = False
+
+    @property
+    def gui(self):
+        return self.theater.gui
+
+    def exit_stage(self):
+        """
+        Stop this stage from executing once the current update ends.
+        """
+        self.is_finished = True
+
+    def exit_theater(self):
+        """
+        Exit the game once the current update ends.
+        """
+        self.theater.exit()
+
+    def on_enter_stage(self):
+        """
+        Give the stage a chance to set itself up before it is updated for the 
+        first time.
+        """
+        pass
 
     def on_update_stage(self, dt):
-        self.client.connect()
-        try:
-            self.gui.on_refresh_gui()
-        except AttributeError:
-            pass
+        """
+        Give the stage a chance to react to each clock cycle.
 
-    def on_connection_established(self, pipe):
-        self.pipe = pipe
-        self.exit_stage()
+        The amount of time that passed since the last clock cycle is provided 
+        as an argument.
+        """
+        pass
 
     def on_exit_stage(self):
-        game_stage = MultiplayerClientGameStage(
-                self.world, self.gui_actor, self.pipe)
-        game_stage.successor.successor = PostgameSplashStage()
-        self.successor = game_stage
+        """
+        Give the stage a chance to react before it is stopped and the next 
+        stage is started.
+        
+        You can define the next stage by setting the Stage.successor attribute.  
+        If the successor is static, you can just set it in the constructor.  
+        But if it will differ depending on the context, this method may be a 
+        good place to calculate it because it is called only once and just 
+        before the theater queries for the successor.
+        """
+        pass
+
+
+class GameStage(Stage):
+
+    def __init__(self, game):
+        Stage.__init__(self)
+        self.game = game
+        self.successor = None
+
+    def on_enter_stage(self):
+        self.game.start_game()
+
+    def on_update_stage(self, dt):
+        self.game.update_game(dt)
+
+        if self.game.world.has_game_ended():
+            self.exit_stage()
+
+    def on_exit_stage(self):
+        self.game.finish_game()
 
 
 class ServerConnectionStage(Stage):
@@ -67,8 +208,50 @@ class ServerConnectionStage(Stage):
         self.pipes += pipes
 
     def on_exit_stage(self):
-        self.successor = MultiplayerServerGameStage(
-                self.world, self.referee, self.ai_actors, self.pipes)
+        self.successor = GameStage(MultiplayerServerGame(
+                self.world, self.referee, self.ai_actors, self.pipes))
+
+
+class ClientConnectionStage(Stage):
+
+    def __init__(self, world, gui_actor, host, port):
+        super().__init__()
+        self.world = world
+        self.gui_actor = gui_actor
+        self.host = host
+        self.port = port
+        self.pipe = None
+        self.client = linersock.Client(
+                host, port, callback=self.on_connection_established)
+
+    def on_update_stage(self, dt):
+        self.client.connect()
+        try:
+            self.gui.on_refresh_gui()
+        except AttributeError:
+            pass
+
+    def on_connection_established(self, pipe):
+        self.pipe = pipe
+        self.exit_stage()
+
+    def on_exit_stage(self):
+        game_stage = ClientReceiveIdStage(
+                self.world, self.gui_actor, self.pipe)
+        game_stage.successor.successor = PostgameSplashStage()
+        self.successor = game_stage
+
+
+class ClientReceiveIdStage(Stage):
+
+    def __init__(self, world, gui_actor, pipe):
+        super().__init__()
+        self.game = MultiplayerClientGame(world, gui_actor, pipe)
+        self.successor = GameStage(self.game)
+
+    def on_update_stage(self, dt):
+        if self.game.forum.receive_id_from_server():
+            self.exit_stage()
 
 
 class PostgameSplashStage(Stage):
@@ -244,7 +427,7 @@ class MultiplayerDebugger:
     def play_server(self):
         # Defer instantiation of all the game objects until we're inside our 
         # own process, to avoid having to pickle and unpickle things that 
-        # should be pickled.
+        # shouldn't be pickled.
 
         theater = self.theater_cls()
         theater.initial_stage = ServerConnectionStage(
@@ -311,11 +494,11 @@ Commands:
 Arguments:
     <num_guis>
         The number of human players that will be playing the game.  Only needed 
-        by commands that will launch some sort of multiplayer server.
+        by commands that will launch a multiplayer server.
 
     <num_ais>
         The number of AI players that will be playing the game.  Only needed by 
-        commands that will launch single-player games or multiplayer servers.
+        commands that will launch a single-player game or a multiplayer server.
 
 Options:
     -x --host HOST          [default: {default_host}]
@@ -334,9 +517,8 @@ This command is provided so that you can start writing your game with the least
 possible amount of boilerplate code.  However, the clients and servers provided 
 by this command are not capable of running a production game.  Once you have 
 written your game and want to give it a polished set of menus and options, 
-you'll have to write new Stage subclasses encapsulating that logic and you'll 
-have to call those stages yourself by interacting more directly with the 
-Theater class.  The online documentation has more information on this process.
+you'll have to write your own main() function.  The online documentation has 
+more information on this process.
     """
     import sys, os, docopt, nonstdlib
 
@@ -370,8 +552,8 @@ it.  In the mean time, don't let this confuse you!
 
         if args['sandbox']:
             game.gui = gui_cls()
-            game.initial_stage = UniplayerGameStage(
-                    world_cls(), referee_cls(), gui_actor_cls(), ai_actors)
+            game.initial_stage = GameStage(UniplayerGame(
+                    world_cls(), referee_cls(), gui_actor_cls(), ai_actors))
             game.initial_stage.successor = PostgameSplashStage()
 
         if args['client']:
@@ -385,4 +567,8 @@ it.  In the mean time, don't let this confuse you!
                     host, port)
 
     game.play()
+
+def require_stage(object):
+    require_instance(Stage(), object)
+
 

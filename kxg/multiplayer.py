@@ -17,23 +17,44 @@ class ClientForum(Forum):
 
     def receive_id_from_server(self):
         """
-        Listen for an id from the server.
+        Listen for an id from the server.  Return true if an id has been 
+        received and false otherwise.
 
         At the beginning of a game, each client receives an IdFactory from the 
         server.  This factory are used to give id numbers that are guaranteed 
         to be unique to tokens that created locally.  This method checks to see if such 
         a factory has been received.  If it hasn't, this method does not block 
         and immediately returns False.  If it has, this method returns True 
-        after saving the factory internally.  At this point it is safe to enter 
-        the GameStage.
+        after saving the factory internally.  At this point it is safe to call 
+        Game.start_game().  It is also safe to call this method as many times 
+        as you'd like after an id has been received.
         """
+        if self.actor_id_factory is not None:
+            return True
+
         for message in self.pipe.receive():
             if isinstance(message, IdFactory):
                 self.actor_id_factory = message
                 return True
+
         return False
 
     def connect_everyone(self, world, actors):
+        # Make sure this forum has been assigned an id from the server.
+
+        if self.actor_id_factory is None:
+            raise ApiUsageError("""\
+                    ClientForum wasn't assigned an id number by the server 
+                    before the game started.
+
+                    In a multiplayer game, each client must receive an id 
+                    number from the server before the game starts.  ServerActor 
+                    automatically sends this id as soon as Game.start_game() is 
+                    called on the server, but ClientForum must explicitly 
+                    receive it by calling receive_id_from_server().  This 
+                    method is non-blocking, so it has to be called repeatedly 
+                    until it returns true, indicating that an id was received. """)
+
         # Make sure that this forum is only connected to one actor.
 
         assert len(actors) == 1
@@ -184,7 +205,9 @@ class ClientForum(Forum):
         self.pipe.pop_serializer()
 
     def _assign_id_factories(self):
-        assert self.actor_id_factory is not None
+        assert self.actor_id_factory is not None, msg("""\
+                Can't assign id factories without an id number from the server.  
+                This should've been caught by ClientActor.connect_everyone().""")
         return {self.actor: self.actor_id_factory}
 
 
@@ -270,6 +293,7 @@ class ServerActor(Actor):
     def _set_forum(self, forum, id):
         super()._set_forum(forum, id)
         self.pipe.send(id)
+        self.pipe.deliver()
 
     def _relay_message(self, message):
         """

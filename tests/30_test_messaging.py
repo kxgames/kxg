@@ -926,4 +926,14 @@ def test_cant_subscribe_in_token_ctor():
     with raises_api_usage_error("can't subscribe to messages now."):
         token = SubscribeInConstructorToken()
 
+def test_cant_start_game_without_client_id():
+    world = DummyWorld()
+    pipe = linersock.test_helpers.make_pipe()[0]
+    forum = kxg.ClientForum(pipe)
+    actors = [DummyActor()]
+    game = kxg.Game(world, forum, actors)
+
+    with raises_api_usage_error("wasn't assigned an id number"):
+        game.start_game()
+
 
