@@ -170,6 +170,9 @@ class GameStage(Stage):
     def on_enter_stage(self):
         self.game.start_game()
 
+        for actor in self.game.actors:
+            actor.on_setup_gui(self.gui)
+
     def on_update_stage(self, dt):
         self.game.update_game(dt)
 
