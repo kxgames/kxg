@@ -139,7 +139,6 @@ class TokenSafetyChecks(type):
         return safety_checked_method
 
         
-
 class TokenExtension(ForumObserver):
 
     def __init__(self, actor, token):
@@ -392,6 +391,9 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
 
 
 class World(Token):
+    """
+    Manage all of the tokens participating in the game.
+    """
 
     def __init__(self):
         super().__init__()

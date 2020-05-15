@@ -13,35 +13,37 @@ One of the most difficult parts of writing multiplayer games is making sure
 that all the clients stay in sync with the server, so making this easier is a 
 primary focus of the game engine.  The engine approaches this problem by only 
 allowing the game state to change if it can ensure that the same change will be 
-made to the state of every participating game.  To do this, the engine provides 
-a class called :class:`World` that represents the entire state of the game.  
-Each participating game has it's own world.  To keep the worlds in sync, the 
-game engine only allows the world to be modified in two ways:
+made to the state of every participating client.  To do this, the engine 
+provides a class called :class:`kxg.World` that represents the entire state of 
+the game.  The server and each participating client all have their own worlds.  
+To keep the worlds in sync, the game engine only allows the world to be 
+modified in two ways:
 
-   1. The world can update itself.
-   
-   2. Any player can submit a message to the engine.  The engine will ensure 
-      that that message is executed by each participating game.
+1. The world can update itself.
+
+2. Any player can submit a message to the engine.  The engine will ensure 
+   that that message is executed by each participating game.
    
 Having the worlds update themselves is safe, because they should be mostly in 
 sync to start with.  The worlds can drift out of sync due to slight differences 
 in timing and whatnot, but this can be fixed by sending periodic 
 synchronization messages.  Having players initiate changes to the worlds is 
 potentially more dangerous.  The game engine handles this by requiring you to 
-encapsulate these changes in message objects that can be relayed to each 
-participating game.  The game engine also does a lot to make sure that:
+encapsulate these changes in message objects that can be vetted by the server 
+and relayed to each participating client.  The game engine also does a lot to 
+make sure that:
 
-   1. You can't modify the world in an unsafe way.  If you try to, the engine 
-      will display a verbose and explanatory message before crashing your game.
+1. You can't modify the world in an unsafe way.  If you try to, the engine will 
+   display a verbose and explanatory message before crashing your game.
 
-   2. It's easy to register callbacks for any kind of message from any part of 
-      the game that might need to react to one.
+2. It's easy to register callbacks for any kind of message from any part of 
+   the game that might need to react to one.
 
-   3. The objects that make up the game world (called tokens) can be easily and 
-      efficiently included in messages.
+3. The objects that make up the game world (called tokens) can be easily and 
+   efficiently included in messages.
 
-   4. Single-player games are seamlessly supported and that you don't have to 
-      write any code that is network-aware.
+4. Single-player games are seamlessly supported and that you don't have to 
+   write any code that is network-aware.
 
 What the engine doesn't do
 ==========================
