@@ -4,7 +4,7 @@
 
    {% block classes %}
    {% if classes %}
-   .. rubric:: {{ Classes }}
+   .. rubric:: Classes
 
    .. autosummary::
       :toctree:
@@ -16,7 +16,7 @@
 
    {% block functions %}
    {% if functions %}
-   .. rubric:: {{ Functions }}
+   .. rubric:: Functions
 
    .. autosummary::
       :toctree: api
