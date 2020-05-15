@@ -1,8 +1,6 @@
 language: python
 python:
-- '3.3'
-- '3.4'
-- '3.5'
+- '3.8'
 - nightly
 before_script:
 - export DISPLAY=:99.0
@@ -13,6 +11,6 @@ install:
 - pip install pytest pytest-catchlog pytest-cov python-coveralls
 script:
 - cd tests
-- py.test --cov kxg
+- pytest --cov kxg
 after_success:
 - coveralls
