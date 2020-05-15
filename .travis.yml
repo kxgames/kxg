@@ -1,11 +1,11 @@
 language: python
 python:
 - '3.8'
-- nightly
-before_script:
-- export DISPLAY=:99.0
-- sh -e /etc/init.d/xvfb start
-- sleep 3
+dist: xenial
+services:
+  - xvfb
+before_install:
+  - sudo apt-get install --force-yes freeglut3-dev
 install:
 - pip install .
 - pip install pytest pytest-catchlog pytest-cov python-coveralls
