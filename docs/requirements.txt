@@ -1,2 +1,2 @@
-git+git://github.com/sphinx-doc/sphinx@master#egg=sphinx
+git+https://github.com/sphinx-doc/sphinx@master#egg=sphinx
 
