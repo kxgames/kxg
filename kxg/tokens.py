@@ -7,6 +7,10 @@ from .forums import ForumObserver
 from .actors import require_actor
 
 def read_only(method):
+    """
+    Indicate that a given `Token` method will not change the state of the 
+    world, and is therefore safe to call at any time.
+    """
     setattr(method, '_kxg_read_only', True)
     return method
 
@@ -15,40 +19,40 @@ def watch_token(method):
     Mark a token extension method that should automatically be called when a 
     token method of the same name is called.
 
-    This decorator must only be used on TokenExtension methods, otherwise it 
+    This decorator must only be used on `TokenExtension` methods, otherwise it 
     will silently do nothing.  The reason is that the decorator itself can't do 
-    anything but label the given method, because at the time of decoration the 
-    token to watch isn't known.  The method is actually setup to watch a token 
-    in the TokenExtension constructor, which searches for the label added here.  
-    But other classes won't make this search and will silently do nothing.
+    anything but label the given method, because the token to watch isn't known 
+    at the time of decoration.  The method is actually setup to watch a token 
+    in the `TokenExtension` constructor, which searches for the label added 
+    here.  But other classes won't make this search and will silently do 
+    nothing.
     """
     method._kxg_watch_token = True
     return method
 
-
 class TokenSafetyChecks(type):
+    """
+    Add checks to make sure token methods are being called safely.
+
+    In order to keep multiplayer games in sync, the world should only be 
+    modified at particular times (e.g. token update methods and messages).  The 
+    purpose of this metaclass is to stop you from accidentally trying to modify 
+    the world outside of these defined times, because doing so would lead to 
+    subtle synchronization bugs that could be hard to find.
+
+    The engine indicates when it is safe to modify the world by setting a 
+    boolean lock flag in the world.  This metaclass adds a bit of logic to 
+    non-read-only token methods that makes sure the world is unlocked before 
+    continuing.  The `read_only` decorator can be used to indicate which 
+    methods are read-only, and are therefore excluded from these checks.
+    
+    The checks configured by this metaclass help find bugs, but may also incur 
+    unnecessary computational expense once the game has been fully debugged.  
+    For this reason, you can skip the checks by invoking python with 
+    optimization enabled (i.e. passing -O).
+    """
 
     def __new__(meta, name, bases, members):
-        """
-        Add checks to make sure token methods are being called safely.
-
-        In order to keep multiplayer games in sync, the world should only be 
-        modified at particular times (e.g. token update methods and messages).  
-        The purpose of this metaclass is to stop you from accidentally trying 
-        to modify the world outside of these defined times.  These mistakes 
-        would otherwise cause hard-to-debug sync errors.
-
-        The engine indicates when it is safe to modify the world by setting a 
-        boolean lock flag in the world.  This metaclass adds a bit of logic to 
-        non-read-only token methods that makes sure the world is unlocked 
-        before continuing.  The kxg.read_only() decorator can be used to 
-        indicate which methods are read-only, and are therefore excluded from 
-        these checks.
-        
-        The checks configured by this metaclass help find bugs, but may also 
-        incur significant computational expense.  By invoking python with 
-        optimization enabled (i.e. passing -O) these checks are skipped.
-        """
         if __debug__:
             meta.add_safety_checks(members)
 
@@ -114,7 +118,7 @@ class TokenSafetyChecks(type):
                         This error brings attention to situations that might 
                         cause synchronization issues in multiplayer games.  The 
                         {member_name}() method is not marked as read-only, but 
-                        it was invoked from outside the context of a message.  
+                        was invoked from outside the context of a message.  
                         This means that if {member_name}() makes any changes to 
                         the world, those changes will not be propagated.  If 
                         {member_name}() is actually read-only, label it with 
@@ -138,7 +142,6 @@ class TokenSafetyChecks(type):
         )
         return safety_checked_method
 
-        
 class TokenExtension(ForumObserver):
 
     def __init__(self, actor, token):
@@ -167,7 +170,6 @@ class TokenExtension(ForumObserver):
     def send_message(self, message):
         return self.actor.send_message(message)
 
-
 class Token(ForumObserver, metaclass=TokenSafetyChecks):
 
     class WatchedMethod:
@@ -183,7 +185,6 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
 
         def add_watcher(self, watcher):
             self.watchers.append(watcher)
-
 
     def __init__(self):
         super().__init__()
@@ -246,7 +247,7 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
         """
         Register the given callback to be called whenever the method with the 
         given name is called.  You can easily take advantage of this feature in 
-        token extensions by using the @watch_token decorator.
+        token extensions by using the `watch_token` decorator.
         """
 
         # Make sure a token method with the given name exists, and complain if 
@@ -307,11 +308,12 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
     def _check_if_forum_observation_enabled(self):
         """
         Give a helpful error if the user attempts to subscribe or unsubscribe 
-        from messages while the token is not registered with a world.  This can 
-        easily happen if the user attempts to subscribe to messages in the 
-        constructor.  However, because the constructor is only called on one 
-        client and message handlers cannot be pickled, subscribing at this time 
-        would create hard-to-find synchronization bugs.
+        from messages while the token is not registered with a world.
+
+        This can easily happen if the user attempts to subscribe to messages in 
+        the constructor.  However, because the constructor is only called on 
+        one client and message handlers cannot be pickled, subscribing at this 
+        time would create hard-to-find synchronization bugs.
         """
         try:
             super()._check_if_forum_observation_enabled()
@@ -380,7 +382,7 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
         the world.
 
         Note that this method doesn't actually remove the token from the 
-        world.  That's what World._remove_token() does.  This method is just 
+        world.  That's what `World._remove_token` does.  This method is just 
         responsible for setting the internal state of the token being removed.
         """
         self.on_remove_from_world()
@@ -388,7 +390,6 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
         self._disable_forum_observation()
         self._world = None
         self._id = None
-
 
 class World(Token):
     """
@@ -440,24 +441,27 @@ pickled.""")
     @read_only
     def get_token(self, id):
         """
-        Return the token with the given id.  If no token with the given id is 
-        registered to the world, an IndexError is thrown.
+        Return the token with the given id.
+
+        If no token with the given id is registered to the world, an 
+        `IndexError` is raised.
         """
         return self._tokens[id]
 
     @read_only
     def get_last_id(self):
         """
-        Return the largest token id registered with the world.  If no tokens 
-        have been added to the world, the id for the world itself (0) is 
-        returned.  This means that the first "real" token id is 1.
+        Return the largest token id registered with the world.
+        
+        If no tokens have been added to the world, the id for the world itself 
+        (0) is returned.  This means that the first "real" token id is 1.
         """
         return max(self._tokens)
 
     @read_only
     def is_locked(self):
         """
-        Return whether or not the world is currently allowed to be modified.
+        Return True if the world is currently allowed to be modified.
         """
         return self._is_locked
 
@@ -467,7 +471,7 @@ pickled.""")
     @read_only
     def has_game_ended(self):
         """
-        Return true if the game has ended.
+        Return True if the game has ended.
         """
         return self._has_game_ended
 
@@ -547,22 +551,20 @@ pickled.""")
         """
         self._actors = actors
 
-
-
 @debug_only
 def require_token(object):
     """
-    Raise an ApiUsageError if the given object is not a fully constructed 
-    instance of a Token subclass.
+    Raise an `ApiUsageError` if the given object is not a fully constructed 
+    instance of a `Token` subclass.
     """
     require_instance(Token(), object)
 
 @debug_only
 def require_active_token(object):
     """
-    Raise an ApiUsageError if the given object is not a token that is currently 
-    participating in the game.  To be participating in the game, the given 
-    token must have an id number and be associated with the world.
+    Raise an `ApiUsageError` if the given object is not a token that is 
+    currently participating in the game.  To be participating in the game, the 
+    given token must have an id number and be associated with the world.
     """
     require_token(object)
     token = object
@@ -581,11 +583,15 @@ def require_active_token(object):
                 token {token} (id={token.id}) not in world.
 
                 You can get this error if you try to remove the same token from 
-                the world twice.  This might happen is you don't get rid of 
-                every reference to a token after it's removed the first time, 
-                then later on you try to remove the stale reference.""")
+                the world twice, e.g. if you don't get rid of every reference 
+                to a token after it's removed the first time, then later on try 
+                to remove the stale reference.""")
 
 @debug_only
 def require_world(object):
+    """
+    Raise an `ApiUsageError` if the given object is not a fully constructed 
+    `World` instance.
+    """
     return require_instance(World(), object)
 

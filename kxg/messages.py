@@ -51,12 +51,13 @@ class Message:
 
     def tokens_referenced(self):
         """
-        Return a list of all the tokens that are referenced (i.e. contained in) 
-        this message.  Tokens that haven't been assigned an id yet are searched 
-        recursively for tokens.  So this method may return fewer results after 
-        the message is sent.  This information is used by the game engine to 
-        catch mistakes like forgetting to add a token to the world or keeping a 
-        stale reference to a token after its been removed.
+        Return a list of all the tokens that are referenced in this message.
+
+        Tokens that haven't been assigned an id yet are searched recursively 
+        for tokens.  So this method may return fewer results after the message 
+        is sent.  This information is used by the game engine to catch mistakes 
+        like forgetting to add a token to the world or keeping a stale 
+        reference to a token after its been removed.
         """
         tokens = set()
 
@@ -92,46 +93,78 @@ class Message:
         return tokens
 
     def on_check(self, world):
-        # Called by the actor.  If no MessageCheck exception is raised, the 
-        # message will be sent as usual.  Otherwise, the behavior will depend 
-        # on what kind of actor is handling the message.  Actor (uniplayer and 
-        # multiplayer clients) will Normal Actor will simply not send the 
-        # message.  ServerActor (multiplayer server) will decide if the error 
-        # should be handled by undoing the message or asking the clients to 
-        # sync themselves.
+        """
+        Confirm that the message is consistent with the `World`.
+
+        This handler is called by actors.  If no `MessageCheck` exception is 
+        raised, the message will be sent as usual.  Otherwise, the behavior 
+        will depend on what kind of actor is handling the message.  `Actor` 
+        (uniplayer and multiplayer clients) will simply not send the message.  
+        `ServerActor` (multiplayer server) will decide if the error should be 
+        handled by undoing the message or asking the clients to sync 
+        themselves.
+        """
         raise NotImplementedError
 
     def on_prepare_sync(self, world, memento):
-        # Called only by ServerActor if on_check() returns False.  If this 
-        # method returns True, the message will be relayed to the rest of the 
-        # clients with the sync error flag set.  Otherwise the message will not 
-        # be sent and the ClientForum that sent the message will be instructed 
-        # to undo it.  If a soft error is detected, this method should save 
-        # information about the world that it could use to resynchronize all 
-        # the clients.
+        """
+        Determine how `on_check` failures on the server should be handled.
+        
+        When `on_check` fails on the server, it means that the client which 
+        sent the message is out of sync (since had it been in sync, it would've 
+        rejected the message locally).  There are two ways to handle this 
+        situation, and the role of this handler is to decide which to use.
+
+        The first is to reject the message.  This is considered a "hard sync 
+        error".  In this case, the out-of-sync client will be instructed to 
+        undo this message, and the rest of the clients will never be sent the 
+        message in the first place.  This approach ensures that messages sent 
+        by the server are consistent with the server's `World`, but at the cost 
+        of requiring some messages to be undone, which may be jarring for the 
+        players.  To indicate a hard sync error, return False from this 
+        handler.  This is the default behavior.
+
+        The second is to send the message with extra instructions on how to 
+        re-synchronize the clients.  This is considered a "soft sync error".  
+        In this case, the message will be relayed to all clients as usual, but 
+        each client will call the `on_sync` handler upon receipt.  Any extra 
+        information that might be helpful in resynchronizing the clients can be 
+        assigned to the *memento* argument, which will be sent to each client 
+        along with the message, and then passed to `on_sync`.  To indicate a 
+        soft sync error, return True from this handler.
+        """
         return False
 
     def on_execute(self, world):
-        # Called by the forum on every machine running the game.  Allowed to 
-        # make changes to the game world, but should not change the message 
-        # itself.  Called before any signal-handling callbacks.
+        """
+        Update the world with the information stored in the message.
+
+        This handler is called by the forum on every machine running the game, 
+        before any signal-handling callbacks.  It is allowed to make changes to 
+        the game world, but should not change the message itself.
+        """
         pass
 
     def on_sync(self, world, memento):
-        # Called by the forum upon receiving a message with the soft error flag 
-        # set.  This flag indicates that the client that sent the message is 
-        # slightly out of sync with the server, but that the message will be 
-        # relayed as usual and that the clients should use the opportunity to 
-        # quietly resynchronize themselves.  
+        """
+        Handle soft synchronization errors.
+
+        See `on_prepare_sync` for more details or hard/soft synchronization 
+        error.  This handler should use any information put in the *memento* by 
+        `on_prepare_sync` to quietly re-synchronize the client with the server.
+        """
         pass
 
     def on_undo(self, world):
-        # Called by ClientForum only upon receiving a message with the hard 
-        # error flag set.  This flag indicates that the server refused to relay 
-        # the given message to the other clients, presumably because it was too 
-        # far out of sync with the world on the server, and that the message 
-        # needs to be undone on this client.  Only the ClientForum that sent 
-        # the offending message will call this method.
+        """
+        Handle hard synchronization errors.
+
+        See `on_prepare_sync` for more details or hard/soft synchronization 
+        error.  This handler should undo whatever changes were made to the 
+        world in `on_execute`, preferably in a way that is as minimally 
+        disruptive to the player as possible.  Only the client that originally 
+        sent this message will call this handler.
+        """
         message_cls = self.__class__.__name__
         raise ApiUsageError("""\
                 The message {self} was rejected by the server.
@@ -165,12 +198,12 @@ class Message:
         Assign id numbers to any tokens that will be added to the world by this 
         message.
 
-        This method is called by Actor but not by ServerActor, so it's 
+        This method is called by `Actor` but not by `ServerActor`, so it's 
         guaranteed to be called exactly once.  In fact, this method is not 
-        really different from the constructor, except that the id_factory 
-        object is nicely provided.  That's useful for assigning ids to tokens 
-        but probably nothing else.  This method is called before _check() so 
-        that _check() can make sure that valid ids were assigned (although by 
+        really different from the constructor, except that an `IdFactory` 
+        instance is nicely provided.  That's useful for assigning ids to tokens 
+        but probably nothing else.  This method is called before `_check` so 
+        that `_check` can make sure that valid ids were assigned (although by 
         default it doesn't).
         """
         for token in self.tokens_to_add():

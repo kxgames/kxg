@@ -8,7 +8,7 @@
 
    .. autosummary::
       :toctree:
-   {% for item in classes %}
+   {% for item in classes + exceptions %}
       {{ item }}
    {%- endfor %}
    {% endif %}
