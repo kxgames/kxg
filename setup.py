@@ -32,6 +32,11 @@ setup(
             'linersock',
             'docopt',
     ],
+    extras_require={
+        'docs': [
+            'autoclasstoc',
+        ],
+    },
     license='MIT',
     zip_safe=False,
     keywords=[
