@@ -34,17 +34,17 @@ The game architecture
 =====================
 In broad strokes, the game engine expects you to implement a handful of classes 
 that collectively describe your game.  This includes classes to represent all 
-the players themselves (:class:`kxg.Actor`), the actions the players can take 
-(:class:`kxg.Message`), the game objects that the players can interact with 
-(:class:`kxg.World` and :class:`kxg.Token`).  You then pass these classes to a 
-main function function that orchestrates playing the game. [#]_
+the players themselves (`Actor`), the actions the players can take (`Message`), 
+the game objects that the players can interact with (`World` and `Token`).  You 
+then pass these classes to a main function function that orchestrates playing 
+the game. [#]_
 
 Setting up the world
 ====================
-The first class we'll implement is ``World``.  This class is a container for 
-every object that is part of the game.  One of the game engine's most 
-important responsibilities is to keep the world in sync during multiplayer 
-games.  Normally the objects in the world would be mostly tokens (see 
+The first class we'll implement is `World`.  This class is a container for 
+every object that is part of the game.  One of the game engine's most important 
+responsibilities is to keep the world in sync during multiplayer games.  
+Normally the objects in the world would be mostly tokens (see 
 :doc:`/token_overview`), but Guess My Number is a simple game so we only need 
 to keep track of four numbers:
 
@@ -54,7 +54,7 @@ to keep track of four numbers:
 * The id number of the winner, or zero if the game isn't over.
 
 We don't have to do much to implement the world.  All we have to do is inherit 
-from :class:`kxg.World` and initialize our four numbers in the constructor::
+from `World` and initialize our four numbers in the constructor::
 
    import kxg
 
@@ -81,10 +81,10 @@ Picking the number
 ==================
 As discussed above, the world can't be initialized with a number to guess.  
 Instead, the server will pick a number and communicate it to all the clients by 
-sending a message.  To do this, we will need to write a ``PickNumber`` message 
-class.  This class will contain any relevant information (e.g. the number as 
-well as the upper and lower bounds on the guesses) along with methods to help 
-carry out the message::
+sending a message.  To do this, we will need to write a :class:`PickNumber` 
+message class.  This class will contain any relevant information (e.g. the 
+number as well as the upper and lower bounds on the guesses) along with methods 
+to help carry out the message::
 
    import kxg
 
@@ -114,27 +114,27 @@ use to change the world.  It doesn't even need to call the base class
 constructor.  In this case we only need to store the number to guess and the 
 upper and lower bounds to show the players.
 
-:meth:`~kxg.Message.on_check()` is called by the game engine the confirm that 
-the message should be allowed given the current state of the world.  If there's 
-a problem, :meth:`on_check()` should raise a :exc:`kxg.MessageCheck` exception.  
-This is important in multiplayer games, because it gives the server veto power 
-over messages sent by the clients.  In other words, before a message from one 
-client is relayed to all the others, it has to pass the check on the server.  
-This gives the server a way to prevent cheating and to detect when the clients 
-are getting out of sync.  For Guess My Number, we just check to make sure that 
-the number to guess isn't already set, which would suggest that this message 
-had been sent twice somehow.
+`on_check()` is called by the game engine the confirm that the message should 
+be allowed given the current state of the world.  If there's a problem, 
+`on_check()` should raise a `MessageCheck` exception.  This is important in 
+multiplayer games, because it gives the server veto power over messages sent by 
+the clients.  In other words, before a message from one client is relayed to 
+all the others, it has to pass the check on the server.  This gives the server 
+a way to prevent cheating and to detect when the clients are getting out of 
+sync.  For Guess My Number, we just check to make sure that the number to guess 
+isn't already set, which would suggest that this message had been sent twice 
+somehow.
 
-The ``on_execute()`` method is called by the game engine to let the message 
+The `on_execute()` method is called by the game engine to let the message 
 change the game world.  This message only needs to copy its three attributes 
 into the world, so that's what it does.
 
 Guessing the number
 ===================
 We'll use a second message to communicate the guesses that players make.  This 
-``GuessNumber`` message will be conceptually very similar to ``PickNumber``.  
-The only wrinkle is that we will use :meth:`kxg.World.end_game()` to end the 
-game when the right number is guessed::
+:class:`GuessNumber` message will be conceptually very similar to 
+:class:`PickNumber`.  The only wrinkle is that we will use 
+:meth:`World.end_game` to end the game when the right number is guessed::
 
    import kxg
 
@@ -164,7 +164,7 @@ game when the right number is guessed::
            elif self.guess > world.number:
                world.upper_bound = min(self.guess, world.upper_bound)
 
-The constructor stores a player id number and a guess.  The ``on_execute()`` 
+The constructor stores a player id number and a guess.  The :meth:`on_execute` 
 method compares that guess to the secret number.  If the guess is right, the 
 message ends the game and sets the player that made the guess as the winner.  
 If the guess is wrong, the message narrows the lower and upper bounds that are 
@@ -172,11 +172,11 @@ displayed to all the players.
 
 Refereeing the Game
 ===================
-The next class we'll implement is ``Referee``.  The referee runs only on the 
+The next class we'll implement is `Referee`.  The referee runs only on the 
 server and sends messages that wouldn't be sent by any of the players.  This 
 often boils down to messages that start and end the game.  Our referee will 
-only need to concern itself with starting the game, because the ``GuessNumber`` 
-message takes care of ending it::
+only need to concern itself with starting the game, because the 
+:class:`GuessNumber` message takes care of ending it::
 
    import kxg
    import random
@@ -195,12 +195,12 @@ message takes care of ending it::
 The lower and upper bounds are global variables just so they can be changed
 without having to dig through too much code.  In a more sophisticated game, 
 these bounds might be read from a config file or set in some sort of lobby.  
-The ``on_start_game()`` method is called automatically by the game engine when 
-the game starts.  It picks a random number within the given bounds, uses that 
-number to construct a ``PickNumber`` message, then sends that message using the 
-``>>`` operator.  We can be sure that only one number will be picked because 
-the referee only runs on the server and ``on_start_game()`` is only called 
-once.
+The `Actor.on_start_game()` method is called automatically by the game engine 
+when the game starts.  It picks a random number within the given bounds, uses 
+that number to construct a :class:`PickNumber` message, then sends that message 
+using the ``>>`` operator.  We can be sure that only one number will be picked 
+because the referee only runs on the server and `Actor.on_start_game()` is only 
+called once.
 
 Making a user interface
 =======================
@@ -215,19 +215,18 @@ types, their guess will replace the question marks in the middle.
 The game engine itself doesn't care how the GUI is written, so for your own 
 games you can use whatever graphics library best fits your needs.  We'll use 
 pyglet in this tutorial, because it offers a good balance between power and 
-ease of use.  If you're not familiar with pyglet, `this brief tutorial`_ covers 
-everything we'll need, which really isn't much more than "Hello world!"
+ease of use.  If you're not familiar with pyglet, `this brief tutorial`__ 
+covers everything we'll need, which really isn't much more than "Hello world!"
 
-.. _this brief tutorial:
-   http://pyglet-current.readthedocs.org/en/latest/programming_guide/quickstart.html
+__ http://pyglet-current.readthedocs.org/en/latest/programming_guide/quickstart.html
 
-We'll write the GUI in two classes, and the first will be ``Gui``.  The purpose 
-of this class will be to store information about the GUI we'll need before, 
-during, and after the game itself.  Typically this information will include a 
-window handle and maybe some shared menu stuff.  Guess My Number will only use 
-``Gui`` to display a post-game "You Won/Lost!" message, but a production game 
-would also use it to put together menus and multiplayer lobbies and things like 
-that::
+We'll write the GUI in two classes, and the first will be :class:`Gui`.  The 
+purpose of this class will be to store information about the GUI we'll need 
+before, during, and after the game itself.  Typically this information will 
+include a window handle and maybe some shared menu stuff.  Guess My Number will 
+only use :class:`Gui` to display a post-game "You Won/Lost!" message, but a 
+production game would also use it to put together menus and multiplayer lobbies 
+and things like that::
 
    import pyglet
 
@@ -261,120 +260,142 @@ We don't necessarily need to use the same label object during and after the
 game, but doing so makes it easier to set the post-game message and keeps us 
 from having to specify the font and positioning of the label twice. [#]_
 
-The ``on_refresh_gui()`` method clears the screen and redraws the label, which 
-may have been changed the game since the last redraw.  The game engine calls 
-this method automatically before and after the game, and we'll call it manually 
-during the game itself.
+The :meth:`on_refresh_gui()` method clears the screen and redraws the label, 
+which may have been changed the game since the last redraw.  The game engine 
+calls this method automatically before and after the game, and we'll call it 
+manually during the game itself.
 
-Our second GUI class will be ``GuiActor``.  Actors are the components of the 
-game engine that represent individual players.  We will write ``GuiActor`` to 
-represent human players and (in the next section) ``AiActor`` to represent 
-computer players.  To represent human players, ``GuiActor`` will have to render 
-the screenshot from the beginning of this section and send messages on behalf 
-of the player::
+Our second GUI class will be :class:`GuiActor`.  Actors are the components of 
+the game engine that represent individual players.  We will write 
+:class:`GuiActor` to represent human players and (in the next section) 
+:class:`AiActor` to represent computer players.  To represent human players, 
+:class:`GuiActor` will have to render the screenshot from the beginning of 
+this section and send messages on behalf of the player::
 
    import kxg
 
-   class GuiActor(kxg.Actor):
-       """
-       Show the players the range of numbers that haven't been eliminated yet, 
-       and allow the player to guess what the number is.
-       """
-   
-       def __init__(self):
-           super().__init__()
-           self.guess = ''
-           self.prompt = "{0.lower_bound} < {1} < {0.upper_bound}"
-   
-       def on_setup_gui(self, gui):
-           self.gui = gui
-           self.gui.window.set_handlers(self)
-   
-       def on_draw(self):
-           self.gui.on_refresh_gui()
-   
-       def on_key_press(self, symbol, modifiers):
-           # If the user types a number, add that digit to the guess.
-           try:
-               digit = int(chr(symbol))
-               self.guess += str(digit)
-           except ValueError:
-               pass
-           
-           # If the user hits backspace, remove the last digit from the guess.
-           if symbol == pyglet.window.key.BACKSPACE:
-               if self.guess:
-                   self.guess = self.guess[:-1]
-   
-           # If the user hits enter, guess the current number.
-           if symbol == pyglet.window.key.ENTER:
-               if self.guess:
-                   self >> GuessNumber(self.id, int(self.guess))
-                   self.guess = ''
-   
-           self.on_update_prompt()
-   
-       @kxg.subscribe_to_message(PickNumber)
-       @kxg.subscribe_to_message(GuessNumber)
-       def on_update_prompt(self, message=None):
-           self.gui.label.text = self.prompt.format(
-                   self.world, self.guess or '???')
-   
-       def on_finish_game(self):
-           self.gui.window.pop_handlers()
-   
-           if self.world.winner == self.id:
-               self.gui.label.text = "You won!"
-           else:
-               self.gui.label.text = "You lost!"
+  class GuiActor(kxg.Actor):
+      """
+      Show the players the range of numbers that haven't been eliminated yet,
+      and allow the player to guess what the number is.
+      """
+
+      def __init__(self):
+          super().__init__()
+          self.guess = None
+          self.prompt = "{0.lower_bound} < {1} < {0.upper_bound}"
+
+      def on_setup_gui(self, gui):
+          self.gui = gui
+          self.gui.window.set_handlers(self)
+
+      def on_draw(self):
+          self.gui.on_refresh_gui()
+
+      def on_mouse_scroll(self, x, y, dx, dy):
+          # If the user scrolls the mouse wheel, update the guess accordingly.
+          if self.guess is None:
+              if dy < 0:
+                  self.guess = self.world.upper_bound
+              else:
+                  self.guess = self.world.lower_bound
+
+          self.guess = sorted([
+              self.world.lower_bound,
+              self.guess + dy,
+              self.world.upper_bound,
+          ])[1]
+
+          self.on_update_prompt()
+
+      def on_key_press(self, symbol, modifiers):
+          # If the user types a number, add that digit to the guess.
+          try:
+              digit = int(chr(symbol))
+              self.guess = 10 * (self.guess or 0) + digit
+          except ValueError:
+              pass
+          
+          # If the user hits backspace, remove the last digit from the guess.
+          if symbol == pyglet.window.key.BACKSPACE:
+              if self.guess is not None:
+                  guess_str = str(self.guess)[:-1]
+                  self.guess = int(guess_str) if guess_str else None
+
+          # If the user hits enter, guess the current number.
+          if symbol == pyglet.window.key.ENTER:
+              if self.guess:
+                  self >> GuessNumber(self.id, self.guess)
+                  self.guess = None
+
+          self.on_update_prompt()
+
+      @kxg.subscribe_to_message(PickNumber)
+      @kxg.subscribe_to_message(GuessNumber)
+      def on_update_prompt(self, message=None):
+          guess_str = '???' if self.guess is None else str(self.guess)
+          self.gui.label.text = self.prompt.format(self.world, guess_str)
+
+      def on_finish_game(self):
+          self.gui.window.pop_handlers()
+
+          if self.world.winner == self.id:
+              self.gui.label.text = "You won!"
+          else:
+              self.gui.label.text = "You lost!"
 
 As usual, the game engine doesn't much care what happens in the constructor.  
 Here we just define two variables that we will use to manage the GUI: 
-``self.guess`` will keep track of the guesses as the player types them and 
-``self.prompt`` will be formatted and displayed to the player on each frame.
+:attr:`self.guess` will keep track of the guesses as the player types them and 
+:attr:`self.prompt` will be formatted and displayed to the player on each 
+frame.
 
-The ``on_setup_gui()`` method is called by the game engine to give ``GuiActor`` 
-a chance to store a reference to the ``Gui`` object.  This is how GUI 
-information from outside the game can be used inside the game.  The call to 
-``set_handlers()`` tells pyglet that it should use the ``on_draw()`` and 
-``on_key_press()`` methods to handle draw and keyboard events.  
+The `Actor.on_setup_gui()` method is called by the game engine to give 
+:class:`GuiActor` a chance to store a reference to the :class:`Gui` object.  
+This is how GUI information from outside the game can be used inside the game.  
+The call to `pyglet.event.EventDispatcher.set_handlers` tells pyglet that it 
+should use the :meth:`on_draw()` and :meth:`on_key_press()` methods to handle 
+draw and keyboard events.  
 
-The ``on_draw()`` method manually calls ``Gui.on_refresh_gui()``, which causes 
-the window to be cleared and redrawn.  Although ``on_refresh_gui()`` is called 
-automatically before and after the game, is has to be called manually during 
-the game.  The reason is that many games require more complicated draw steps 
-during game than they do before or after it.
+The :meth:`on_draw()` method manually calls :meth:`Gui.on_refresh_gui()`, which 
+causes the window to be cleared and redrawn.  Although :meth:`on_refresh_gui()` 
+is called automatically before and after the game, is has to be called manually 
+during the game.  The reason is that many games require more complicated draw 
+steps during game than they do before or after it.
 
-The ``on_key_press()`` method handles keyboard input from the player.  If the 
-player types a number, it is added to the guess.  If he or she hits backspace, 
-a digit is removed from the guess.  If he or she hits enter, the guess is made 
-into a message and processed by the game engine.  This last step, sending 
-messages on behalf of the player, is what ``GuiActor`` exists to do.  We use 
-``self.id`` to tell ``GuessNumber`` which player is making the guess.  This id 
-is assigned by the engine as soon as the game starts and is guaranteed to be 
-unique for each actor.  Once the message is ready, we send it using the ``>>`` 
-operator.
+The :meth:`on_mouse_scroll()` and :meth:`on_key_press()` methods handle 
+keyboard input from the player.  If the player scrolls up or down, the guess is 
+updated accordingly.  If he or she types a number, it is added to the guess.  
+If he or she hits backspace, a digit is removed from the guess.  If he or she 
+hits enter, the guess is made into a message and processed by the game engine.  
+This last step, sending messages on behalf of the player, is what 
+:class:`GuiActor` exists to do.  We use :attr:`self.id` to tell 
+:class:`GuessNumber` which player is making the guess.  This id is assigned by 
+the engine as soon as the game starts and is guaranteed to be unique for each 
+actor.  Once the message is ready, we send it using the ``>>`` operator.
 
-The ``on_update_prompt()`` method shows the player the latest bounds on the 
-number to guess.  The ``kxg.subscribe_to_message()`` decorators tell the game 
-engine to call this method whenever a ``PickNumber`` or ``GuessNumber`` message 
-is received.  There are other ways to subscribe to messages (described in 
-:doc:`/messaging_overview`) but decorators are generally the most readable.
+The :meth:`on_update_prompt()` method shows the player the latest bounds on the 
+number to guess.  The `kxg.forums.subscribe_to_message()` decorators tell the 
+game engine to call this method whenever a :class:`PickNumber` or 
+:class:`GuessNumber` message is received.  There are other ways to subscribe to 
+messages (described in :doc:`/messaging_overview`) but decorators are generally 
+the most readable.
 
-The ``on_finish_game()`` method is called by the game engine once the game has 
-been ended by a ``GuessNumber`` message.  This method removes the game's event 
-handlers from the window and sets the post-game "You Won/Lost!" message.  The 
-id number of the winning player is stored in the world, so we can compare that 
-to ``self.id`` to figure out which message to use.
+The `Actor.on_finish_game()` method is called by the game engine once the game 
+has been ended by a :class:`GuessNumber` message.  This method removes the 
+game's event handlers from the window and sets the post-game "You Won/Lost!" 
+message.  The id number of the winning player is stored in the world, so we can 
+compare that to :attr:`self.id` to figure out which message to use.
 
 Making an AI opponent
 =====================
 As mentioned in the previous section, the AI player will be represented by the 
-``AiActor`` class.  Like ``GuiActor``, ``AiActor`` will interact with the rest 
-of the game by sending and receiving messages.  Unlike ``GuiPlayer``, which 
-lets the player make all the interesting decisions, ``AiActor`` will also play 
-the game.  Our AI won't be too complicated.  It will just wait a random amount 
-of time, guess a random number, and repeat until the game ends::
+:class:`AiActor` class.  Like :class:`GuiActor`, :class:`AiActor` will interact 
+with the rest of the game by sending and receiving messages.  Unlike 
+:class:`GuiPlayer`, which lets the player make all the interesting decisions, 
+:class:`AiActor` will also play the game.  Our AI won't be too complicated.  It 
+will just wait a random amount of time, guess a random number, and repeat until 
+the game ends::
 
    class AiActor(kxg.Actor):
        """
@@ -399,17 +420,17 @@ of time, guess a random number, and repeat until the game ends::
        def reset_timer(self):
            self.timer = random.uniform(1, 3)
 
-The ``on_update_game()`` method is called by the game engine on every frame of 
-the game.  The ``dt`` argument is the amount of time that has elapsed since the 
-last frame.  The AI uses this information to update its internal timer.  When 
-that timer expires, the AI makes a random guess using the same ``GuessNumber`` 
-message as ``GuiActor`` and resets the timer.
+The :meth:`on_update_game` method is called by the game engine on every frame 
+of the game.  The :obj:`dt` argument is the amount of time that has elapsed 
+since the last frame.  The AI uses this information to update its internal 
+timer.  When that timer expires, the AI makes a random guess using the same 
+:class:`GuessNumber` message as :class:`GuiActor` and resets the timer.
 
 Putting it all together
 =======================
 We've now written classes that encompass all the logic needed to play Guess My 
 Number.  To tie them together for the game engine so it can play the game, we 
-just need to pass them all to ``quickstart.main()``::
+just need to pass them all to `quickstart.main()`::
 
    if __name__ == '__main__':
        kxg.quickstart.main(World, Referee, Gui, GuiActor, AiActor)
@@ -427,12 +448,12 @@ and clarity.  Below is a list of the things that should be done more rigorously
 for full-fledged games:
 
 1. We should've checked that our messages were being sent by the expected 
-   players.  For example, only the referee should send ``PickNumber`` messages 
-   and only the player making a guess should send ``GuessNumber`` messages 
-   (i.e.  players shouldn't be able to make guesses for each other).  This is 
-   mostly important to prevent cheating, although it might also help you catch 
-   bugs during development.  Here is some code showing what these checks would 
-   look like::
+   players.  For example, only the referee should send :class:`PickNumber` 
+   messages and only the player making a guess should send :class:`GuessNumber` 
+   messages (i.e.  players shouldn't be able to make guesses for each other).  
+   This is mostly important to prevent cheating, although it might also help 
+   you catch bugs during development.  Here is some code showing what these 
+   checks would look like::
 
       # In PickNumber.on_check()
       if not self.was_sent_by_referee():
@@ -442,12 +463,12 @@ for full-fledged games:
       if not self.was_sent_by(self.player):
           raise kxg.MessageCheck("can't make a guess for another player!")
 
-2. We should've had the referee send an ``EndGame`` message, rather than having 
-   the ``GuessNumber`` message end the game on its own if the right number was 
-   guessed.  The reason is that whenever a client sends a message, the server 
-   might veto it and require it to be undone (see :doc:`/messaging_overview` 
-   for more information).  Since ending the game cannot be undone, it's better 
-   for that command to come from the server.
+2. We should've had the referee send an :class:`EndGame` message, rather than 
+   having the :class:`GuessNumber` message end the game on its own if the right 
+   number was guessed.  The reason is that whenever a client sends a message, 
+   the server might veto it and require it to be undone (see 
+   :doc:`/messaging_overview` for more information).  Since ending the game 
+   cannot be undone, it's better for that command to come from the server.
 
 3. It's unusual to directly use the actors' id numbers to refer to players.  
    The usual approach is to have each actor create a player token that knows 
@@ -461,10 +482,6 @@ for full-fledged games:
    engine provides a default main function that's convenient for developing and 
    debugging games.
 
-.. [#] Storing a label in ``Gui`` makes sense for Guess My Number because the 
-   GUI is really nothing but a label.  For a more real game, it would make more 
-   sense to store a `pyglet.graphics.Batch`_ object instead.
-
-.. _pyglet.graphics.Batch:
-   https://pythonhosted.org/pyglet/api/pyglet.graphics-module.html
-
+.. [#] Storing a label in :class:`Gui` makes sense for Guess My Number because 
+   the GUI is really nothing but a label.  For a more real game, it would make 
+   more sense to store a `pyglet.graphics.Batch` object instead.

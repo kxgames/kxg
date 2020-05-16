@@ -3,7 +3,7 @@
 .. automodule:: {{ fullname }}
 
    {% block classes %}
-   {% if classes %}
+   {% if classes + exceptions %}
    .. rubric:: Classes
 
    .. autosummary::

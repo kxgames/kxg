@@ -121,6 +121,7 @@ class GuiActor(kxg.Actor):
         self.gui.on_refresh_gui()
 
     def on_mouse_scroll(self, x, y, dx, dy):
+        # If the user scrolls the mouse wheel, update the guess accordingly.
         if self.guess is None:
             if dy < 0:
                 self.guess = self.world.upper_bound

@@ -16,11 +16,11 @@ synchronization bugs that would otherwise be very difficult to track down.
 
    right_for_you
    installation
+   demos/guess_my_number
 
 .. toctree::
    :caption: Learning More
 
-   demos/guess_my_number
    big_picture.rst
    messaging_overview.rst
    theater_overview.rst

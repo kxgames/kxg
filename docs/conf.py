@@ -16,7 +16,6 @@ html_static_path = ['static']
 exclude_patterns = ['build']
 default_role = 'any'
 
-
 extensions = [
         'ext.show_nodes',
         'autoclasstoc',
@@ -29,13 +28,10 @@ extensions = [
 
 autodoc_default_options = {
         'exclude-members': '__weakref__,__dict__,__module__',
-        #'members': True,
-        #'undoc-members': True,
-        #'special-members': True,
-        #'private-members': True,
 }
 intersphinx_mapping = {
         'http://docs.python.org/': None,
+        'https://pyglet.readthedocs.io/en/latest/': None,
 }
 autosummary_generate = True
 pygments_style = 'sphinx'
