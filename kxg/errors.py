@@ -79,7 +79,7 @@ def format_error_message(prefix, magic_fmt_level, message, *args, **kwargs):
 
     for paragraph in paragraphs:
         lines = paragraph.split('\n')
-        indent_pattern = re.compile('\s*')
+        indent_pattern = re.compile(r'\s*')
         initial_indent = indent_pattern.match(lines[0]).group()
         subsequent_indent = indent_pattern.match(lines[-1]).group()
 

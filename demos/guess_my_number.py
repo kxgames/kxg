@@ -26,7 +26,7 @@ class Referee(kxg.Referee):
     Pick the secret number.
     """
 
-    def on_start_game(self):
+    def on_start_game(self, num_players):
         number = random.randint(LOWER_BOUND + 1, UPPER_BOUND - 1)
         self >> PickNumber(number, LOWER_BOUND, UPPER_BOUND)
 
