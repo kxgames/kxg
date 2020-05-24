@@ -1,7 +1,7 @@
 import kxg
 from test_helpers import *
 
-class DummyStage (kxg.Stage):
+class DummyStage (kxg.quickstart.Stage):
 
     def __init__(self, num_updates=1):
         super().__init__()
@@ -61,8 +61,7 @@ def run_dummy_main(*command_lines):
     """
     Run the specified command lines in threads so that clients and servers 
     can talk to each other if they need to.  In some cases only one thread 
-    will be started, but that's not a problem.  Use threads instead of 
-    processes for the benefit of the code coverage analysis.  
+    will be started, but that's not a problem.
     """
     import shlex
 
@@ -84,7 +83,7 @@ def sleep_forever():
 
 
 def test_stages():
-    theater = kxg.Theater()
+    theater = kxg.quickstart.Theater()
     theater.gui = "gui"
 
     stage_1 = DummyStage()
@@ -150,48 +149,25 @@ def test_stages():
 
 def test_exit_stage():
 
-    class ExitStage (kxg.Stage):
+    class ExitStage (kxg.quickstart.Stage):
 
         def on_update_stage(self, dt):
             self.exit_theater()
 
 
-    theater = kxg.Theater()
+    theater = kxg.quickstart.Theater()
     theater.initial_stage = ExitStage()
     assert not theater.is_finished
     theater.update()
     assert theater.is_finished
 
 def test_reset_initial_stage():
-    theater = kxg.Theater()
+    theater = kxg.quickstart.Theater()
     theater.initial_stage = DummyStage('inf')
     theater.update()
 
     with raises_api_usage_error():
         theater.initial_stage = DummyStage()
-
-def test_uniplayer_game_stage():
-    test = DummyUniplayerGame()
-    test.update(10)
-    test.referee >> DummyEndGameMessage()
-    test.update()
-
-    assert test.theater.is_finished
-
-def test_multiplayer_game_stage():
-    test = DummyMultiplayerGame()
-    test.update(10)
-    test.referee >> DummyEndGameMessage()
-    test.update()
-
-    # Make sure the multiplayer forums and actors play release their pipes once 
-    # the game ends.  This test is a little gross because it has to reach into 
-    # the internals of the pipe class.
-
-    for client in test.clients:
-        assert not client.pipe.serializer_stack
-    for pipe in test.server.pipes:
-        assert not pipe.serializer_stack
 
 def test_quickstart_process_pool(logged_messages):
     # Make sure exceptions raised in worker processes are handled correctly.  
@@ -216,7 +192,7 @@ def test_quickstart_process_pool(logged_messages):
     with kxg.quickstart.ProcessPool() as pool:
         pool.start("logging test", log_something)
 
-    assert 'INFO: logging test: 40_test_theaters.log_something: Hello World!' in logged_messages
+    assert 'INFO: logging test: 40_test_quickstart.log_something: Hello World!' in logged_messages
 
 def test_quickstart_sandbox(logged_messages):
     run_dummy_main('sandbox -v 1')

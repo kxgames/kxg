@@ -1,0 +1,11 @@
+version: 2
+
+python:
+  install:
+    # This is only required to install sphinx with #7492 merged.  Once there's 
+    # a 3.1.x release, I should be able to get rid of this.
+    - requirements: docs/requirements.txt
+    - method: pip
+      path: .
+      extra_requirements:
+        - docs

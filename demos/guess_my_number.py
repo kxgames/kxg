@@ -110,7 +110,7 @@ class GuiActor(kxg.Actor):
 
     def __init__(self):
         super().__init__()
-        self.guess = ''
+        self.guess = None
         self.prompt = "{0.lower_bound} < {1} < {0.upper_bound}"
 
     def on_setup_gui(self, gui):
@@ -120,32 +120,48 @@ class GuiActor(kxg.Actor):
     def on_draw(self):
         self.gui.on_refresh_gui()
 
+    def on_mouse_scroll(self, x, y, dx, dy):
+        if self.guess is None:
+            if dy < 0:
+                self.guess = self.world.upper_bound
+            else:
+                self.guess = self.world.lower_bound
+
+        self.guess = sorted([
+            self.world.lower_bound,
+            self.guess + dy,
+            self.world.upper_bound,
+        ])[1]
+
+        self.on_update_prompt()
+
     def on_key_press(self, symbol, modifiers):
         # If the user types a number, add that digit to the guess.
         try:
             digit = int(chr(symbol))
-            self.guess += str(digit)
+            self.guess = 10 * (self.guess or 0) + digit
         except ValueError:
             pass
         
         # If the user hits backspace, remove the last digit from the guess.
         if symbol == pyglet.window.key.BACKSPACE:
-            if self.guess:
-                self.guess = self.guess[:-1]
+            if self.guess is not None:
+                guess_str = str(self.guess)[:-1]
+                self.guess = int(guess_str) if guess_str else None
 
         # If the user hits enter, guess the current number.
         if symbol == pyglet.window.key.ENTER:
             if self.guess:
-                self >> GuessNumber(self.id, int(self.guess))
-                self.guess = ''
+                self >> GuessNumber(self.id, self.guess)
+                self.guess = None
 
         self.on_update_prompt()
 
     @kxg.subscribe_to_message(PickNumber)
     @kxg.subscribe_to_message(GuessNumber)
     def on_update_prompt(self, message=None):
-        self.gui.label.text = self.prompt.format(
-                self.world, self.guess or '???')
+        guess_str = '???' if self.guess is None else str(self.guess)
+        self.gui.label.text = self.prompt.format(self.world, guess_str)
 
     def on_finish_game(self):
         self.gui.window.pop_handlers()

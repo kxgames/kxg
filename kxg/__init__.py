@@ -3,7 +3,7 @@
 __version__ = '0.2.0'
 
 from . import quickstart
-from .theater import *
+from .game import *
 from .forums import *
 from .actors import *
 from .multiplayer import *

@@ -10,27 +10,38 @@ misused and explaining how it should be used with detailed error messages.
 This makes it easier to start using the engine and harder to make subtle 
 synchronization bugs that would otherwise be very difficult to track down.
 
-Getting Started
-===============
 .. toctree::
    :maxdepth: 1
+   :caption: Getting Started
 
    right_for_you
    installation
-   demos/guess_my_number
 
-Learning More
-=============
 .. toctree::
+   :caption: Learning More
+
+   demos/guess_my_number
    big_picture.rst
    messaging_overview.rst
    theater_overview.rst
    token_overview.rst
-
-Quick Reference
-===============
-.. toctree::
-   api/index.rst
    common_mistakes.rst
+
+.. autosummary::
+   :caption: API Reference
+   :toctree: api
+   :recursive:
+
+   kxg.tokens
+   kxg.messages
+   kxg.actors
+   kxg.forums
+   kxg.multiplayer
+   kxg.quickstart
+   kxg.errors
+
+.. toctree::
+   :caption: Miscellaneous
+
    contributing.rst
 

@@ -417,12 +417,10 @@ def test_uniplayer_token_management():
 
     for actor in test.actors:
         # Add a token to the game...
-
         token = add_dummy_token(actor)
         assert token in test.world
 
         # ...then remove it.
-
         remove_dummy_token(actor, token)
         assert token not in test.world
 
@@ -774,6 +772,25 @@ def test_multiplayer_was_sent_by():
             assert received_message.was_sent_by_referee() == isinstance(
                     sender, kxg.Referee)
 
+def test_multiplayer_multiple_receive_id_calls():
+    test = DummyMultiplayerGame()
+    message = send_dummy_message(test.referee)
+
+    # Have all the clients try to receive an id from the server again, even 
+    # though this was already done in the DummyMultiplyerGame constructor.  
+    # This call should return True and should not consume the message that was 
+    # sent by the referee.
+
+    for client in test.clients:
+        assert client.game.forum.receive_id_from_server()
+
+    test.update()
+
+    for observer in test.observers:
+        assert observer.dummy_messages_received == [message]
+    for world in test.worlds:
+        assert world.dummy_messages_executed == [message]
+
 def test_subscribing_to_multiple_messages():
     test = DummyUniplayerGame()
     token = ListeningToken()
@@ -897,6 +914,29 @@ def test_cant_send_message_twice():
     with raises_api_usage_error("has already been sent"):
         test.random_actor.send_message(message)
 
+def test_cant_forget_to_add_token():
+    test = DummyUniplayerGame()
+    message = DummyMessage()
+    message.token = DummyToken()
+
+    with raises_api_usage_error("DummyToken was referenced by"):
+        test.referee >> message
+
+def test_cant_add_token_twice():
+    test = DummyUniplayerGame()
+    token = add_dummy_token(test.referee)
+
+    with raises_api_usage_error("can't add DummyToken to the world twice"):
+        add_dummy_token(test.referee, token)
+
+def test_cant_remove_token_twice():
+    test = DummyUniplayerGame()
+    token = add_dummy_token(test.referee)
+    remove_dummy_token(test.referee, token)
+
+    with raises_api_usage_error("can't remove DummyToken from the world twice"):
+        remove_dummy_token(test.referee, token)
+    
 def test_cant_use_stale_reporter():
     test = DummyUniplayerGame()
 
@@ -925,5 +965,15 @@ def test_cant_subscribe_in_token_ctor():
 
     with raises_api_usage_error("can't subscribe to messages now."):
         token = SubscribeInConstructorToken()
+
+def test_cant_start_game_without_client_id():
+    world = DummyWorld()
+    pipe = linersock.test_helpers.make_pipe()[0]
+    forum = kxg.ClientForum(pipe)
+    actors = [DummyActor()]
+    game = kxg.Game(world, forum, actors)
+
+    with raises_api_usage_error("wasn't assigned an id number"):
+        game.start_game()
 
 

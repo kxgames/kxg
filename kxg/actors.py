@@ -50,6 +50,26 @@ class Actor(ForumObserver):
         # These expectations can sometimes be broken by relatively innocuous 
         # misuses of the game engine, so it's useful to have these checks.
 
+        for token in message.tokens_to_add():
+            if token in self.world:
+                raise ApiUsageError("""\
+                        can't add {token} to the world twice.
+
+                        {token} was referenced by tokens_to_add(), but it can't 
+                        be added to the world because it's already in it.""")
+
+        for token in message.tokens_to_remove():
+            if token not in self.world:
+                raise ApiUsageError("""\
+                        can't remove {token} from the world twice.
+
+                        {token} was referenced by tokens_to_remove(), but it 
+                        can't be removed from the world because it's not in 
+                        it.  This usually means {token} is being removed for a 
+                        second time, perhaps due to a stale reference, but it 
+                        could also mean {token} was never added to the world in 
+                        the first place.""")
+
         for token in message.tokens_referenced():
             if token not in self.world and token not in message.tokens_to_add():
                 raise ApiUsageError("""\
@@ -77,28 +97,8 @@ class Actor(ForumObserver):
                            be yielded by this method to be added to the world.
 
                         3. Using a token that was never added to the world.  
-                           This can happen is you put a token in the world 
+                           This can happen if you put a token in the world 
                            without using a message to do it.""")
-
-        for token in message.tokens_to_add():
-            if token in self.world:
-                raise ApiUsageError("""\
-                        can't add {token} to the world twice.
-
-                        {token} was referenced by tokens_to_add(), but it can't 
-                        be added to the world because it's already in it.""")
-
-        for token in message.tokens_to_remove():
-            if token not in self.world:
-                raise ApiUsageError("""\
-                        can't remove {token} from the world twice.
-
-                        {token} was referenced by tokens_to_remove(), but it 
-                        can't be removed from the world because it's not in 
-                        it.  This usually means {token} is being removed for a 
-                        second time, perhaps due to a stale reference, but it 
-                        could also mean {token} was never added to the world in 
-                        the first place.""")
 
         # Indicate that the message was sent by this actor and give the message 
         # a chance to assign id numbers to the tokens it's creating.  This is 

@@ -1,5 +1,5 @@
 import kxg
-import pytest, contextlib
+import pytest, contextlib, time
 import linersock.test_helpers
 from pprint import pprint
 import random; random.seed(0)
@@ -13,18 +13,16 @@ class DummyUniplayerGame:
         self.referee = DummyReferee()
         self.gui_actor = DummyActor()
         self.ai_actors = [DummyActor()]
-        self.game_stage = kxg.UniplayerGameStage(
+        self.game = kxg.UniplayerGame(
                 self.world, self.referee, self.gui_actor, self.ai_actors)
 
         # Start playing the game.
 
-        self.theater = kxg.Theater(self.game_stage)
-        self.update()
+        self.game.start_game()
 
     def update(self, num_updates=1):
         for i in range(num_updates):
-            if not self.theater.is_finished:
-                self.theater.update()
+            self.game.update_game(0)
 
     @property
     def actors(self):
@@ -51,19 +49,19 @@ class DummyUniplayerGame:
 
 class DummyMultiplayerGame:
 
-    class Client:
+    class Server:
 
-        def __init__(self, client_pipe):
+        def __init__(self, server_pipes):
+            self.pipes = server_pipes
             self.world = DummyWorld()
-            self.gui_actor = DummyActor()
-            self.pipe = client_pipe
-            self.theater = kxg.Theater(
-                    kxg.MultiplayerClientGameStage(
-                        self.world, self.gui_actor, self.pipe))
+            self.referee = DummyReferee()
+            self.ai_actors = [DummyActor(), DummyActor()]
+            self.game = kxg.MultiplayerServerGame(
+                    self.world, self.referee, self.ai_actors, self.pipes)
 
         @property
         def actors(self):
-            return [self.gui_actor]
+            return [self.referee] + self.ai_actors
 
         @property
         def observers(self):
@@ -72,20 +70,18 @@ class DummyMultiplayerGame:
             for token in self.world:
                 yield from token.observers
 
-    class Server:
+    class Client:
 
-        def __init__(self, server_pipes):
+        def __init__(self, client_pipe):
+            self.pipe = client_pipe
             self.world = DummyWorld()
-            self.referee = DummyReferee()
-            self.ai_actors = [DummyActor(), DummyActor()]
-            self.pipes = server_pipes
-            self.theater = kxg.Theater(
-                    kxg.MultiplayerServerGameStage(
-                        self.world, self.referee, self.ai_actors, self.pipes))
+            self.gui_actor = DummyActor()
+            self.game = kxg.MultiplayerClientGame(
+                    self.world, self.gui_actor, self.pipe)
 
         @property
         def actors(self):
-            return [self.referee] + self.ai_actors
+            return [self.gui_actor]
 
         @property
         def observers(self):
@@ -104,14 +100,18 @@ class DummyMultiplayerGame:
         self.server = DummyMultiplayerGame.Server(server_pipes)
         self.clients = [DummyMultiplayerGame.Client(p) for p in client_pipes]
 
-        # Update all the clients once to make sure they can wait for an id.
+        # Give each client an id and start playing the game.
+        
+        self.server.game.start_game()
+
+        all_client_ids_received = lambda: \
+            all(x.game.forum.receive_id_from_server() for x in self.clients)
+
+        while not all_client_ids_received():
+            time.sleep(1/60)
 
         for client in self.clients:
-            client.theater.update(0.1)
-
-        # Give each client an id.
-
-        self.update()
+            client.game.start_game()
 
     @property
     def participants(self):
@@ -161,13 +161,11 @@ class DummyMultiplayerGame:
         self.last_random_actor = random.choice(list(self.client_actors))
         return self.last_random_actor
 
-    def update(self, num_updates=2):
-        import time
+    def update(self, num_updates=2, elapsed_time=1/60):
         for i in range(num_updates):
             for part in self.participants:
-                if not part.theater.is_finished:
-                    part.theater.update()
-            time.sleep(1/60)
+                part.game.update_game(elapsed_time)
+            time.sleep(elapsed_time)
 
 
 class DummyMessage (kxg.Message, linersock.test_helpers.Message):

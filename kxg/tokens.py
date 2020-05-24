@@ -139,7 +139,6 @@ class TokenSafetyChecks(type):
         return safety_checked_method
 
         
-
 class TokenExtension(ForumObserver):
 
     def __init__(self, actor, token):
@@ -297,16 +296,11 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
         from .forums import IdFactory
         assert isinstance(id_factory, IdFactory), msg("""\
                 The argument to Token._give_id() should be an IdFactory.  This 
-                method should also only be caled by the game engine itself.""")
-
-        if self.has_id:
-            raise ApiUsageError("""\
-                can't give {self} an id because it already has one.
-
-                This error usually means that you tried to add the same token 
-                to the world twice.  The first part of that process is 
-                assigning an id to the token, and that doesn't make sense if 
-                the token already has an id.""")
+                method should also only be called by the game engine itself.""")
+        assert not self.has_id, msg("""\
+                Can't give {self} and id because it already has one.  
+                Actor.send_message() should've refused to send a message that 
+                would add a duplicate token to the world.""")
 
         self._id = id_factory.next()
 
@@ -397,6 +391,9 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
 
 
 class World(Token):
+    """
+    Manage all of the tokens participating in the game.
+    """
 
     def __init__(self):
         super().__init__()

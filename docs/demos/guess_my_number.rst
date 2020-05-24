@@ -37,7 +37,7 @@ that collectively describe your game.  This includes classes to represent all
 the players themselves (:class:`kxg.Actor`), the actions the players can take 
 (:class:`kxg.Message`), the game objects that the players can interact with 
 (:class:`kxg.World` and :class:`kxg.Token`).  You then pass these classes to a 
-main function function that plays the game. [#]_
+main function function that orchestrates playing the game. [#]_
 
 Setting up the world
 ====================
@@ -58,7 +58,7 @@ from :class:`kxg.World` and initialize our four numbers in the constructor::
 
    import kxg
 
-   class World (kxg.World):
+   class World(kxg.World):
        """
        Keep track of the secret number, the range of numbers that
        haven't been eliminated yet, and the winner (if there is one).
@@ -80,14 +80,15 @@ next section we'll use a message to pick a number.
 Picking the number
 ==================
 As discussed above, the world can't be initialized with a number to guess.  
-Instead the server will pick one and send a message to communicate it to all 
-the clients.  This ``PickNumber`` message will also include the upper and lower 
-bounds on the number to guess (because the clients need that information as 
-well) and methods to check itself and to apply itself to the world::
+Instead, the server will pick a number and communicate it to all the clients by 
+sending a message.  To do this, we will need to write a ``PickNumber`` message 
+class.  This class will contain any relevant information (e.g. the number as 
+well as the upper and lower bounds on the guesses) along with methods to help 
+carry out the message::
 
    import kxg
 
-   class PickNumber (kxg.Message):
+   class PickNumber(kxg.Message):
        """
        Pick the secret number and communicate that choice to all the
        clients.
@@ -113,16 +114,16 @@ use to change the world.  It doesn't even need to call the base class
 constructor.  In this case we only need to store the number to guess and the 
 upper and lower bounds to show the players.
 
-The ``on_check()`` method is called by the game engine the confirm that the 
-message should be allowed given the current state of the world.  If there's a 
-problem, ``on_check()`` should raise a :exc:`kxg.MessageCheck` exception.  This 
-is important in multiplayer games, because it gives the server veto power over 
-messages sent by the clients.  In other words, before a message from one client 
-is relayed to all the others, it has to pass the check on the server.  This 
-gives the server a way to prevent cheating and to detect when the clients are 
-getting out of sync.  For Guess My Number, we just check to make sure that the 
-number to guess isn't already set, which would suggest that this message had 
-been sent twice somehow.
+:meth:`~kxg.Message.on_check()` is called by the game engine the confirm that 
+the message should be allowed given the current state of the world.  If there's 
+a problem, :meth:`on_check()` should raise a :exc:`kxg.MessageCheck` exception.  
+This is important in multiplayer games, because it gives the server veto power 
+over messages sent by the clients.  In other words, before a message from one 
+client is relayed to all the others, it has to pass the check on the server.  
+This gives the server a way to prevent cheating and to detect when the clients 
+are getting out of sync.  For Guess My Number, we just check to make sure that 
+the number to guess isn't already set, which would suggest that this message 
+had been sent twice somehow.
 
 The ``on_execute()`` method is called by the game engine to let the message 
 change the game world.  This message only needs to copy its three attributes 
@@ -192,12 +193,14 @@ message takes care of ending it::
            self >> PickNumber(number, LOWER_BOUND, UPPER_BOUND)
 
 The lower and upper bounds are global variables just so they can be changed
-without having to dig through too much code.  The ``on_start_game()`` method is 
-called automatically by the game engine when the game starts.  It picks a 
-random number within the given bounds, uses that number to construct a 
-``PickNumber`` message, then sends that message using the ``>>`` operator.  We 
-can be sure that only one number will be picked because the referee only runs 
-on the server and ``on_start_game()`` is only called once.
+without having to dig through too much code.  In a more sophisticated game, 
+these bounds might be read from a config file or set in some sort of lobby.  
+The ``on_start_game()`` method is called automatically by the game engine when 
+the game starts.  It picks a random number within the given bounds, uses that 
+number to construct a ``PickNumber`` message, then sends that message using the 
+``>>`` operator.  We can be sure that only one number will be picked because 
+the referee only runs on the server and ``on_start_game()`` is only called 
+once.
 
 Making a user interface
 =======================
