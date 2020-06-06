@@ -193,8 +193,13 @@ class Token(ForumObserver, metaclass=TokenSafetyChecks):
         self._extensions = {}
         self._disable_forum_observation()
 
-    def __repr__(self):
-        return '{}(id={})'.format(self.__class__.__name__, self._id)
+    def __repr__(self, **kwargs):
+        attrs = {'id': getattr(self, '_id', None), **kwargs}
+        attrs_fmt = ', '.join(
+                '{}={}'.format(k, repr(v))
+                for k, v in attrs.items()
+        )
+        return '{}({})'.format(self.__class__.__name__, attrs_fmt)
 
     def __getstate__(self):
         state = super().__getstate__()
