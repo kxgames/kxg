@@ -19,7 +19,7 @@
    .. rubric:: Functions
 
    .. autosummary::
-      :toctree: api
+      :toctree:
    {% for item in functions %}
       {{ item }}
    {%- endfor %}

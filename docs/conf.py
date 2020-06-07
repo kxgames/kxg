@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-import sys
-import os
+import sys, os
+from autoclasstoc import Section, PublicMethods, is_method
 sys.path.insert(0, os.path.abspath('.'))
 
 project = 'KXG Game Engine'
@@ -21,8 +21,9 @@ extensions = [
         'autoclasstoc',
         'sphinx.ext.autodoc',
         'sphinx.ext.autosummary',
-        'sphinx.ext.intersphinx',
         'sphinx.ext.coverage',
+        'sphinx.ext.inheritance_diagram',
+        'sphinx.ext.intersphinx',
         'sphinx.ext.viewcode',
 ]
 
@@ -36,3 +37,24 @@ intersphinx_mapping = {
 autosummary_generate = True
 pygments_style = 'sphinx'
 html_theme = 'sphinx_rtd_theme'
+
+class EventHandler(Section):
+    key = 'event-handlers'
+    title = "Event Handlers:"
+
+    def predicate(self, name, attr):
+        return is_event_handler(name, attr)
+
+class PublicMethods(PublicMethods):
+
+    def predicate(self, name, attr):
+        return super().predicate(name, attr) and not is_event_handler(name, attr)
+
+def is_event_handler(name, attr):
+    return is_method(name, attr) and name.startswith('on_')
+
+autoclasstoc_sections = [
+        'event-handlers',
+        'public-methods',
+        'private-methods',
+]

@@ -149,9 +149,10 @@ class Message:
         """
         Handle soft synchronization errors.
 
-        See `on_prepare_sync` for more details or hard/soft synchronization 
-        error.  This handler should use any information put in the *memento* by 
-        `on_prepare_sync` to quietly re-synchronize the client with the server.
+        See `on_prepare_sync` for more details on hard/soft synchronization 
+        errors.  This handler should use any information put in the *memento* 
+        by `on_prepare_sync` to quietly re-synchronize the client with the 
+        server.
         """
         pass
 
@@ -162,8 +163,8 @@ class Message:
         See `on_prepare_sync` for more details or hard/soft synchronization 
         error.  This handler should undo whatever changes were made to the 
         world in `on_execute`, preferably in a way that is as minimally 
-        disruptive to the player as possible.  Only the client that originally 
-        sent this message will call this handler.
+        disruptive to the player as possible.  This handler will only called on 
+        the client that originally sent this message.
         """
         message_cls = self.__class__.__name__
         raise ApiUsageError("""\

@@ -7,5 +7,7 @@
    :undoc-members:
    :special-members:
    :private-members:
+   :inherited-members:
+   :show-inheritance:
 
    .. autoclasstoc::
