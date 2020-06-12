@@ -17,7 +17,6 @@ exclude_patterns = ['build']
 default_role = 'any'
 
 extensions = [
-        'ext.show_nodes',
         'autoclasstoc',
         'sphinx.ext.autodoc',
         'sphinx.ext.autosummary',
@@ -42,13 +41,13 @@ class EventHandler(Section):
     key = 'event-handlers'
     title = "Event Handlers:"
 
-    def predicate(self, name, attr):
+    def predicate(self, name, attr, meta):
         return is_event_handler(name, attr)
 
 class PublicMethods(PublicMethods):
 
-    def predicate(self, name, attr):
-        return super().predicate(name, attr) and not is_event_handler(name, attr)
+    def predicate(self, name, attr, meta):
+        return super().predicate(name, attr, meta) and not is_event_handler(name, attr)
 
 def is_event_handler(name, attr):
     return is_method(name, attr) and name.startswith('on_')
